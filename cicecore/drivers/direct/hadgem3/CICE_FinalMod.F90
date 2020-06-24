@@ -11,7 +11,8 @@
       module CICE_FinalMod
 
       use ice_kinds_mod
-      use ice_exit, only: abort_ice, end_run
+      use ice_communicate, only: my_task, master_task
+      use ice_exit, only: end_run, abort_ice
       use ice_fileunits, only: nu_diag, release_all_fileunits
       use icepack_intfc, only: icepack_warnings_flush, icepack_warnings_aborted
 
@@ -32,18 +33,24 @@
       use ice_restart_shared, only: runid
       use ice_timers, only: ice_timer_stop, ice_timer_print_all, timer_total
 
-      character(len=*), parameter :: subname='(CICE_Finalize)'
+      character(len=*), parameter :: subname = '(CICE_Finalize)'
 
    !-------------------------------------------------------------------
    ! stop timers and print timer info
    !-------------------------------------------------------------------
 
-      call icepack_warnings_flush(nu_diag)
-      if (icepack_warnings_aborted()) call abort_ice(error_message="subname", &
-          file=__FILE__,line= __LINE__)
-
       call ice_timer_stop(timer_total)        ! stop timing entire run
       call ice_timer_print_all(stats=.false.) ! print timing information
+
+      call icepack_warnings_flush(nu_diag)
+      if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
+          file=__FILE__,line= __LINE__)
+
+      if (my_task == master_task) then
+         write(nu_diag, *) " "
+         write(nu_diag, *) "CICE COMPLETED SUCCESSFULLY "
+         write(nu_diag, *) " "
+      endif
 
 !echmod      if (nu_diag /= 6) close (nu_diag) ! diagnostic output
       call release_all_fileunits
@@ -74,9 +81,9 @@
       subroutine writeout_finished_file()
       
       use ice_restart_shared, only: restart_dir
-      use ice_communicate, only: my_task, master_task
 
       character(len=char_len_long) :: filename
+      character(len=*), parameter :: subname = '(writeout_finished_file)'
 
       if (my_task == master_task) then
            
