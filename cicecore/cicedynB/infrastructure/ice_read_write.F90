@@ -1179,6 +1179,9 @@
             status = nf90_get_var( fid, varid, work_g1, &
                   start=(/1,1,nrec/), & 
                   count=(/nx,ny,1/) )
+            if (status /= nf90_noerr) then
+              call abort_ice (subname//'ERROR while getting variable '//trim(varname)//'. Error message from netcdf module: '//trim(nf90_strerror(status)))
+            endif
          endif
 
       endif                     ! my_task = master_task
