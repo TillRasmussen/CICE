@@ -133,7 +133,8 @@
           stressm_1, stressm_2, stressm_3, stressm_4, &
           stress12_1, stress12_2, stress12_3, stress12_4
       use ice_grid, only: tmask, umask, dxt, dyt, dxhy, dyhx, cxp, cyp, cxm, cym, &
-          tarear, uarear, to_ugrid, t2ugrid_vector, u2tgrid_vector
+          tarear, uarear, to_ugrid, t2ugrid_vector, u2tgrid_vector, &
+          iceberggrnd
       use ice_state, only: aice, vice, vsno, uvel, vvel, divu, shear, &
           aice_init, aice0, aicen, vicen, strength
 !      use ice_timers, only: timer_dynamics, timer_bound, &
@@ -393,7 +394,8 @@
                                   icellu  (iblk),                   &
                                   indxui(:,iblk),   indxuj(:,iblk), &
                                   vice(:,:,iblk),   aice(:,:,iblk), &
-                                  hwater(:,:,iblk), Tbu(:,:,iblk))
+                                  hwater(:,:,iblk), Tbu(:,:,iblk),  &
+                                  iceberggrnd(:,:,iblk) )
        enddo
        !$OMP END PARALLEL DO 
       endif

@@ -49,6 +49,7 @@
          kmt_file     , & !  input file for POP grid info
          bathymetry_file, & !  input bathymetry for basalstress
          bathymetry_format, & ! bathymetry file format (default or pop)
+         iceberg_file,  & !  input file for iceberg grounding coefficients
          grid_spacing , & !  default of 30.e3m or set by user in namelist 
          grid_type        !  current options are rectangular (default),
                           !  displaced_pole, tripole, regional
@@ -74,6 +75,7 @@
          ANGLE  , & ! for conversions between POP grid and lat/lon
          ANGLET , & ! ANGLE converted to T-cells
          bathymetry      , & ! ocean depth, for grounding keels and bergs (m)
+         iceberggrnd     , & ! coefficient of variation of iceberg density, indicating iceberg grounding zones (unitless)
          ocn_gridcell_frac   ! only relevant for lat-lon grids
                              ! gridcell value of [1 - (land fraction)] (T-cell)
 
@@ -126,6 +128,9 @@
 
       logical (kind=log_kind), public :: &
          use_bathymetry     ! flag for reading in bathymetry_file
+      
+      logical (kind=log_kind), public :: &
+         groundedicebergs   ! true switches on the parametrization of drag of grounded icebergs for landfast ice
 
       logical (kind=log_kind), &
          dimension (:,:,:), allocatable, public :: &
@@ -174,6 +179,7 @@
          ANGLE    (nx_block,ny_block,max_blocks), & ! for conversions between POP grid and lat/lon
          ANGLET   (nx_block,ny_block,max_blocks), & ! ANGLE converted to T-cells
          bathymetry(nx_block,ny_block,max_blocks),& ! ocean depth, for grounding keels and bergs (m)
+         iceberggrnd(nx_block,ny_block,max_blocks),& ! coefficient for iceberg grounding zones (unitless)
          ocn_gridcell_frac(nx_block,ny_block,max_blocks),& ! only relevant for lat-lon grids
          cyp      (nx_block,ny_block,max_blocks), & ! 1.5*HTE - 0.5*HTE
          cxp      (nx_block,ny_block,max_blocks), & ! 1.5*HTN - 0.5*HTN
@@ -553,6 +559,15 @@
       else
          call abort_ice(subname//'ERROR: bathymetry_format value must be default or pop', &
             file=__FILE__, line=__LINE__)
+      endif
+
+      !----------------------------------------------------------------
+      ! Read iceberg grounding coefficients
+      !----------------------------------------------------------------
+
+      iceberggrnd = c0 ! Initialize to zero, if grounded icebergs are not used
+      if (groundedicebergs) then
+         call read_iceberg_grounding
       endif
 
       !----------------------------------------------------------------
@@ -2554,7 +2569,69 @@
       endif
 
       end subroutine read_basalstress_bathy
+
+!=======================================================================
+
+! Read a netcdf file with iceberg grounding coefficients.
+! These coefficients (0.-1., unitless) are later used to parametrize additional drag caused by grounded
+! icebergs, possibly leading to landfast ice. This parametrization
+! is using the same concepts as the basalstress parametrization.
+!
+! author: Andrea Gierisch, DMI
+
+      subroutine read_iceberg_grounding
+
+      ! use module
+      use ice_read_write
+      use ice_constants, only: field_loc_center, field_type_scalar
+
+      ! local variables
+      integer (kind=int_kind) :: &
+         fid_init        ! file id for netCDF init file
       
+      character (char_len_long) :: &        ! input data file names
+         fieldname
+
+      logical (kind=log_kind) :: diag=.true.
+
+      character(len=*), parameter :: subname = '(read_iceberg_grounding)'
+
+      if (my_task == master_task) then
+          write (nu_diag,*) ' '
+          write (nu_diag,*) 'Iceberg grounding file: ', trim(iceberg_file)
+          call icepack_warnings_flush(nu_diag)
+      endif
+
+      call ice_open_nc(iceberg_file,fid_init)
+
+      fieldname='ibc'
+
+      if (my_task == master_task) then
+         write(nu_diag,*) 'reading ',TRIM(fieldname)
+         call icepack_warnings_flush(nu_diag)
+      endif
+      call ice_read_nc(fid_init,1,fieldname,iceberggrnd,diag, &
+                    field_loc=field_loc_center, &
+                    field_type=field_type_scalar)
+
+      call ice_close_nc(fid_init)
+
+      if (my_task == master_task) then
+         write(nu_diag,*) 'closing file ',TRIM(iceberg_file)
+         call icepack_warnings_flush(nu_diag)
+      endif
+
+      ! Check that all values are between 0 and 1
+      write(nu_diag,*) 'iceberggrnd MINVAL:',MINVAL(iceberggrnd),'   MAXVAL:',MAXVAL(iceberggrnd)
+      call icepack_warnings_flush(nu_diag)
+      if ( MINVAL(iceberggrnd) < 0._dbl_kind .OR. MAXVAL(iceberggrnd) > 1._dbl_kind ) then
+         call abort_ice(trim(subname)//' &
+               & Data in '//TRIM(iceberg_file)//' are not between 0 and 1. &
+               & Check that missing values are set to zero.')
+      endif
+
+      end subroutine read_iceberg_grounding
+
 !=======================================================================
 
       end module ice_grid

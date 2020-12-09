@@ -93,11 +93,13 @@
       use ice_grid, only: grid_file, gridcpl_file, kmt_file, &
                           bathymetry_file, use_bathymetry, &
                           bathymetry_format, &
+                          iceberg_file, groundedicebergs, &
                           grid_type, grid_format, &
                           dxrect, dyrect
       use ice_dyn_shared, only: ndte, kdyn, revised_evp, yield_curve, &
                                 kevp_kernel, &
                                 basalstress, k1, k2, alphab, threshold_hw, &
+                                maxgrounddepth,     &
                                 Ktens, e_ratio, coriolis, ssh_stress, &
                                 kridge, ktransport, brlx, arlx
       use ice_dyn_vp, only: maxits_nonlin, precond, dim_fgmres, dim_pgmres, maxits_fgmres, &
@@ -206,7 +208,8 @@
         damping_andacc, start_andacc,   fpfunc_andacc,  use_mean_vrel,  &
         ortho_type,                                                     &
         k2,             alphab,         threshold_hw,                   &
-        Pstar,          Cstar
+        Pstar,          Cstar,                                          &
+        groundedicebergs, iceberg_file, maxgrounddepth
 
       namelist /shortwave_nml/ &
         shortwave,      albedo_type,                                    &
@@ -331,7 +334,10 @@
       k1 = 8.0_dbl_kind      ! 1st free parameter for landfast parameterization
       k2 = 15.0_dbl_kind     ! dah: second free parameter (N/m^3) for landfast parametrization
       alphab = 20.0_dbl_kind       ! alphab=Cb factor in Lemieux et al 2015
-      threshold_hw = 30.0_dbl_kind ! max water depth for grounding
+      threshold_hw = 30.0_dbl_kind ! max water depth for grounding of pressure ridges
+      groundedicebergs= .false. ! if true, additional basal stress caused by grounded icebergs is used
+      iceberg_file  = 'unknown_iceberg_file' ! netcdf file with variable 'ibc' (values: 0. (no grounding) to 1. (max grounding))
+      maxgrounddepth = 200. ! max water depth (m) for grounding of icebergs
       Ktens = 0.0_dbl_kind   ! T=Ktens*P (tensile strength: see Konig and Holland, 2010)
       e_ratio = 2.0_dbl_kind ! VP ellipse aspect ratio
       maxits_nonlin = 4      ! max nb of iteration for nonlinear solver
@@ -648,6 +654,9 @@
       call broadcast_scalar(k2,                 master_task)
       call broadcast_scalar(alphab,             master_task)
       call broadcast_scalar(threshold_hw,       master_task)
+      call broadcast_scalar(groundedicebergs,   master_task)
+      call broadcast_scalar(iceberg_file,       master_task)
+      call broadcast_scalar(maxgrounddepth,     master_task)
       call broadcast_scalar(Ktens,              master_task)
       call broadcast_scalar(e_ratio,            master_task)
       call broadcast_scalar(advection,          master_task)
@@ -1295,6 +1304,16 @@
                write(nu_diag,1007) ' k2               = ', k2, ' free parameter for landfast ice'
                write(nu_diag,1007) ' alphab           = ', alphab, ' factor for landfast ice'
                write(nu_diag,1007) ' threshold_hw     = ', threshold_hw, ' max water depth for grounding ice'
+            endif
+            if (groundedicebergs) then
+               tmpstr2 = ' use a parametrization for drag caused by grounded icebergs'
+            else
+               tmpstr2 = ' drag caused by grounded icebergs not used'
+            endif
+            write(nu_diag,1012) ' groundedicebergs = ', groundedicebergs,trim(tmpstr2)
+            if (groundedicebergs) then
+               write(nu_diag,*) ' iceberg_file        = ', trim(iceberg_file)
+               write(nu_diag,1007) ' maxgrounddepth   = ', maxgrounddepth, ' max water depth (m) for grounding of icebergs'
             endif
             write(nu_diag,1007) ' Ktens            = ', Ktens, ' tensile strength factor'
          endif ! kdyn enabled

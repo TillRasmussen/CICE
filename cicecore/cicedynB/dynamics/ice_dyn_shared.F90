@@ -17,6 +17,7 @@
       use ice_domain_size, only: max_blocks
       use ice_fileunits, only: nu_diag
       use ice_exit, only: abort_ice
+      use ice_grid, only: groundedicebergs
       use icepack_intfc, only: icepack_warnings_flush, icepack_warnings_aborted
       use icepack_intfc, only: icepack_query_parameters
 
@@ -95,6 +96,10 @@
          threshold_hw, & ! max water depth for grounding 
                          ! see keel data from Amundrud et al. 2004 (JGR)
          u0 = 5e-5_dbl_kind ! residual velocity for basal stress (m/s)
+
+      ! iceberg grounding parameter
+      real (kind=dbl_kind), public :: &
+         maxgrounddepth ! max water depth (m) for grounding of icebergs
 
 !=======================================================================
 
@@ -872,7 +877,8 @@
                                      icellu,                     &
                                      indxui,   indxuj,           &
                                      vice,     aice,             &
-                                     hwater,   Tbu)
+                                     hwater,   Tbu,              & 
+                                     iceberggrnd )
 
       integer (kind=int_kind), intent(in) :: &
          nx_block, ny_block, &  ! block dimensions
@@ -885,7 +891,8 @@
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
          aice    , & ! concentration of ice at tracer location
          vice    , & ! volume per unit area of ice at tracer location
-         hwater      ! water depth at tracer location
+         hwater  , & ! water depth at tracer location
+         iceberggrnd ! iceberg grounding coefficient
 
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(inout) :: &
          Tbu         ! coefficient for basal stress (N/m^2)
@@ -919,8 +926,14 @@
 
             ! 2- calculate basal stress factor                    
             Tbu(i,j) = k2 * max(c0,(hu - hcu)) * exp(-alphab * (c1 - au))
-            
          endif
+         
+         ! Add basal stress by grounded icebergs
+         if (groundedicebergs) then
+            if (hwu < maxgrounddepth) then
+               Tbu(i,j) = Tbu(i,j) + ( ( iceberggrnd(i,j) * 2._dbl_kind  ) * exp(-alphab * (c1 - au)) )
+            endif
+         endif ! groundedicebergs
 
       enddo                     ! ij
 

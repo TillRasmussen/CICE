@@ -135,6 +135,9 @@
     k2              = 15.
     alphab          = 20.
     threshold_hw    = 30.
+     groundedicebergs= .false.
+     iceberg_file   = 'unknown_iceberg_file'
+        maxgrounddepth = 200.
     coriolis        = 'latitude'
     kridge          = 1
     ktransport      = 1
