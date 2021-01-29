@@ -212,7 +212,6 @@ grid_nml
    "``bathymetry_file``", "string", "name of bathymetry file to be read", "‘unknown_bathymetry_file’"
    "``bathymetry_format``", "``default``", "NetCDF depth field", "‘default’"
    "", "``pop``", "pop thickness file in cm in ascii format", ""
-   "``close_boundaries``", "logical", "set land on edges of grid", "``.false.``"
    "``dxrect``", "real", "x-direction grid spacing for rectangular grid in cm", "0.0"
    "``dyrect``", "real", "y-direction grid spacing for rectangular grid in cm", "0.0"
    "``gridcpl_file``", "string", "input file for coupling grid info", "'unknown_gridcpl_file'"
@@ -330,6 +329,8 @@ thermo_nml
    "``conduct``", "``bubbly``", "conductivity scheme :cite:`Pringle07`", "``bubbly``"
    "", "``MU71``", "conductivity :cite:`Maykut71`", ""
    "``dSdt_slow_mode``", "real", "slow drainage strength parameter m/s/K", "-1.5e-7"
+   "``floediam``", "real", "effective floe diameter for lateral melt in m", "300.0"
+   "``hfrazilmin``", "real", "min thickness of new frazil ice in m", "0.05"
    "``kitd``", "``0``", "delta function ITD approximation", "1"
    "", "``1``", "linear remapping ITD approximation", ""
    "``ksno``", "real", "snow thermal conductivity", "0.3"
@@ -340,9 +341,6 @@ thermo_nml
    "``phi_c_slow_mode``", ":math:`0<\phi_c < 1`", "critical liquid fraction", "0.05"
    "``phi_i_mushy``", ":math:`0<\phi_i < 1`", "solid fraction at lower boundary", "0.85"
    "``Rac_rapid_mode``", "real", "critical Rayleigh number", "10.0"
-   "``sw_redist``", "logical", "redistribute internal shortwave to surface", "``.false.``"
-   "``sw_frac``", "real", "fraction redistributed", "0.9"
-   "``sw_dtemp``", "real", "temperature difference from melt to start redistributing", "0.02"
    "", "", "", ""
 
 .. _dynamics_nml:
@@ -356,7 +354,7 @@ dynamics_nml
 
    "", "", "", ""
    "``advection``", "``remap``", "linear remapping advection scheme", "``remap``"
-   "", "``none``", "advection off", ""
+   "", "``upwind``", "donor cell advection", ""
    "``alphab``", "real", ":math:`\alpha_{b}` factor in :cite:`Lemieux16`", "20.0"
    "``arlx``", "real", "revised_evp value", "300.0"
    "``brlx``", "real", "revised_evp value", "300.0"
@@ -436,6 +434,9 @@ shortwave_nml
    "``R_snw``", "real", "tuning parameter for snow (broadband albedo) from Delta-Eddington shortwave", "1.5"
    "``shortwave``", "``ccsm3``", "NCAR CCSM3 shortwave distribution method", "``ccsm3``"
    "", "``dEdd``", "Delta-Eddington method", ""
+   "``sw_dtemp``", "real", "temperature difference from melt to start redistributing", "0.02"
+   "``sw_frac``", "real", "fraction redistributed", "0.9"
+   "``sw_redist``", "logical", "redistribute internal shortwave to surface", "``.false.``"
    "", "", "", ""
 
 ponds_nml
@@ -491,7 +492,7 @@ forcing_nml
    "``calc_Tsfc``", "logical", "calculate surface temperature", "``.true.``"
    "``default_season``", "``summer``", "forcing initial summer values", "``winter``"
    "", "``winter``", "forcing initial winter values", ""
-   "``emissivity``", "real", "emissivity of snow and ice", "0.95"
+   "``emissivity``", "real", "emissivity of snow and ice", "0.985"
    "``fbot_xfer_type``", "``Cdn_ocn``", "variabler ocean heat transfer coefficient scheme", "``constant``"
    "", "``constant``", "constant ocean heat transfer coefficient", ""
    "``fe_data_type``", "``clim``", "ocean climatology forcing value for iron", "``default``"
