@@ -38,7 +38,7 @@ module ice_dyn_evp_1d
   use ice_exit, only: abort_ice
   use icepack_intfc, only: icepack_query_parameters
   use icepack_intfc, only: icepack_warnings_flush, icepack_warnings_aborted
-
+  use ice_domain, only: ew_boundary_type, ns_boundary_type
   implicit none
   private
   public :: ice_dyn_evp_1d_copyin, ice_dyn_evp_1d_copyout, ice_dyn_evp_1d_kernel
@@ -319,7 +319,6 @@ module ice_dyn_evp_1d
   
       tmp_vvel_se = vvel(se(iw))
       tmp_uvel_se = uvel(se(iw))
-  
        ! ne
       divune    = cyp*uvel(iw) - dyt(iw)*tmp_uvel_ee                       &
                 + cxp*vvel(iw) - dxt(iw)*tmp_vvel_se
@@ -497,7 +496,7 @@ module ice_dyn_evp_1d
       ! southwest (i+1,j+1)
       str8(iw) = strp_tmp - strm_tmp + str12sn &
                  - dyhx*(csigpsw + csigmsw) + dxhy*csig12sw
-    enddo   
+    enddo 
 #ifdef _OPENACC
     !$acc end parallel
 #endif
@@ -1557,7 +1556,6 @@ module ice_dyn_evp_1d
     if (Nmaskt==0) then
       write(nu_diag,*) subname,' WARNING: NO ICE'
     endif
-
   end subroutine calc_2d_indices
 
 !----------------------------------------------------------------------------
@@ -1793,18 +1791,62 @@ module ice_dyn_evp_1d
     Ihalo(:)=0
     halo_parent(:)=0
 
+!old    !$OMP PARALLEL DO PRIVATE(iw,i,j)
+!old    do iw=1,navel
+!old      j=int((indij(iw)-1)/(nx))+1
+!old      i=indij(iw)-(j-1)*nx
+!old      ! If within ghost-zone:
+!old      if (i==nx .and. I_icetmask(   2,j)==1) Ihalo(iw)=     2+ (j-1)*nx
+!old      if (i==1  .and. I_icetmask(nx-1,j)==1) Ihalo(iw)=(nx-1)+ (j-1)*nx
+!old      if (j==ny .and. I_icetmask(i,   2)==1) Ihalo(iw)=     i+       nx
+!old      if (j==1  .and. I_icetmask(i,ny-1)==1) Ihalo(iw)=     i+(ny-2)*nx
+!old    enddo
+!old    !$OMP END PARALLEL DO
     !$OMP PARALLEL DO PRIVATE(iw,i,j)
+! from i and j to ij:  ij=i+(j-1)*nx_block
     do iw=1,navel
       j=int((indij(iw)-1)/(nx))+1
       i=indij(iw)-(j-1)*nx
       ! If within ghost-zone:
-      if (i==nx .and. I_icetmask(   2,j)==1) Ihalo(iw)=     2+ (j-1)*nx
-      if (i==1  .and. I_icetmask(nx-1,j)==1) Ihalo(iw)=(nx-1)+ (j-1)*nx
-      if (j==ny .and. I_icetmask(i,   2)==1) Ihalo(iw)=     i+       nx
-      if (j==1  .and. I_icetmask(i,ny-1)==1) Ihalo(iw)=     i+(ny-2)*nx
+! This defined based on create blocks. From line 179 in ice_blocks
+! Should be able to expand
+! ghost cell are not used if the point is not water
+! First southern boundary
+      if (j==1) then
+         select case (ns_boundary_type)
+             case ('cyclic')
+               if (I_icetmask(i,ny-1)==1) Ihalo(iw) = i+(ny-2)*nx 
+             case('open')
+               if (I_icetmask(i,2)==1)    Ihalo(iw) = i+       nx
+         end select
+! Northern boundary
+      else if (j==ny) then
+         select case (ns_boundary_type)
+             case ('cyclic')
+              if (I_icetmask(i,2)==1)     Ihalo(iw) = i+       nx
+             case ('open')
+              if (I_icetmask(i,ny-1)==1)  Ihalo(iw) = i+(ny-2)*nx   
+         end select
+      endif
+! Western boundary
+    if (i==1) then
+         select case (ew_boundary_type)
+             case ('cyclic')
+               if (I_icetmask(nx-1,j)==1) Ihalo(iw) = (nx-1)+ (j-1)*nx
+             case ('open')
+              if (I_icetmask(2,j)==1)  Ihalo(iw) = 2+ (j-1)*nx
+        end select
+! eastern boundary
+    else if (i==nx) then
+        select case (ew_boundary_type)
+            case ('cyclic')
+              if (I_icetmask(2,j)==1)  Ihalo(iw) = 2+ (j-1)*nx
+            case ('open')
+              if (I_icetmask(nx-1,j)==1) Ihalo(iw) = (nx-1)+ (j-1)*nx
+        end select
+    endif
     enddo
     !$OMP END PARALLEL DO
-
     ! Relate halo indices to indij vector
     call findXinY_halo(Ihalo,indij,navel,navel,halo_parent)
 
