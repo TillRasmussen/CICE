@@ -371,6 +371,7 @@
           if (my_task == 0) write(nu_diag,*) subname,' ERROR: kevp_kernel = ',kevp_kernel
           call abort_ice(subname//' kevp_kernel not supported.')
         endif
+        if (my_task == 0) write(nu_diag,*) subname,' copyout' 
         call ice_dyn_evp_1d_copyout(                                               &
           nx_block,ny_block,nblocks,nx_global+2*nghost,ny_global+2*nghost,&
 !strocn          uvel,vvel, strocnx,strocny, strintx,strinty,                  &
