@@ -1116,7 +1116,6 @@
 !        dimlen             ! dimension size
 
       real (kind=dbl_kind) :: &
-         missingvalue, &
          amin, amax, asum   ! min, max values and sum of input array
 
 !     character (char_len) :: &
@@ -1141,8 +1140,6 @@
 
       nx = nx_global
       ny = ny_global
-
-      work = c0 ! to satisfy intent(out) attribute
 
       if (present(restart_ext)) then
          if (restart_ext) then
@@ -1184,7 +1181,6 @@
                   count=(/nx,ny,1/) )
          endif
 
-         status = nf90_get_att(fid, varid, "_FillValue", missingvalue)
       endif                     ! my_task = master_task
 
     !-------------------------------------------------------------------
@@ -1192,9 +1188,9 @@
     !-------------------------------------------------------------------
 
       if (my_task==master_task .and. diag) then
-           write(nu_diag,*) & 
-             'ice_read_nc_xy, fid= ',fid, ', nrec = ',nrec, & 
-             ', varname = ',trim(varname)
+!          write(nu_diag,*) & 
+!            'ice_read_nc_xy, fid= ',fid, ', nrec = ',nrec, & 
+!            ', varname = ',trim(varname)
 !          status = nf90_inquire(fid, nDimensions=ndim, nVariables=nvar)
 !          write(nu_diag,*) 'ndim= ',ndim,', nvar= ',nvar
 !          do id=1,ndim
@@ -1202,8 +1198,8 @@
 !            write(nu_diag,*) 'Dim name = ',trim(dimname),', size = ',dimlen
 !         enddo
          amin = minval(work_g1)
-         amax = maxval(work_g1, mask = work_g1 /= missingvalue)
-         asum = sum   (work_g1, mask = work_g1 /= missingvalue)
+         amax = maxval(work_g1, mask = work_g1 /= spval_dbl)
+         asum = sum   (work_g1, mask = work_g1 /= spval_dbl)
          write(nu_diag,*) ' min, max, sum =', amin, amax, asum, trim(varname)
       endif
 
@@ -1227,15 +1223,12 @@
       endif
 
       deallocate(work_g1)
-
-! echmod:  this should not be necessary if fill/missing are only on land
-      where (work > 1.0e+30_dbl_kind) work = c0
-
       if (orca_halogrid .and. .not. present(restart_ext)) deallocate(work_g2)
 
 #else
       call abort_ice(subname//'ERROR: USE_NETCDF cpp not defined', &
           file=__FILE__, line=__LINE__)
+      work = c0 ! to satisfy intent(out) attribute
 #endif
       end subroutine ice_read_nc_xy
 
@@ -1289,7 +1282,6 @@
 !        dimlen             ! size of dimension
 
       real (kind=dbl_kind) :: &
-         missingvalue,    & ! missing value
          amin, amax, asum   ! min, max values and sum of input array
 
 !     character (char_len) :: &
@@ -1355,7 +1347,6 @@
                count=(/nx,ny,ncat,1/) )
          endif
 
-         status = nf90_get_att(fid, varid, "_FillValue", missingvalue)
       endif                     ! my_task = master_task
 
     !-------------------------------------------------------------------
@@ -1363,9 +1354,9 @@
     !-------------------------------------------------------------------
 
       if (my_task==master_task .and. diag) then
-           write(nu_diag,*) & 
-             'ice_read_nc_xyz, fid= ',fid, ', nrec = ',nrec, & 
-             ', varname = ',trim(varname)
+!          write(nu_diag,*) & 
+!            'ice_read_nc_xyz, fid= ',fid, ', nrec = ',nrec, & 
+!            ', varname = ',trim(varname)
 !          status = nf90_inquire(fid, nDimensions=ndim, nVariables=nvar)
 !          write(nu_diag,*) 'ndim= ',ndim,', nvar= ',nvar
 !          do id=1,ndim
@@ -1374,8 +1365,8 @@
 !         enddo
          do n=1,ncat
             amin = minval(work_g1(:,:,n))
-            amax = maxval(work_g1(:,:,n), mask = work_g1(:,:,n) /= missingvalue)
-            asum = sum   (work_g1(:,:,n), mask = work_g1(:,:,n) /= missingvalue)
+            amax = maxval(work_g1(:,:,n), mask = work_g1(:,:,n) /= spval_dbl)
+            asum = sum   (work_g1(:,:,n), mask = work_g1(:,:,n) /= spval_dbl)
             write(nu_diag,*) ' min, max, sum =', amin, amax, asum, trim(varname)
          enddo
       endif

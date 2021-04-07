@@ -116,7 +116,7 @@
     kdyn            = 1
     ndte            = 240
     revised_evp     = .false.
-    evp_algorithm   = 'standard_2d'
+    kevp_kernel     = 0
     brlx            = 300.0
     arlx            = 300.0
     advection       = 'remap'
