@@ -102,7 +102,7 @@
           dxe, dxn, dxt, dxu, dye, dyn, dyt, dyu, &
           ratiodxN, ratiodxNr, ratiodyE, ratiodyEr, & 
           dxhy, dyhx, cxp, cyp, cxm, cym, &
-          tarear, uarear, tinyarea, grid_average_X2Y, tarea, &
+          tarear, uarear, earea, narea, tinyarea, grid_average_X2Y, tarea, &
           grid_type, grid_system
       use ice_state, only: aice, vice, vsno, uvel, vvel, uvelN, vvelN, &
           uvelE, vvelE, divu, shear, &
@@ -690,11 +690,39 @@
                                  dxU       (:,:,iblk), dyU       (:,:,iblk), &
                                  ratiodxN  (:,:,iblk), ratiodxNr (:,:,iblk), &
                                  ratiodyE  (:,:,iblk), ratiodyEr (:,:,iblk), &
+                                 tarea     (:,:,iblk),                       &
                                  epm       (:,:,iblk), npm       (:,:,iblk), &
                                  hm        (:,:,iblk), uvm       (:,:,iblk), &
                                  zetax2T   (:,:,iblk), etax2T    (:,:,iblk), &
                                  stresspU  (:,:,iblk), stressmU  (:,:,iblk), &
-                                 stress12U (:,:,iblk), tarea     (:,:,iblk))                       
+                                 stress12U (:,:,iblk))                       
+
+                  call div_stress (nx_block,             ny_block,             & ! E point
+                                   ksub,                 icelle(iblk),         &
+                                   indxei      (:,iblk), indxej      (:,iblk), &
+                                   dxE       (:,:,iblk), dyE       (:,:,iblk), &
+                                   dxU       (:,:,iblk), dyT       (:,:,iblk), &
+                                   earea     (:,:,iblk),                       &
+                                   stresspT  (:,:,iblk), stressmT  (:,:,iblk), &
+                                   stress12U (:,:,iblk),                       &
+                                   stresspU  (:,:,iblk), stressmU  (:,:,iblk), &
+                                   stress12T (:,:,iblk),                       &
+                                   strintxE  (:,:,iblk), strintyE  (:,:,iblk), &
+                                   'E')
+
+                   call div_stress (nx_block,             ny_block,            & ! N point
+                                   ksub,                 icelln(iblk),         &
+                                   indxni      (:,iblk), indxnj      (:,iblk), &
+                                   dxN       (:,:,iblk), dyN       (:,:,iblk), &
+                                   dxT       (:,:,iblk), dyU       (:,:,iblk), &
+                                   narea     (:,:,iblk),                       &
+                                   stresspU  (:,:,iblk), stressmU  (:,:,iblk), &
+                                   stress12T (:,:,iblk),                       &
+                                   stresspT  (:,:,iblk), stressmT  (:,:,iblk), &
+                                   stress12U (:,:,iblk),                       &
+                                   strintxN  (:,:,iblk), strintyN  (:,:,iblk), &
+                                   'N')
+>>>>>>> 1d89af72c7fc68ce32f6ef2db49a6916c712b18b
                   
                   call step_vel (nx_block,             ny_block,             & ! E point
                                  icelle        (iblk), Cdn_ocn   (:,:,iblk), &
@@ -951,7 +979,7 @@
                          rdg_conv,   rdg_shear,  & 
                          str )
 
-        use ice_dyn_shared, only: strain_rates, deformations, viscous_coeffs_and_rep_pressure, viscous_coeffs_and_rep_pressure_T
+      use ice_dyn_shared, only: strain_rates, deformations, viscous_coeffs_and_rep_pressure_T
         
       integer (kind=int_kind), intent(in) :: & 
          nx_block, ny_block, & ! block dimensions
@@ -1016,7 +1044,6 @@
         strp_tmp, strm_tmp, tmp
 
       real(kind=dbl_kind),parameter :: capping = c1 ! of the viscous coef
-      
       character(len=*), parameter :: subname = '(stress)'
 
       !-----------------------------------------------------------------
@@ -1052,17 +1079,6 @@
       !-----------------------------------------------------------------
       ! viscous coefficients and replacement pressure
       !-----------------------------------------------------------------
-         
-!         call viscous_coeffs_and_rep_pressure (strength(i,j), tinyarea(i,j),&
-!                                               Deltane,       Deltanw,      &
-!                                               Deltasw,       Deltase,      &
-!                                               zetax2ne,      zetax2nw,     &
-!                                               zetax2sw,      zetax2se,     &
-!                                               etax2ne,       etax2nw,      &
-!                                               etax2sw,       etax2se,      &
-!                                               rep_prsne,     rep_prsnw,    &
-!                                               rep_prssw,     rep_prsse,    &
-!                                               capping)
 
          call viscous_coeffs_and_rep_pressure_T (strength(i,j), tinyarea(i,j),&
                                                  Deltane,       zetax2ne,     &
@@ -1339,8 +1355,7 @@
         divT, tensionT, shearT, DeltaT, & ! strain rates at T point
         rep_prsT                          ! replacement pressure at T point
 
-        real(kind=dbl_kind),parameter :: capping = c1 ! of the viscous coef
- 
+      real(kind=dbl_kind), parameter :: capping = c1 ! of the viscous coef
       character(len=*), parameter :: subname = '(stress_T)'
 
       !-----------------------------------------------------------------
@@ -1428,15 +1443,16 @@
                              uvelU,      vvelU,     &
                              dxE,        dyN,       &
                              dxU,        dyU,       &
+                             tarea,                 &
                              ratiodxN,   ratiodxNr, &
                              ratiodyE,   ratiodyEr, &
                              epm,  npm, hm, uvm,    &
                              zetax2T,    etax2T,    &
                              stresspU,   stressmU,  & 
-                             stress12U, Tarea         )
+                             stress12U            )
 
-        use ice_dyn_shared, only: strain_rates_U, &
-            viscous_coeffs_and_rep_pressure_T2U
+      use ice_dyn_shared, only: strain_rates_U, &
+                                viscous_coeffs_and_rep_pressure_T2U
         
       integer (kind=int_kind), intent(in) :: & 
          nx_block, ny_block, & ! block dimensions
@@ -1449,23 +1465,23 @@
 
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
          uvelE    , & ! x-component of velocity (m/s) at the E point
-         vvelE    , & ! y-component of velocity (m/s) at the N point
-         uvelN    , & ! x-component of velocity (m/s) at the E point
+         vvelE    , & ! y-component of velocity (m/s) at the E point
+         uvelN    , & ! x-component of velocity (m/s) at the N point
          vvelN    , & ! y-component of velocity (m/s) at the N point
          uvelU    , & ! x-component of velocity (m/s) at the U point
          vvelU    , & ! y-component of velocity (m/s) at the U point
-         dxE      , & ! width of E-cell through the middle (m)
+         dxE      , & ! width  of E-cell through the middle (m)
          dyN      , & ! height of N-cell through the middle (m)
-         dxU      , & ! width of U-cell through the middle (m)
+         dxU      , & ! width  of U-cell through the middle (m)
          dyU      , & ! height of U-cell through the middle (m)
-         ratiodxN , & ! -dxN(i+1,j)/dxN(i,j) for BCs
-         ratiodxNr, & ! -dxN(i,j)/dxN(i+1,j) for BCs
-         ratiodyE , & ! -dyE(i,j+1)/dyE(i,j) for BCs
-         ratiodyEr, & ! -dyE(i,j)/dyE(i,j+1) for BCs
+         tarea    , & ! area of T-cell (m^2)
+         ratiodxN , & ! -dxN(i+1,j)/dxN(i,j) factor for BCs across coastline
+         ratiodxNr, & ! -dxN(i,j)/dxN(i+1,j) factor for BCs across coastline
+         ratiodyE , & ! -dyE(i,j+1)/dyE(i,j) factor for BCs across coastline
+         ratiodyEr, & ! -dyE(i,j)/dyE(i,j+1) factor for BCs across coastline
          epm      , & ! E-cell mask
          npm      , & ! E-cell mask
          hm       , & ! T-cell mask
-         Tarea    , & ! area of T-cell
          uvm      , & ! U-cell mask
          zetax2T  , & ! 2*zeta at the T point
          etax2T       ! 2*eta at the T point
@@ -1512,17 +1528,15 @@
       ! viscous coefficients and replacement pressure at T point
       !-----------------------------------------------------------------
 
-         
-        call viscous_coeffs_and_rep_pressure_T2U (zetax2T(i  ,j  ), zetax2T(i  ,j+1), &
-                                                  zetax2T(i+1,j+1), zetax2T(i+1,j  ), &
-                                                  etax2T (i  ,j  ), etax2T (i  ,j+1), &
-                                                  etax2T (i+1,j+1), etax2T (i+1,j  ), &
-                                                  hm     (i  ,j  ), hm     (i  ,j+1), &
-                                                  hm     (i+1,j+1), hm     (i+1,j  ), &
-                                                  tarea  (i  ,j  ), tarea  (i,j+1),   &
-                                                  tarea  (i+1,j+1), tarea  (i+1,j),   &
-                                                  DeltaU,           zetax2U,          &
-                                                  etax2U, rep_prsU)
+         call viscous_coeffs_and_rep_pressure_T2U (zetax2T(i  ,j  ), zetax2T(i  ,j+1), &
+                                                   zetax2T(i+1,j+1), zetax2T(i+1,j  ), &
+                                                   etax2T (i  ,j  ), etax2T (i  ,j+1), &
+                                                   etax2T (i+1,j+1), etax2T (i+1,j  ), &
+                                                   hm     (i  ,j  ), hm     (i  ,j+1), &
+                                                   hm     (i+1,j+1), hm     (i+1,j  ), &
+                                                   tarea  (i  ,j  ), tarea  (i  ,j+1), &
+                                                   tarea  (i+1,j+1), tarea  (i+1,j  ), &
+                                                   DeltaU,zetax2U, etax2U, rep_prsU)
 
       !-----------------------------------------------------------------
       ! the stresses                            ! kg/s^2
@@ -1551,18 +1565,17 @@
 ! Nov 2021      
 
       subroutine div_stress  (nx_block,   ny_block,   & 
-                              ksub,       icell,     & 
-                              indxi,     indxj,     &
-                              dxE_N,   dyE_N, &
-                              dxT_U,   dyT_U, &
-                              arear,     &
-                              stressp,   stressm,     & 
-                              stress12, &
-                              F1, F2,               &
+                              ksub,       icell,      & 
+                              indxi,     indxj,       &
+                              dxE_N,   dyE_N,         &
+                              dxT_U,   dyT_U,         &
+                              area,                   &
+                              stresspF1,   stressmF1, & 
+                              stress12F1,             &
+                              stresspF2,   stressmF2, &
+                              stress12F2,             &
+                              F1, F2,                 &
                               grid_location)
-
-        use ice_dyn_shared, only: strain_rates_T, deformations_T, &
-                                  viscous_coeffs_and_rep_pressure_T
         
       integer (kind=int_kind), intent(in) :: & 
          nx_block, ny_block, & ! block dimensions
@@ -1579,10 +1592,13 @@
          dyE_N , & ! height of E or N-cell through the middle (m)
          dxT_U , & ! width of T or U-cell through the middle (m)
          dyT_U , & ! height of T or U-cell through the middle (m)
-         arear    , & ! 1/earea or 1/narea
-         stressp  , & ! sigma11+sigma22
-         stressm  , & ! sigma11-sigma22
-         stress12     ! sigma12
+         area    , & ! earea or narea
+         stresspF1  , & ! stressp  (U or T) used for F1 calculation
+         stressmF1  , & ! stressm  (U or T) used for F1 calculation 
+         stress12F1 , & ! stress12 (U or T) used for F1 calculation 
+         stresspF2  , & ! stressp  (U or T) used for F2 calculation 
+         stressmF2  , & ! stressm  (U or T) used for F2 calculation 
+         stress12F2     ! stress12 (U or T) used for F2 calculation 
 
       character(len=*), intent(in) :: &
          grid_location ! E (East) or N (North) ! TO BE IMPROVED!!!!
@@ -1612,37 +1628,37 @@
          select case (trim(grid_location))
          case('E')
             
-            F1(i,j) = arear(i,j) * &
-                 ( p5 * dyE_N(i,j) * ( stressp(i+1,j)-stressp(i,j) )       &
-                 + (p5/dyE_N(i,j)) * ( (dyT_U(i+1,j)**2) * stressm(i+1,j)  &
-                                      -(dyT_U(i,j)**2)*stressm(i,j) )      &
-                 + (c1/dxE_N(i,j)) * ( (dxT_U(i,j)**2) * stress12(i,j)     &
-                                      -(dxT_U(i,j-1)**2)*stress12(i,j-1) ) )
+            F1(i,j) = (c1/area(i,j)) * &
+                 ( p5 * dyE_N(i,j) * ( stresspF1(i+1,j)-stresspF1(i,j) )     &
+                 + (p5/dyE_N(i,j)) * ( (dyT_U(i+1,j)**2) * stressmF1(i+1,j)  &
+                                      -(dyT_U(i,j)**2)*stressmF1(i,j) )      &
+                 + (c1/dxE_N(i,j)) * ( (dxT_U(i,j)**2) * stress12F1(i,j)     &
+                                      -(dxT_U(i,j-1)**2)*stress12F1(i,j-1) ) )
 
-            F2(i,j) = arear(i,j) * &
-                 ( p5 * dxE_N(i,j) * ( stressp(i,j)-stressp(i,j-1) )       &
-                 - (p5/dxE_N(i,j)) * ( (dxT_U(i,j)**2) * stressm(i,j)      &
-                                      -(dxT_U(i,j-1)**2)*stressm(i,j-1) )  &
-                 + (c1/dyE_N(i,j)) * ( (dyT_U(i+1,j)**2) * stress12(i+1,j) &
-                                      -(dyT_U(i,j)**2)*stress12(i,j) ) )
+            F2(i,j) = (c1/area(i,j)) * &
+                 ( p5 * dxE_N(i,j) * ( stresspF2(i,j)-stresspF2(i,j-1) )     &
+                 - (p5/dxE_N(i,j)) * ( (dxT_U(i,j)**2) * stressmF2(i,j)      &
+                                      -(dxT_U(i,j-1)**2)*stressmF2(i,j-1) )  &
+                 + (c1/dyE_N(i,j)) * ( (dyT_U(i+1,j)**2) * stress12F2(i+1,j) &
+                                      -(dyT_U(i,j)**2)*stress12F2(i,j) ) )
 
          case('N')
 
-            F1(i,j) = arear(i,j) * &
-                 ( p5 * dyE_N(i,j) * ( stressp(i,j)-stressp(i-1,j) )       &
-                 + (p5/dyE_N(i,j)) * ( (dyT_U(i,j)**2) * stressm(i,j)      &
-                                      -(dyT_U(i-1,j)**2)*stressm(i-1,j) )  &
-                 + (c1/dxE_N(i,j)) * ( (dxT_U(i,j+1)**2) * stress12(i,j+1) &
-                                      -(dxT_U(i,j)**2)*stress12(i,j) ) )
+            F1(i,j) = (c1/area(i,j)) * &
+                 ( p5 * dyE_N(i,j) * ( stresspF1(i,j)-stresspF1(i-1,j) )     &
+                 + (p5/dyE_N(i,j)) * ( (dyT_U(i,j)**2) * stressmF1(i,j)      &
+                                      -(dyT_U(i-1,j)**2)*stressmF1(i-1,j) )  &
+                 + (c1/dxE_N(i,j)) * ( (dxT_U(i,j+1)**2) * stress12F1(i,j+1) &
+                                      -(dxT_U(i,j)**2)*stress12F1(i,j) ) )
 
-            F2(i,j) = arear(i,j) * &
-                 ( p5 * dxE_N(i,j) * ( stressp(i,j+1)-stressp(i,j) )       &
-                 - (p5/dxE_N(i,j)) * ( (dxT_U(i,j+1)**2) * stressm(i,j+1)  &
-                                      -(dxT_U(i,j)**2)*stressm(i,j) )      &
-                 + (c1/dyE_N(i,j)) * ( (dyT_U(i,j)**2) * stress12(i,j)     &
-                                      -(dyT_U(i-1,j)**2)*stress12(i-1,j) ) )
+            F2(i,j) = (c1/area(i,j)) * &
+                 ( p5 * dxE_N(i,j) * ( stresspF2(i,j+1)-stresspF2(i,j) )     &
+                 - (p5/dxE_N(i,j)) * ( (dxT_U(i,j+1)**2) * stressmF2(i,j+1)  &
+                                      -(dxT_U(i,j)**2)*stressmF2(i,j) )      &
+                 + (c1/dyE_N(i,j)) * ( (dyT_U(i,j)**2) * stress12F2(i,j)     &
+                                      -(dyT_U(i-1,j)**2)*stress12F2(i-1,j) ) )
          case default
-            call abort_ice(subname // ' unkwown grid_location: ' // grid_location)
+            call abort_ice(subname // ' unknown grid_location: ' // grid_location)
          end select
          
 

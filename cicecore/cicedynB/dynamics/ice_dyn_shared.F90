@@ -1034,7 +1034,7 @@
       if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
          file=__FILE__, line=__LINE__)
 
-      if (present(strocnxT)) then
+      if (present(strocnxT) .and. present(strocnyT)) then
 
          do j = 1, ny_block
          do i = 1, nx_block
@@ -1070,7 +1070,7 @@
 !         strocnx(i,j) = -(strairx(i,j) + strintx(i,j))
 !         strocny(i,j) = -(strairy(i,j) + strinty(i,j))
 
-         if (present(strocnxT)) then
+         if (present(strocnxT) .and. present(strocnyT)) then
 
             ! Prepare to convert to T grid
             ! divide by aice for coupling
@@ -1947,35 +1947,30 @@
 
       ! NOTE: for comp. efficiency 2 x zeta and 2 x eta are used in the code
        
-!      if (trim(yield_curve) == 'ellipse') then
-         tmpcalcne = capping*(strength/max(Deltane,  tinyarea))+ &
-                     (c1-capping)*strength/(Deltane + tinyarea)   
-         tmpcalcnw = capping*(strength/max(Deltanw,  tinyarea))+ &
-                     (c1-capping)*strength/(Deltanw + tinyarea)   
-         tmpcalcsw = capping*(strength/max(Deltasw,  tinyarea))+ &
-                     (c1-capping)*strength/(Deltasw + tinyarea)  
-         tmpcalcse = capping*(strength/max(Deltase,tinyarea))  + &
-                     (c1-capping)*strength/(Deltase + tinyarea)
+        tmpcalcne = capping     *(strength/max(Deltane, tinyarea))+ &
+                    (c1-capping)* strength/   (Deltane+ tinyarea)   
+        tmpcalcnw = capping     *(strength/max(Deltanw, tinyarea))+ &
+                    (c1-capping)* strength/   (Deltanw+ tinyarea)   
+        tmpcalcsw = capping     *(strength/max(Deltasw, tinyarea))+ &
+                    (c1-capping)* strength/   (Deltasw+ tinyarea)  
+        tmpcalcse = capping     *(strength/max(Deltase, tinyarea))+ &
+                    (c1-capping)* strength/   (Deltase+ tinyarea)
 
-         zetax2ne = (c1+Ktens)*tmpcalcne ! northeast 
-         rep_prsne = (c1-Ktens)*tmpcalcne*Deltane
-         etax2ne = epp2i*zetax2ne
+        zetax2ne  = (c1+Ktens)*tmpcalcne ! northeast 
+        rep_prsne = (c1-Ktens)*tmpcalcne*Deltane
+        etax2ne   = epp2i*zetax2ne
          
-         zetax2nw = (c1+Ktens)*tmpcalcnw ! northwest 
-         rep_prsnw = (c1-Ktens)*tmpcalcnw*Deltanw
-         etax2nw = epp2i*zetax2nw
+        zetax2nw  = (c1+Ktens)*tmpcalcnw ! northwest 
+        rep_prsnw = (c1-Ktens)*tmpcalcnw*Deltanw
+        etax2nw   = epp2i*zetax2nw
 
-         zetax2sw = (c1+Ktens)*tmpcalcsw ! southwest  
-         rep_prssw = (c1-Ktens)*tmpcalcsw*Deltasw
-         etax2sw = epp2i*zetax2sw
+        zetax2sw  = (c1+Ktens)*tmpcalcsw ! southwest  
+        rep_prssw = (c1-Ktens)*tmpcalcsw*Deltasw
+        etax2sw   = epp2i*zetax2sw
          
-         zetax2se = (c1+Ktens)*tmpcalcse ! southeast
-         rep_prsse = (c1-Ktens)*tmpcalcse*Deltase
-         etax2se = epp2i*zetax2se
-
-!      else
-
-!      endif
+        zetax2se  = (c1+Ktens)*tmpcalcse ! southeast
+        rep_prsse = (c1-Ktens)*tmpcalcse*Deltase
+        etax2se   = epp2i*zetax2se
       
        end subroutine viscous_coeffs_and_rep_pressure
 
