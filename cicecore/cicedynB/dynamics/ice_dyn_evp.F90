@@ -611,18 +611,18 @@
             divu,rdg_conv,rdg_shear,shear,taubx,tauby                     )
 
       else ! evp_algorithm == standard_2d (Standard CICE)
+      
+         select case (trim('grid_system'))
+         case('B')
+            do ksub = 1,ndte        ! subcycling
 
-         do ksub = 1,ndte        ! subcycling
+            !-----------------------------------------------------------------
+            ! stress tensor equation, total surface stress
+            !-----------------------------------------------------------------
 
-         !-----------------------------------------------------------------
-         ! stress tensor equation, total surface stress
-         !-----------------------------------------------------------------
+               !$TCXOMP PARALLEL DO PRIVATE(iblk,strtmp)
+               do iblk = 1, nblocks
 
-            !$TCXOMP PARALLEL DO PRIVATE(iblk,strtmp)
-            do iblk = 1, nblocks
-
-               select case (grid_system)
-               case('B')
                   call stress (nx_block,             ny_block,             &
                                ksub,                 icellt(iblk),         &
                                indxti      (:,iblk), indxtj      (:,iblk), &
@@ -643,9 +643,9 @@
                                rdg_conv  (:,:,iblk), rdg_shear (:,:,iblk), &
                                strtmp    (:,:,:) )
 
-         !-----------------------------------------------------------------
-         ! momentum equation
-         !-----------------------------------------------------------------
+            !-----------------------------------------------------------------
+            ! momentum equation
+            !-----------------------------------------------------------------
 
                   call stepu (nx_block,            ny_block,           &
                               icellu       (iblk), Cdn_ocn (:,:,iblk), &
@@ -663,8 +663,31 @@
                               uvel     (:,:,iblk), vvel    (:,:,iblk), &
                               Tbu      (:,:,iblk))
 
-               case('CD')
+               enddo ! block
+               !$TCXOMP END PARALLEL DO
 
+            call stack_velocity_field(uvel, vvel, fld2)
+            call ice_timer_start(timer_bound)
+            if (maskhalo_dyn) then
+               call ice_HaloUpdate (fld2,               halo_info_mask, &
+                                    field_loc_NEcorner, field_type_vector)
+            else
+               call ice_HaloUpdate (fld2,               halo_info, &
+                                    field_loc_NEcorner, field_type_vector)
+            endif
+            call ice_timer_stop(timer_bound)
+            call unstack_velocity_field(fld2, uvel, vvel)
+
+            enddo ! subcycling
+
+         case('CD')
+            do ksub = 1,ndte        ! subcycling 
+
+            !-----------------------------------------------------------------
+            ! stress tensor equation, total surface stress 
+            !-----------------------------------------------------------------
+               !$TCXOMP PARALLEL DO PRIVATE(iblk,strtmp)
+               do iblk = 1, nblocks
                   call stress_T (nx_block,             ny_block,             &
                                  ksub,                 icellt(iblk),         &
                                  indxti      (:,iblk), indxtj      (:,iblk), &
@@ -710,7 +733,7 @@
                                    strintxE  (:,:,iblk), strintyE  (:,:,iblk), &
                                    'E')
 
-                   call div_stress (nx_block,             ny_block,            & ! N point
+                  call div_stress (nx_block,             ny_block,            & ! N point
                                    ksub,                 icelln(iblk),         &
                                    indxni      (:,iblk), indxnj      (:,iblk), &
                                    dxN       (:,:,iblk), dyN       (:,:,iblk), &
@@ -722,7 +745,6 @@
                                    stress12U (:,:,iblk),                       &
                                    strintxN  (:,:,iblk), strintyN  (:,:,iblk), &
                                    'N')
->>>>>>> 1d89af72c7fc68ce32f6ef2db49a6916c712b18b
                   
                   call step_vel (nx_block,             ny_block,             & ! E point
                                  icelle        (iblk), Cdn_ocn   (:,:,iblk), &
@@ -752,26 +774,20 @@
                                  uvelN     (:,:,iblk), vvelN     (:,:,iblk), &
                                  TbN       (:,:,iblk))
 
-               end select
 
-            enddo
-            !$TCXOMP END PARALLEL DO
-
-            call stack_velocity_field(uvel, vvel, fld2)
-            call ice_timer_start(timer_bound)
-            if (maskhalo_dyn) then
-               call ice_HaloUpdate (fld2,               halo_info_mask, &
-                                    field_loc_NEcorner, field_type_vector)
-            else
-               call ice_HaloUpdate (fld2,               halo_info, &
-                                    field_loc_NEcorner, field_type_vector)
-            endif
-            call ice_timer_stop(timer_bound)
-            call unstack_velocity_field(fld2, uvel, vvel)
-         
-            if (grid_system == 'CD') then
-
+               enddo ! end blocks
+               !$TCXOMP END PARALLEL DO
+               call stack_velocity_field(uvel, vvel, fld2)
                call ice_timer_start(timer_bound)
+               if (maskhalo_dyn) then
+                  call ice_HaloUpdate (fld2,               halo_info_mask, &
+                                       field_loc_NEcorner, field_type_vector)
+               else
+                  call ice_HaloUpdate (fld2,               halo_info, &
+                                       field_loc_NEcorner, field_type_vector)
+               endif
+               call unstack_velocity_field(fld2, uvel, vvel)
+               !!! only cd grid !!!
                ! velocities may have changed in dyn_prep2
                call stack_velocity_field(uvelN, vvelN, fld2)
                call ice_HaloUpdate (fld2,               halo_info, &
@@ -780,13 +796,14 @@
                ! velocities may have changed in dyn_prep2
                call stack_velocity_field(uvelE, vvelE, fld2)
                call ice_HaloUpdate (fld2,               halo_info, &
-                                    field_loc_Eface, field_type_vector)
+                                 field_loc_Eface, field_type_vector)
                call unstack_velocity_field(fld2, uvelE, vvelE)
                call ice_timer_stop(timer_bound)
 
-            endif
+            enddo                     ! subcycling
 
-         enddo                     ! subcycling
+         end select
+
       endif  ! evp_algorithm
 
       call ice_timer_stop(timer_evp_2d)
@@ -1044,6 +1061,7 @@
         strp_tmp, strm_tmp, tmp
 
       real(kind=dbl_kind),parameter :: capping = c1 ! of the viscous coef
+
       character(len=*), parameter :: subname = '(stress)'
 
       !-----------------------------------------------------------------
@@ -1356,6 +1374,7 @@
         rep_prsT                          ! replacement pressure at T point
 
       real(kind=dbl_kind), parameter :: capping = c1 ! of the viscous coef
+
       character(len=*), parameter :: subname = '(stress_T)'
 
       !-----------------------------------------------------------------

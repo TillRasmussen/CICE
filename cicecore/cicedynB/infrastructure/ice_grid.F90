@@ -2016,11 +2016,11 @@
          emask(:,:,iblk)   = .false.
          do j = jlo-nghost, jhi+nghost
          do i = ilo-nghost, ihi+nghost
-            if ( hm(i,j,iblk)   > p5  ) tmask(i,j,iblk)   = .true.
-            if (uvm(i,j,iblk)   > p5  ) umask(i,j,iblk)   = .true.
+            if ( hm(i,j,iblk)   > p5  ) tmask  (i,j,iblk)   = .true.
+            if (uvm(i,j,iblk)   > p5  ) umask  (i,j,iblk)   = .true.
             if (uvmCD(i,j,iblk) > c1p5) umaskCD(i,j,iblk) = .true.
-            if (npm(i,j,iblk)   > p5  ) nmask(i,j,iblk)   = .true.
-            if (epm(i,j,iblk)   > p5  ) emask(i,j,iblk)   = .true.
+            if (npm(i,j,iblk)   > p5  ) nmask  (i,j,iblk)   = .true.
+            if (epm(i,j,iblk)   > p5  ) emask  (i,j,iblk)   = .true.
          enddo
          enddo
 

@@ -2026,8 +2026,8 @@
                                                        etax2T_11,  etax2T_10, & 
                                                         maskT_00,  maskT_01, &
                                                         maskT_11,  maskT_10, &
-                                                        Tarea_00,   Tarea_01, &
-                                                        Tarea_11,   Tarea_10, &
+                                                        tarea_00,   tarea_01, &
+                                                        tarea_11,   tarea_10, &
                                                         deltaU,               &
                                                         zetax2U, etax2U,      &
                                                         rep_prsU)
@@ -2037,7 +2037,7 @@
         zetax2T_00,zetax2T_10,zetax2T_11,zetax2T_01, &
          etax2T_00, etax2T_10, etax2T_11, etax2T_01,  & ! 2 x visous coeffs, replacement pressure
          maskT_00, maskT_10, maskT_11, maskT_01, &
-         Tarea_00, Tarea_10, Tarea_11, Tarea_01, &
+         tarea_00, tarea_10, tarea_11, tarea_01, &
          deltaU
 
       real (kind=dbl_kind), intent(out):: zetax2U, etax2U, rep_prsU
