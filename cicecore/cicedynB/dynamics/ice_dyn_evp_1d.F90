@@ -1307,7 +1307,8 @@ contains
          ! tcraig, turn off the OMP directives here, Jan, 2022
          ! This produces non bit-for-bit results with different thread counts.
          ! Seems like there isn't an opportunity for safe threading here ???
-         !$XXXOMP PARALLEL PRIVATE(ksub)
+         ! TAR 290322 ADDED THEM AGAIN BIT FOR BIT WHEN COMPILING WITH --novec on intel
+         !$OMP PARALLEL PRIVATE(ksub)
          do ksub = 1, ndte - 1
             call evp1d_stress(NA_len, ee, ne, se, 1, NA_len, uvel, &
                vvel, dxt, dyt, hte, htn, htem1, htnm1, strength, &
@@ -1315,15 +1316,15 @@ contains
                stressm_2, stressm_3, stressm_4, stress12_1, &
                stress12_2, stress12_3, stress12_4, str1, str2, str3, &
                str4, str5, str6, str7, str8, skiptcell)
-            !$XXXOMP BARRIER
+            !$OMP BARRIER
             call evp1d_stepu(NA_len, rhow, 1, NA_len, cdn_ocn, aiu, &
                uocn, vocn, forcex, forcey, umassdti, fm, uarear, Tbu, &
                uvel_init, vvel_init, uvel, vvel, str1, str2, str3, &
                str4, str5, str6, str7, str8, nw, sw, sse, skipucell)
-            !$XXXOMP BARRIER
+            !$OMP BARRIER
             call evp1d_halo_update(NAVEL_len, 1, NA_len, uvel, vvel, &
                halo_parent)
-            !$XXXOMP BARRIER
+            !$OMP BARRIER
          end do
 
          call evp1d_stress(NA_len, ee, ne, se, 1, NA_len, uvel, vvel, &
@@ -1332,16 +1333,16 @@ contains
             stressm_3, stressm_4, stress12_1, stress12_2, stress12_3, &
             stress12_4, str1, str2, str3, str4, str5, str6, str7, &
             str8, skiptcell, tarear, divu, rdg_conv, rdg_shear, shear)
-         !$XXXOMP BARRIER
+         !$OMP BARRIER
          call evp1d_stepu(NA_len, rhow, 1, NA_len, cdn_ocn, aiu, uocn, &
             vocn, forcex, forcey, umassdti, fm, uarear, Tbu, &
             uvel_init, vvel_init, uvel, vvel, str1, str2, str3, str4, &
             str5, str6, str7, str8, nw, sw, sse, skipucell, strintx, &
             strinty, taubx, tauby)
-         !$XXXOMP BARRIER
+         !$OMP BARRIER
          call evp1d_halo_update(NAVEL_len, 1, NA_len, uvel, vvel, &
             halo_parent)
-         !$XXXOMP END PARALLEL
+         !$OMP END PARALLEL
 
       end if  ! master task
 
