@@ -21,7 +21,12 @@ CFLAGS     := -c -O2 -fp-model precise
 # Additional flags
 FIXEDFLAGS := -132
 FREEFLAGS  := -FR
-FFLAGS     := -fp-model source -convert big_endian -assume byterecl -ftz -traceback -no-wrap-margin
+#FFLAGS     := -fp-model source -convert big_endian -assume byterecl -ftz -traceback -no-wrap-margin -no-vec
+FFLAGS     := -fp-model source -assume byterecl -ftz -traceback -no-wrap-margin -no-vec
+# endian
+ifeq ($(ICE_ENDIAN), "DEFAULT")
+  FFLAGS     += -convert big_endian     
+endif
 #-xHost
 
 ifeq ($(ICE_BLDDEBUG), true)

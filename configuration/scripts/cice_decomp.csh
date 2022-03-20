@@ -109,6 +109,11 @@ else if (${grid} == 'tx1') then
     set blckx = 10; set blcky = 10
   endif
 
+else if (${grid} == 'NAAg') then
+  set nxglob = 1115
+  set nyglob = 1491
+  set blckx  = 1115
+  set blcky  = 1491
 # this is for unit testing
 else if (${grid} == 'none') then
   set nxglob = 1

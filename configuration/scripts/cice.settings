@@ -46,3 +46,5 @@ if (${ICE_NTASKS} == 1) setenv ICE_COMMDIR serial
 setenv ICE_BLDDEBUG  false  # build debug flags
 setenv ICE_COVERAGE  false  # build coverage flags
 
+# DNI SPECIAL
+setenv ICE_ENDIAN    "DEFAULT" # DEFAULT will default to big endian. MACHINE WILL DEFAULT TO MACHINE (small endian in DMI case)
