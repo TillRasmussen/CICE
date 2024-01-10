@@ -487,7 +487,8 @@
                             stress12_3(:,:,iblk), stress12_4(:,:,iblk), &
                             uvel_init (:,:,iblk), vvel_init (:,:,iblk), &
                             uvel      (:,:,iblk), vvel      (:,:,iblk), &
-                            TbU       (:,:,iblk))
+                            TbU       (:,:,iblk),                       &
+                            tmass(:,:,iblk), aice(:,:,iblk), tmask(:,:,iblk), aice_init(:,:,iblk))
 
             !-----------------------------------------------------------------
             ! ice strength
@@ -545,7 +546,8 @@
                             stress12_3(:,:,iblk), stress12_4(:,:,iblk), &
                             uvel_init (:,:,iblk), vvel_init (:,:,iblk), &
                             uvel      (:,:,iblk), vvel      (:,:,iblk), &
-                            TbU       (:,:,iblk))
+                            TbU       (:,:,iblk),                       &
+                            tmass(:,:,iblk), aice(:,:,iblk), tmask(:,:,iblk), aice_init(:,:,iblk))
 
             !-----------------------------------------------------------------
             ! ice strength
@@ -596,7 +598,8 @@
                             stress12_3(:,:,iblk), stress12_4(:,:,iblk), &
                             uvelN_init(:,:,iblk), vvelN_init(:,:,iblk), &
                             uvelN     (:,:,iblk), vvelN     (:,:,iblk), &
-                            TbN       (:,:,iblk))
+                            TbN       (:,:,iblk),                       &
+                            tmass(:,:,iblk), aice(:,:,iblk), tmask(:,:,iblk), aice_init(:,:,iblk))
 
             !-----------------------------------------------------------------
             ! more preparation for dynamics on E grid
@@ -629,7 +632,8 @@
                             stress12_3(:,:,iblk), stress12_4(:,:,iblk), &
                             uvelE_init(:,:,iblk), vvelE_init(:,:,iblk), &
                             uvelE     (:,:,iblk), vvelE     (:,:,iblk), &
-                            TbE       (:,:,iblk))
+                            TbE       (:,:,iblk),                       &
+                            tmass(:,:,iblk), aice(:,:,iblk), tmask(:,:,iblk), aice_init(:,:,iblk))
 
 
             do i=1,nx_block

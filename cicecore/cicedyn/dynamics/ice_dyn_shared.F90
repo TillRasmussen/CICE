@@ -510,7 +510,8 @@
                             stress12_3, stress12_4, &
                             uvel_init,  vvel_init,  &
                             uvel,       vvel,       &
-                            TbU)
+                            TbU,                    &
+                            Tmass, aice, Tmask, aice_init) ! added due to test
 
       integer (kind=int_kind), intent(in) :: &
          nx_block, ny_block, & ! block dimensions
@@ -575,7 +576,13 @@
          taubx   , & ! seabed stress, x-direction (N/m^2)
          tauby       ! seabed stress, y-direction (N/m^2)
 
+! FOR DEBUG TILL
+      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
+      Tmass, aice, aice_init
+      logical (kind=log_kind), dimension (nx_block,ny_block), intent(in) :: &
+      Tmask
       ! local variables
+! END DEBUG
 
       integer (kind=int_kind) :: &
          i, j, ij
@@ -677,6 +684,43 @@
       enddo
       enddo
 
+!TILL DUMP and abort if umask true and not tmask
+      do j = jlo, jhi
+      do i = ilo, ihi
+         if ( (iceXmask(i,j)) .and. ( .not. (iceTmask(i,j)))) then
+            write(977,*) 'ilo jlo,,ihi, jhi, i j'
+            write(977,'(6I5)') ilo, jlo, ihi, jhi, i, j
+            write(977,*) 'iceXmask(i,j), iceTmask(i,j), Xmask(i,j)'
+            write(977,*) iceXmask(i,j), Xmask(i,j)
+            write(977,*) 'aiX(i,j), Xmass(i,j)'
+            write(977,'(2E12.5)') aiX(i,j), Xmass(i,j)
+            write(977,*) 'aice,aice_initTmass, Tmask, icetmask'
+            write(977,'(9E12.5)') aice (i-1,j+1), aice (i,j+1), aice(i+1,j+1), &
+                                  aice (i-1,j  ), aice (i,j  ), aice(i+1,j  ), &
+                                  aice (i-1,j-1), aice (i,j-1), aice(i+1,j-1)
+
+            write(977,'(9E12.5)') aice_init (i-1,j+1), aice_init (i,j+1), aice_init(i+1,j+1), &
+                                  aice_init (i-1,j  ), aice_init (i,j  ), aice_init(i+1,j  ), &
+                                  aice_init (i-1,j-1), aice_init (i,j-1), aice_init(i+1,j-1)
+
+            write(977,'(9E12.5)') Tmass(i-1,j+1), Tmass(i,j+1), Tmass(i+1,j+1), &
+                                  Tmass(i-1,j  ), Tmass(i,j  ), Tmass(i+1,j  ), &
+                                  Tmass(i-1,j-1), Tmass(i,j-1), Tmass(i+1,j-1)
+
+            write(977,'(9l12)')   Tmask(i-1,j+1), Tmask(i,j+1), Tmask(i+1,j+1), &
+                                  Tmask(i-1,j  ), Tmask(i,j  ), Tmask(i+1,j  ), &
+                                  Tmask(i-1,j-1), Tmask(i,j-1), Tmask(i+1,j-1)
+
+            write(977,'(9l12)')   iceTmask(i-1,j+1), iceTmask(i,j+1), iceTmask(i+1,j+1), &
+                                  iceTmask(i-1,j  ), iceTmask(i,j  ), iceTmask(i+1,j  ), &
+                                  iceTmask(i-1,j-1), iceTmask(i,j-1), iceTmask(i+1,j-1)
+            call flush(977)                    
+            call abort_ice('ERROR umask not TMASK', &
+               file=__FILE__, line=__LINE__)
+         endif
+      enddo
+      enddo
+! END TILL DUMP
       !-----------------------------------------------------------------
       ! Define variables for momentum equation
       !-----------------------------------------------------------------

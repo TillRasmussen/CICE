@@ -377,7 +377,8 @@
                          stress12_3(:,:,iblk), stress12_4(:,:,iblk), &
                          uvel_init (:,:,iblk), vvel_init (:,:,iblk), &
                          uvel      (:,:,iblk), vvel      (:,:,iblk), &
-                         TbU       (:,:,iblk))
+                         TbU       (:,:,iblk),                       &
+                         tmass(:,:,iblk), aice(:,:,iblk), tmask(:,:,iblk), aice_init(:,:,iblk))
 
          call calc_bfix (nx_block            , ny_block            , &
                          icellU(iblk)        ,                       &
