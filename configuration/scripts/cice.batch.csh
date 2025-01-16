@@ -16,7 +16,7 @@ source ${ICE_SCRIPTS}/setup_machparams.csh
 #==========================================
 
 cat >! ${jobfile} << EOF0
-#!/bin/csh -f 
+#!/bin/csh -f
 EOF0
 
 #==========================================
@@ -340,14 +340,25 @@ cat >> ${jobfile} << EOFB
 #SBATCH --comment="image=eccc/eccc_all_default_ubuntu-18.04-amd64_latest"
 EOFB
 
-
-else if (${ICE_MACHINE} =~ freya* ) then
+else if (${ICE_MACHINE} =~ boreas* ) then
 cat >> ${jobfile} << EOFB
 #PBS -N ${ICE_CASENAME}
 #PBS -j oe
+#PBS -q hpc
 #PBS -l select=${nnodes}:ncpus=${corespernode}:mpiprocs=${taskpernodelimit}:ompthreads=${nthrds}
 #PBS -l walltime=${batchtime}
 EOFB
+
+
+else if (${ICE_MACHINE} =~ boreas* ) then
+cat >> ${jobfile} << EOFB
+#PBS -N ${ICE_CASENAME}
+#PBS -j oe
+#PBS -q hpc
+#PBS -l select=${nnodes}:ncpus=${corespernode}:mpiprocs=${taskpernodelimit}:ompthreads=${nthrds}
+#PBS -l walltime=${batchtime}
+EOFB
+
 
 else if (${ICE_MACHINE} =~ gaea*) then
 cat >> ${jobfile} << EOFB
