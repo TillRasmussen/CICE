@@ -25,8 +25,8 @@ module ice_comp_nuopc
   use ice_communicate    , only : init_communicate, my_task, master_task, mpi_comm_ice
   use ice_calendar       , only : force_restart_now, write_ic
   use ice_calendar       , only : idate, idate0,  mday, mmonth, myear, year_init, month_init, day_init
-  use ice_calendar       , only : msec, dt, calendar, calendar_type, nextsw_cday, istep
-  use ice_calendar       , only : ice_calendar_noleap, ice_calendar_gregorian, use_leap_years
+  use ice_calendar       , only : msec, dt, calendar, calendar_type, nextsw_cday, istep, use_leap_years
+  use ice_calendar       , only : ice_calendar_noleap, ice_calendar_proleptic_gregorian, ice_calendar_gregorian
   use ice_kinds_mod      , only : dbl_kind, int_kind, char_len, char_len_long
   use ice_fileunits      , only : nu_diag, nu_diag_set, inst_index, inst_name
   use ice_fileunits      , only : inst_suffix, release_all_fileunits, flush_fileunit
@@ -55,6 +55,9 @@ module ice_comp_nuopc
   use ice_mesh_mod       , only : ice_mesh_init_tlon_tlat_area_hm, ice_mesh_create_scolumn
   use ice_prescribed_mod , only : ice_prescribed_init
   use ice_scam           , only : scol_valid, single_column
+#ifndef CESMCOUPLED
+  use shr_is_restart_fh_mod, only : init_is_restart_fh, is_restart_fh, is_restart_fh_type
+#endif
 
   implicit none
   private
@@ -96,6 +99,9 @@ module ice_comp_nuopc
   logical                      :: mastertask
   logical                      :: runtimelog = .false.
   logical                      :: restart_eor = .false. !End of run restart flag
+#ifndef CESMCOUPLED
+  type(is_restart_fh_type)     :: restartfh_info     ! For flexible restarts in UFS
+#endif
   integer                      :: start_ymd          ! Start date (YYYYMMDD)
   integer                      :: start_tod          ! start time of day (s)
   integer                      :: curr_ymd           ! Current date (YYYYMMDD)
@@ -493,7 +499,7 @@ contains
     if (esmf_caltype == ESMF_CALKIND_NOLEAP) then
        calendar_type = ice_calendar_noleap
     else if (esmf_caltype == ESMF_CALKIND_GREGORIAN) then
-       calendar_type = ice_calendar_gregorian
+       calendar_type = ice_calendar_proleptic_gregorian
     else
        call abort_ice( subname//'ERROR:: bad calendar for ESMF' )
     end if
@@ -834,6 +840,7 @@ contains
        myear = (idate/10000)                     ! integer year of basedate
        mmonth= (idate-myear*10000)/100           ! integer month of basedate
        mday  =  idate-myear*10000-mmonth*100     ! day of month of basedate
+       msec  = start_tod                         ! start from basedate
 
        if (my_task == master_task) then
           write(nu_diag,*) trim(subname),' curr_ymd = ',curr_ymd
@@ -852,7 +859,7 @@ contains
     day_init  = idate0-year_init*10000-month_init*100
 
     !  - Set use_leap_years based on calendar (as some CICE calls use this instead of the calendar type)
-    if (calendar_type == ice_calendar_gregorian) then
+    if (calendar_type == ice_calendar_proleptic_gregorian) then
       use_leap_years = .true.
     else
       use_leap_years = .false. ! no_leap calendars
@@ -1023,6 +1030,9 @@ contains
     character(char_len_long)   :: restart_date
     character(char_len_long)   :: restart_filename
     logical                    :: isPresent, isSet
+#ifndef CESMCOUPLED
+    logical                    :: write_restartfh
+#endif
     character(len=*),parameter :: subname=trim(modName)//':(ModelAdvance) '
     character(char_len_long)   :: msgString
     !--------------------------------
@@ -1174,6 +1184,11 @@ contains
        endif
     endif
 
+#ifndef CESMCOUPLED
+    call is_restart_fh(clock, restartfh_info, write_restartfh)
+    if (write_restartfh) force_restart_now = .true.
+#endif
+
     !--------------------------------
     ! Unpack import state
     !--------------------------------
@@ -1291,6 +1306,9 @@ contains
     type(ESMF_ALARM)         :: stop_alarm
     character(len=128)       :: name
     integer                  :: alarmcount
+#ifndef CESMCOUPLED
+    integer                  :: dtime
+#endif
     character(len=*),parameter :: subname=trim(modName)//':(ModelSetRunClock) '
     !--------------------------------
 
@@ -1376,6 +1394,11 @@ contains
        call ESMF_AlarmSet(restart_alarm, clock=mclock, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
+#ifndef CESMCOUPLED
+       call ESMF_TimeIntervalGet( dtimestep, s=dtime, rc=rc )
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       call init_is_restart_fh(mcurrTime, dtime, my_task == master_task, restartfh_info)
+#endif
     end if
 
     !--------------------------------

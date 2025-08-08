@@ -926,7 +926,7 @@ contains
        if (chkerr(rc,__LINE__,u_FILE_u)) return
        call ESMF_ClockGetAlarm(clock, alarmname="alarm_stop", alarm=alarm, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
-       call ESMF_AlarmGet(alarm, ringTime=NextAlarm, rc=rc) 
+       call ESMF_AlarmGet(alarm, ringTime=NextAlarm, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
     case default
@@ -971,8 +971,7 @@ contains
 
     ! local variables
     integer :: year, mon, day ! year, month, day as integers
-    integer :: tdate          ! temporary date
-    integer :: date           ! coded-date (yyyymmdd)
+    integer :: tdate          ! temporary date (yyyymmdd)
     character(len=*), parameter :: subname='(timeInit)'
     !-------------------------------------------------------------------------------
 
@@ -982,9 +981,9 @@ contains
        call abort_ice( subname//'ERROR yymmdd is a negative number or time-of-day out of bounds' )
     end if
 
-    tdate = abs(date)
+    tdate = abs(ymd)
     year = int(tdate/10000)
-    if (date < 0) year = -year
+    if (ymd < 0) year = -year
     mon = int( mod(tdate,10000)/  100)
     day = mod(tdate,  100)
 

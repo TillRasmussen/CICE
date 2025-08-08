@@ -167,10 +167,10 @@
           file=__FILE__,line= __LINE__)
 
       if (tr_fsd) call icepack_init_fsd_bounds ( &
-         floe_rad_l = floe_rad_l,    &  ! fsd size lower bound in m (radius)
-         floe_rad_c = floe_rad_c,    &  ! fsd size bin centre in m (radius)
-         floe_binwidth = floe_binwidth, &  ! fsd size bin width in m (radius)
-         c_fsd_range = c_fsd_range,   &  ! string for history output
+         floe_rad_l_out = floe_rad_l,    &  ! fsd size lower bound in m (radius)
+         floe_rad_c_out = floe_rad_c,    &  ! fsd size bin centre in m (radius)
+         floe_binwidth_out = floe_binwidth, &  ! fsd size bin width in m (radius)
+         c_fsd_range_out = c_fsd_range,   &  ! string for history output
          write_diags=(my_task == master_task))  ! write diag on master only
       call icepack_warnings_flush(nu_diag)
       if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
@@ -351,8 +351,7 @@
       ! tracers
       ! ice age tracer
       if (tr_iage) then
-         if (trim(runtype) == 'continue') &
-              restart_age = .true.
+         if (trim(runtype) == 'continue') restart_age = .true.
          if (restart_age) then
             call read_restart_age
          else
@@ -386,8 +385,7 @@
       endif
       ! level-ice melt ponds
       if (tr_pond_lvl) then
-         if (trim(runtype) == 'continue') &
-              restart_pond_lvl = .true.
+         if (trim(runtype) == 'continue') restart_pond_lvl = .true.
          if (restart_pond_lvl) then
             call read_restart_pond_lvl
          else
@@ -401,8 +399,7 @@
       endif
       ! topographic melt ponds
       if (tr_pond_topo) then
-         if (trim(runtype) == 'continue') &
-              restart_pond_topo = .true.
+         if (trim(runtype) == 'continue') restart_pond_topo = .true.
          if (restart_pond_topo) then
             call read_restart_pond_topo
          else
@@ -464,10 +461,8 @@
       endif
 
       if (trim(runtype) == 'continue') then
-         if (tr_brine) &
-             restart_hbrine = .true.
-         if (skl_bgc .or. z_tracers) &
-             restart_bgc = .true.
+         if (tr_brine) restart_hbrine = .true.
+         if (skl_bgc .or. z_tracers) restart_bgc = .true.
       endif
 
       if (tr_brine .or. skl_bgc) then ! brine height tracer

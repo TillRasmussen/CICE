@@ -56,12 +56,23 @@ EOFB
 else if (${ICE_MACHINE} =~ gadi*) then
 if (${queue} =~ *sr) then #sapphire rapids
   @ memuse = ( $ncores * 481 / 100 )
+  set corespernode = 52
 else if (${queue} =~ *bw) then #broadwell
   @ memuse = ( $ncores * 457 / 100 )
+  set corespernode = 28
 else if (${queue} =~ *sl) then 
   @ memuse = ( $ncores * 6 )
+  set corespernode = 32
 else #normal queues
   @ memuse = ( $ncores * 395 / 100 )
+  set corespernode = 48
+endif
+if (${ncores} > ${corespernode}) then
+  # need to use a whole number of nodes
+  @ ncores = ( ( $ncores + $corespernode - 1 ) / $corespernode ) * $corespernode
+endif
+if (${runlength} <= 0) then
+  set batchtime = "00:30:00"
 endif
 cat >> ${jobfile} << EOFB
 #PBS -q ${queue}
@@ -124,6 +135,23 @@ cat >> ${jobfile} << EOFB
 #PBS -W umask=022
 ###PBS -M username@domain.com
 ###PBS -m be
+EOFB
+
+else if (${ICE_MACHINE} =~ blueback*) then
+if (${runlength} > 0) set queue = "standard"
+cat >> ${jobfile} << EOFB
+#SBATCH --job-name=${ICE_CASENAME}
+#SBATCH --account=${acct}
+#SBATCH --qos=${queue}
+#SBATCH --time=${batchtime}
+#SBATCH --nodes=${nnodes}
+#SBATCH --ntasks=${ntasks}
+#SBATCH --ntasks-per-node=${taskpernode}
+#SBATCH --constraint standard
+###SBATCH -e filename
+###SBATCH -o filename
+###SBATCH --mail-type FAIL
+###SBATCH --mail-user username@domain.com
 EOFB
 
 else if (${ICE_MACHINE} =~ narwhal*) then
@@ -346,14 +374,30 @@ cat >> ${jobfile} << EOFB
 #PBS -l walltime=${batchtime}
 EOFB
 
-
-else if (${ICE_MACHINE} =~ gaea*) then
+else if (${ICE_MACHINE} =~ gaeac5*) then
 cat >> ${jobfile} << EOFB
 #SBATCH -J ${ICE_CASENAME}
 #SBATCH --partition=batch
 #SBATCH --qos=${queue}
 #SBATCH --account=nggps_emc
-#SBATCH --clusters=c3
+#SBATCH --clusters=c5
+#SBATCH --time=${batchtime}
+#SBATCH --nodes=${nnodes}
+#SBATCH --ntasks-per-node=${taskpernodelimit}
+#SBATCH --cpus-per-task=${nthrds}
+#SBATCH -e slurm%j.err
+#SBATCH -o slurm%j.out
+##SBATCH --mail-type FAIL
+##SBATCH --mail-user=xxx@noaa.gov
+EOFB
+
+else if (${ICE_MACHINE} =~ gaeac6*) then
+cat >> ${jobfile} << EOFB
+#SBATCH -J ${ICE_CASENAME}
+#SBATCH --partition=batch
+#SBATCH --qos=${queue}
+#SBATCH --account=sfs_emc
+#SBATCH --clusters=c6
 #SBATCH --time=${batchtime}
 #SBATCH --nodes=${nnodes}
 #SBATCH --ntasks-per-node=${taskpernodelimit}
@@ -378,6 +422,34 @@ cat >> ${jobfile} << EOFB
 #SBATCH -o slurm%j.out
 ##SBATCH --mail-type FAIL
 ##SBATCH --mail-user=xxx@noaa.gov
+EOFB
+
+else if (${ICE_MACHINE} =~ ursa*) then
+cat >> ${jobfile} << EOFB
+#SBATCH -J ${ICE_CASENAME}
+#SBATCH --partition=u1-compute
+#SBATCH --qos=${queue}
+#SBATCH -A ${acct}
+#SBATCH --time=${batchtime}
+#SBATCH --nodes=${nnodes}
+#SBATCH --ntasks-per-node=${taskpernodelimit}
+#SBATCH --cpus-per-task=${nthrds}
+#SBATCH -e slurm%j.err
+#SBATCH -o slurm%j.out
+##SBATCH --mail-type FAIL
+##SBATCH --mail-user=xxx@noaa.gov
+EOFB
+
+else if (${ICE_MACHINE} =~ wcoss2*) then
+cat >> ${jobfile} << EOFB
+#PBS -N ${ICE_CASENAME}
+#PBS -o ${ICE_CASENAME}
+#PBS -j oe 
+#PBS -A ICE-DEV
+#PBS -l walltime=${batchtime}
+##PBS -l select=${nnodes}:ncpus=${taskpernodelimit}
+##PBS -l select=${nnodes}:ncpus=${corespernode}:mpiprocs=${taskpernodelimit}:ompthreads=${nthrds}
+#PBS -l place=vscatter,select=${nnodes}:ncpus=${corespernode}:mpiprocs=${corespernode}:mem=256M
 EOFB
 
 else if (${ICE_MACHINE} =~ orion*) then
