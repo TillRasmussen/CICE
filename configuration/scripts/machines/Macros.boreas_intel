@@ -28,7 +28,8 @@ ifeq ($(ICE_BLDDEBUG), true)
   FFLAGS     += -O0 -g -check -fpe0 -ftrapuv -fp-model except -check noarg_temp_created -fp-model source -ftz -traceback -no-wrap-margin
 # -heap-arrays 1024 
 else
-  FFLAGS     += -O3 -xCORE-AVX512 -qopt-zmm-usage=high -finline-functions -finline -parallel
+#  FFLAGS     += -O3 -xCORE-AVX512 -qopt-zmm-usage=high -finline-functions -finline -parallel
+  FFLAGS     += -O2 -qopt-zmm-usage=high -finline-functions -finline -parallel
 endif
 LD         := $(FC)
 LDFLAGS    := $(FFLAGS) -v
