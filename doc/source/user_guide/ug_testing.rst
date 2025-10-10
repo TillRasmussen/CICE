@@ -239,11 +239,11 @@ Ocean stresses are computed as in :cite:`Hunke01` where they are circular and ce
 in the square domain.  The ice distribution is fixed, with a constant 2 meter ice 
 thickness and a concentration field that varies linearly in the x-direction from ``0``
 to ``1`` and is constant in the y-direction.  No islands are included in this
-configuration.  The test is configured to run on a single processor.
+configuration.
 
 To run the test::
 
-  ./cice.setup -m <machine> --test smoke -s box2001 --testid <test_id> --grid gbox80 --acct <queue manager account> -p 1x1
+  ./cice.setup -m <machine> --test smoke -s box2001 --testid <test_id> --grid gbox80 --acct <queue manager account>
 
 .. _boxslotcyl:
 
@@ -1107,11 +1107,13 @@ You can also setup a conda env with the same utitities
 
 To run the validation test, setup a baseline run with the original baseline model and then 
 a perturbation run based on recent model changes.  Use ``--set qc`` in both runs in addition
-to other settings needed.  Then use the QC script to compare history output,
+to other settings needed.  Then use the QC script to compare history output.  The QC script should
+be run from the ``configuration/scripts/tests/QC`` directory because other files from that
+directory are required for the script.
 
 .. code-block:: bash
 
-  cp configuration/scripts/tests/QC/cice.t-test.py .
+  cd configuration/scripts/tests/QC
   ./cice.t-test.py /path/to/baseline/history /path/to/test/history
 
 The script will produce output similar to:
@@ -1152,6 +1154,11 @@ Below is an example of a step-by-step procedure for testing a code change that m
   # git clone the baseline code
 
   ./cice.setup -m onyx -e intel --suite base_suite --testid base0 --bgen cice.my.baseline
+
+  # Check the results
+
+  cd testsuite.base0
+  ./results.csh
 
   # Run the test suite with the new code
   # git clone the new code

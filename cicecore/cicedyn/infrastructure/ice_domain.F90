@@ -64,8 +64,7 @@
       maskhalo_remap , & ! if true, use masked halo updates for transport
       maskhalo_bound , & ! if true, use masked halo updates for bound_state
       halo_dynbundle , & ! if true, bundle halo update in dynamics
-      landblockelim  , & ! if true, land block elimination is on
-      orca_halogrid      ! if true, input fields are haloed as defined by orca grid
+      landblockelim      ! if true, land block elimination is on
 
 !-----------------------------------------------------------------------
 !
@@ -80,8 +79,9 @@
                              ! 'cartesian', 'roundrobin', 'sectrobin', 'sectcart'
                              ! 'rake', 'spacecurve', etc
        distribution_wght     ! method for weighting work per block
-                             ! 'block' = POP default configuration
-                             ! 'blockall' = no land block elimination
+                             ! 'block' = block weighted method with land block elimination
+                             ! 'blockall' = block method with NO land block elimination and minimum weight given to land blocks
+                             ! 'blockfull'= block method with NO land block elimination and full weight given to land blocks
                              ! 'latitude' = no. ocean points * |lat|
                              ! 'file' = read distribution_wgth_file
     character (char_len_long) :: &
@@ -101,10 +101,11 @@
 !  This routine reads in domain information and calls the routine
 !  to set up the block decomposition.
 
-   use ice_distribution, only: processor_shape
+   use ice_distribution, only: processor_shape, proc_decomposition
    use ice_domain_size, only: ncat, nilyr, nslyr, max_blocks, &
        nx_global, ny_global, block_size_x, block_size_y
    use ice_fileunits, only: goto_nml
+
 !----------------------------------------------------------------------
 !
 !  local variables
@@ -112,7 +113,8 @@
 !----------------------------------------------------------------------
 
    integer (int_kind) :: &
-      nml_error          ! namelist read error flag
+      nml_error, &          ! namelist read error flag
+      nprocs_x, nprocs_y    ! procs decomposed into blocks
 
    character(len=char_len)      :: nml_name ! text namelist name
    character(len=char_len_long) :: tmpstr2 ! for namelist check
@@ -176,14 +178,13 @@
       call get_fileunit(nu_nml)
       open (nu_nml, file=trim(nml_filename), status='old',iostat=nml_error)
       if (nml_error /= 0) then
-         call abort_ice(subname//'ERROR: domain_nml open file '// &
-              trim(nml_filename), &
-              file=__FILE__, line=__LINE__)
+         call abort_ice(subname//' ERROR: domain_nml open file '// &
+              trim(nml_filename), file=__FILE__, line=__LINE__)
       endif
 
       call goto_nml(nu_nml,trim(nml_name),nml_error)
       if (nml_error /= 0) then
-         call abort_ice(subname//'ERROR: searching for '// trim(nml_name), &
+         call abort_ice(subname//' ERROR: searching for '// trim(nml_name), &
               file=__FILE__, line=__LINE__)
       endif
 
@@ -195,7 +196,7 @@
             ! backspace and re-read erroneous line
             backspace(nu_nml)
             read(nu_nml,fmt='(A)') tmpstr2
-            call abort_ice(subname//'ERROR: ' // trim(nml_name) // ' reading ' // &
+            call abort_ice(subname//' ERROR: ' // trim(nml_name) // ' reading ' // &
                  trim(tmpstr2), file=__FILE__, line=__LINE__)
          endif
       end do
@@ -217,20 +218,28 @@
    call broadcast_scalar(maskhalo_bound,    master_task)
    call broadcast_scalar(add_mpi_barriers,  master_task)
    call broadcast_scalar(debug_blocks,      master_task)
-   if (my_task == master_task) then
-     if (max_blocks < 1) then
-       max_blocks=( ((nx_global-1)/block_size_x + 1) *         &
-                    ((ny_global-1)/block_size_y + 1) - 1) / nprocs + 1
-       max_blocks=max(1,max_blocks)
-       write(nu_diag,'(/,a52,i6,/)') &
-         '(ice_domain): max_block < 1: max_block estimated to ',max_blocks
-     endif
-   endif
    call broadcast_scalar(max_blocks,        master_task)
    call broadcast_scalar(block_size_x,      master_task)
    call broadcast_scalar(block_size_y,      master_task)
    call broadcast_scalar(nx_global,         master_task)
    call broadcast_scalar(ny_global,         master_task)
+
+!----------------------------------------------------------------------
+!
+! Set nprocs if not explicitly set to valid value in namelist
+!
+!----------------------------------------------------------------------
+
+#ifdef CESMCOUPLED
+   nprocs = get_num_procs()
+#else
+   if (nprocs < 0) then
+      nprocs = get_num_procs()
+   else if (nprocs /= get_num_procs()) then
+      write(nu_diag,*) subname,' ERROR: nprocs, get_num_procs = ',nprocs,get_num_procs()
+      call abort_ice(subname//' ERROR: Input nprocs not same as system (e.g MPI) request', file=__FILE__, line=__LINE__)
+   endif
+#endif
 
 !----------------------------------------------------------------------
 !
@@ -242,22 +251,12 @@
       !***
       !*** domain size zero or negative
       !***
-      call abort_ice(subname//'ERROR: Invalid domain: size < 1') ! no domain
-   else if (nprocs /= get_num_procs()) then
-      !***
-      !*** input nprocs does not match system (eg MPI) request
-      !***
-#if (defined CESMCOUPLED)
-      nprocs = get_num_procs()
-#else
-      write(nu_diag,*) subname,'ERROR: nprocs, get_num_procs = ',nprocs,get_num_procs()
-      call abort_ice(subname//'ERROR: Input nprocs not same as system request')
-#endif
+      call abort_ice(subname//' ERROR: Invalid domain: size < 1', file=__FILE__, line=__LINE__) ! no domain
    else if (nghost < 1) then
       !***
       !*** must have at least 1 layer of ghost cells
       !***
-      call abort_ice(subname//'ERROR: Not enough ghost cells allocated')
+      call abort_ice(subname//' ERROR: Not enough ghost cells allocated', file=__FILE__, line=__LINE__)
    endif
 
 !----------------------------------------------------------------------
@@ -316,6 +315,7 @@
    use ice_boundary, only: ice_HaloCreate
    use ice_distribution, only: create_distribution, create_local_block_ids, ice_distributionGet
    use ice_domain_size, only: max_blocks, nx_global, ny_global
+   use ice_global_reductions, only: global_sum, global_maxval
 
    real (dbl_kind), dimension(nx_global,ny_global), intent(in) :: &
       KMTG           ,&! global topography
@@ -385,7 +385,7 @@
       file=__FILE__, line=__LINE__)
 
    if (trim(ns_boundary_type) == 'closed') then
-      call abort_ice(subname//'ERROR: ns_boundary_type = closed not supported')
+      call abort_ice(subname//' ERROR: ns_boundary_type = closed not supported', file=__FILE__, line=__LINE__)
       allocate(nocn(nblocks_tot))
       nocn = 0
       do n=1,nblocks_tot
@@ -418,13 +418,14 @@
          endif
          if (nocn(n) > 0) then
             write(nu_diag,*) subname,'ns closed, Not enough land cells along ns edge'
-            call abort_ice(subname//'ERROR: Not enough land cells along ns edge for ns closed')
+            call abort_ice(subname//' ERROR: Not enough land cells along ns edge for ns closed', &
+                           file=__FILE__, line=__LINE__)
          endif
       enddo
       deallocate(nocn)
    endif
    if (trim(ew_boundary_type) == 'closed') then
-      call abort_ice(subname//'ERROR: ew_boundary_type = closed not supported')
+      call abort_ice(subname//' ERROR: ew_boundary_type = closed not supported', file=__FILE__, line=__LINE__)
       allocate(nocn(nblocks_tot))
       nocn = 0
       do n=1,nblocks_tot
@@ -457,7 +458,8 @@
          endif
          if (nocn(n) > 0) then
             write(nu_diag,*) subname,'ew closed, Not enough land cells along ew edge'
-            call abort_ice(subname//'ERROR: Not enough land cells along ew edge for ew closed')
+            call abort_ice(subname//' ERROR: Not enough land cells along ew edge for ew closed', &
+                           file=__FILE__, line=__LINE__)
          endif
       enddo
       deallocate(nocn)
@@ -476,7 +478,8 @@
        flat = 1
    endif
 
-   if (distribution_wght == 'blockall') landblockelim = .false.
+   if (distribution_wght == 'blockall' ) landblockelim = .false.
+   if (distribution_wght == 'blockfull') landblockelim = .false.
 
    allocate(nocn(nblocks_tot))
 
@@ -487,14 +490,27 @@
 #ifdef USE_NETCDF
          status = nf90_open(distribution_wght_file, NF90_NOWRITE, fid)
          if (status /= nf90_noerr) then
-            call abort_ice (subname//'ERROR: Cannot open '//trim(distribution_wght_file))
+            call abort_ice(subname//' ERROR: Cannot open '//trim(distribution_wght_file), &
+                           file=__FILE__, line=__LINE__)
          endif
          status = nf90_inq_varid(fid, 'wght', varid)
+         if (status /= nf90_noerr) then
+            call abort_ice(subname//' ERROR: Cannot find wght '//trim(distribution_wght_file), &
+                           file=__FILE__, line=__LINE__)
+         endif
          status = nf90_get_var(fid, varid, wght)
+         if (status /= nf90_noerr) then
+            call abort_ice(subname//' ERROR: Cannot get wght '//trim(distribution_wght_file), &
+                           file=__FILE__, line=__LINE__)
+         endif
          status = nf90_close(fid)
+         if (status /= nf90_noerr) then
+            call abort_ice(subname//' ERROR: Cannot close '//trim(distribution_wght_file), &
+                           file=__FILE__, line=__LINE__)
+         endif
          write(nu_diag,*) 'read ',trim(distribution_wght_file),minval(wght),maxval(wght)
 #else
-         call abort_ice(subname//'ERROR: USE_NETCDF cpp not defined', &
+         call abort_ice(subname//' ERROR: USE_NETCDF cpp not defined', &
              file=__FILE__, line=__LINE__)
 #endif
       endif
@@ -566,8 +582,10 @@
 
 #ifdef CICE_IN_NEMO
          ! Keep all blocks even the ones only containing land points
+         ! tcraig, use 'blockfull', get rid of the CPP, keep for backwards compatibility for now
          if (distribution_wght == 'block') nocn(n) = nx_block*ny_block
 #else
+         if (distribution_wght == 'blockfull') nocn(n) = nx_block*ny_block
          if (distribution_wght == 'block' .and. nocn(n) > 0) nocn(n) = nx_block*ny_block
          if (.not. landblockelim) nocn(n) = max(nocn(n),1)
 #endif
@@ -581,16 +599,16 @@
    allocate(work_per_block(nblocks_tot))
 
    where (nocn > 1)
-     work_per_block = nocn/work_unit + 2
+      work_per_block = nocn/work_unit + 2
    elsewhere (nocn == 1)
-     work_per_block = nocn/work_unit + 1
+      work_per_block = nocn/work_unit + 1
    elsewhere
-     work_per_block = 0
+      work_per_block = 0
    end where
    if (my_task == master_task) then
-      write(nu_diag,*) 'ice_domain work_unit, max_work_unit = ',work_unit, max_work_unit
-      write(nu_diag,*) 'ice_domain nocn = ',minval(nocn),maxval(nocn),sum(nocn)
-      write(nu_diag,*) 'ice_domain work_per_block = ',minval(work_per_block),maxval(work_per_block),sum(work_per_block)
+      write(nu_diag,'(2a,4i9)') subname,' work_unit      = ',work_unit, max_work_unit
+      write(nu_diag,'(2a,4i9)') subname,' nocn           = ',minval(nocn),maxval(nocn),sum(nocn)
+      write(nu_diag,'(2a,4i9)') subname,' work_per_block = ',minval(work_per_block),maxval(work_per_block),sum(work_per_block)
    endif
    deallocate(nocn)
 
@@ -614,8 +632,42 @@
 
    call create_local_block_ids(blocks_ice, distrb_info)
 
-   ! write out block distribution
-   ! internal check of icedistributionGet as part of verification process
+!----------------------------------------------------------------------
+!
+!  check block sizes and max_blocks
+!
+!----------------------------------------------------------------------
+
+   if (associated(blocks_ice)) then
+      nblocks = size(blocks_ice)
+   else
+      nblocks = 0
+   endif
+
+   tblocks_tmp = global_sum(nblocks, distrb_info)
+   nblocks_max = global_maxval(nblocks, distrb_info)
+
+   if (my_task == master_task) then
+      write(nu_diag,'(2a,i8)') subname,' total number of blocks is', tblocks_tmp
+   endif
+
+   if (nblocks > max_blocks) then
+      write(nu_diag,'(2a,2i6)') subname,' ERROR: nblocks, max_blocks = ',nblocks,max_blocks
+      write(nu_diag,'(2a,2i6)') subname,' ERROR: max_blocks too small: increase to', nblocks_max
+      call abort_ice(subname//' ERROR max_blocks too small', file=__FILE__, line=__LINE__)
+   else if (nblocks_max < max_blocks) then
+      if (my_task == master_task) then
+          write(nu_diag,'(2a,2i6)') subname,' NOTE: max_blocks too large: decrease to', nblocks_max
+      endif
+   endif
+
+!----------------------------------------------------------------------
+!
+! write out block distribution
+! internal check of icedistributionGet as part of verification process
+!
+!----------------------------------------------------------------------
+
    if (debug_blocks) then
 
       call flush_fileunit(nu_diag)
@@ -691,41 +743,6 @@
          write(nu_diag,'(2a)') subname,' ice_distributionGet checks pass'
          write(nu_diag,*) ' '
       endif
-   endif
-
-   if (associated(blocks_ice)) then
-      nblocks = size(blocks_ice)
-   else
-      nblocks = 0
-   endif
-   nblocks_max = 0
-   tblocks_tmp = 0
-   do n=0,distrb_info%nprocs - 1
-     nblocks_tmp = nblocks
-     call broadcast_scalar(nblocks_tmp, n)
-     nblocks_max = max(nblocks_max,nblocks_tmp)
-     tblocks_tmp = tblocks_tmp + nblocks_tmp
-   end do
-
-   if (my_task == master_task) then
-      write(nu_diag,*) &
-          'ice: total number of blocks is', tblocks_tmp
-   endif
-
-   if (nblocks_max > max_blocks) then
-     write(outstring,*) &
-         'ERROR: num blocks exceed max: increase max to', nblocks_max
-     call abort_ice(subname//trim(outstring), &
-        file=__FILE__, line=__LINE__)
-   else if (nblocks_max < max_blocks) then
-     write(outstring,*) &
-         'WARNING: ice no. blocks too large: decrease max to', nblocks_max
-     if (my_task == master_task) then
-        write(nu_diag,*) ' ********WARNING***********'
-        write(nu_diag,*) subname,trim(outstring)
-        write(nu_diag,*) ' **************************'
-        write(nu_diag,*) ' '
-     endif
    endif
 
 !----------------------------------------------------------------------

@@ -15,6 +15,12 @@
     restart_ext    = .false.
     use_restart_time = .false.
     restart_format = 'default'
+    restart_rearranger = 'default'
+    restart_iotasks = -99
+    restart_root   = -99
+    restart_stride = -99
+    restart_deflate = 0
+    restart_chunksize = 0, 0
     lcdf64         = .false.
     numin          = 21
     numax          = 89
@@ -54,6 +60,12 @@
     history_file   = 'iceh'
     history_precision = 4
     history_format = 'default'
+    history_rearranger = 'default'
+    history_iotasks = -99
+    history_root   = -99
+    history_stride = -99
+    history_deflate = 0
+    history_chunksize = 0, 0
     hist_time_axis = 'end'
     write_ic       = .true.
     incond_dir     = './history/'
@@ -74,6 +86,7 @@
     bathymetry_format = 'default'
     use_bathymetry = .false.
     gridcpl_file = 'unknown_gridcpl_file'
+    grid_outfile = .false.
     kcatbound    = 0
     dxrect         = 30.e5
     dyrect         = 30.e5
@@ -88,7 +101,6 @@
     nilyr        = 7
     nslyr        = 1
     nblyr        = 1
-    orca_halogrid = .false.
 /
 
 &tracer_nml
@@ -111,6 +123,8 @@
     restart_pond_topo = .false.
     tr_pond_lvl  = .true.
     restart_pond_lvl  = .false.
+    tr_pond_sealvl = .false.
+    restart_pond_sealvl = .false.
     tr_snow      = .false.
     restart_snow = .false.
     tr_iso       = .false.
@@ -136,6 +150,7 @@
     Tliquidus_max     = -0.1d0
     hfrazilmin        = 0.05d0
     floediam          = 300.0d0
+    tscale_pnd_drain  = 10.0d0
 /
 
 &dynamics_nml
@@ -186,6 +201,8 @@
     reltol_pgmres   = 1e-6
     algo_nonlin     = 'picard'
     use_mean_vrel   = .true.
+    dyn_area_min    = 0.001d0
+    dyn_mass_min    = 0.01d0
 /
 
 &shortwave_nml
@@ -209,6 +226,7 @@
 /
 
 &ponds_nml
+    apnd_sl         = 0.27d0
     hp1             = 0.01
     hs0             = 0.
     hs1             = 0.03
@@ -258,6 +276,7 @@
     fbot_xfer_type  = 'constant'
     update_ocn_f    = .false.
     l_mpond_fresh   = .false.
+    congel_freeze   = 'two-step'
     tfrz_option     = 'mushy'
     saltflux_option = 'constant'
     ice_ref_salinity = 4.0
@@ -287,10 +306,12 @@
     ocn_data_format = 'bin'
     ocn_data_dir    = '/unknown_ocn_data_dir'
     oceanmixed_file = 'unknown_oceanmixed_file'
+    semi_implicit_Tsfc = .false.
+    vapor_flux_correction = .false.
 /
 
 &domain_nml
-    nprocs = 4
+    nprocs            = -1
     nx_global         = 100
     ny_global         = 116
     block_size_x      = 25
@@ -322,25 +343,21 @@
     restore_bgc     = .false.
     restart_bgc     = .false.
     scale_bgc       = .false.
-    solve_zsal      = .false.
-    restart_zsal    = .false.
-    tr_bgc_Nit      = .true.
-    tr_bgc_C        = .true.
+    tr_bgc_Nit      = .false.
+    tr_bgc_C        = .false.
     tr_bgc_chl      = .false.
-    tr_bgc_Am       = .true.
-    tr_bgc_Sil      = .true.
+    tr_bgc_Am       = .false.
+    tr_bgc_Sil      = .false.
     tr_bgc_DMS      = .false.
-    tr_bgc_PON      = .true.
-    tr_bgc_hum      = .true.
+    tr_bgc_PON      = .false.
+    tr_bgc_hum      = .false.
     tr_bgc_DON      = .false.
-    tr_bgc_Fe       = .true. 
+    tr_bgc_Fe       = .false. 
     grid_o          = 0.006
     grid_o_t        = 0.006
-    l_sk            = 0.024
-    grid_oS         = 0.0
-    l_skS           = 0.028
-    phi_snow        = -0.3
-    initbio_frac    = 0.8
+    l_sk            = 2.0
+    phi_snow        = -1.0
+    initbio_frac    = 1.0
     frazil_scav     = 0.8  
     ratio_Si2N_diatoms = 1.8                         
     ratio_Si2N_sp      = 0.0
@@ -358,29 +375,29 @@
     ratio_Fe2DOC_s     = 0.1
     ratio_Fe2DOC_l     = 0.033
     fr_resp            = 0.05
-    tau_min            = 5200.0
-    tau_max            = 173000.0
-    algal_vel          = 0.0000000111
+    tau_min            = 3600.0
+    tau_max            = 604800.0
+    algal_vel          = 0.0000001
     R_dFe2dust         = 0.035
     dustFe_sol         = 0.005
     chlabs_diatoms     = 0.03
     chlabs_sp          = 0.01
     chlabs_phaeo       = 0.05
-    alpha2max_low_diatoms = 0.8
-    alpha2max_low_sp      = 0.67
-    alpha2max_low_phaeo   = 0.67
-    beta2max_diatoms   = 0.018
-    beta2max_sp        = 0.0025
-    beta2max_phaeo     = 0.01
+    alpha2max_low_diatoms = 0.3
+    alpha2max_low_sp   = 0.2
+    alpha2max_low_phaeo = 0.17
+    beta2max_diatoms   = 0.001
+    beta2max_sp        = 0.001
+    beta2max_phaeo     = 0.04
     mu_max_diatoms     = 1.44
-    mu_max_sp          = 0.851
-    mu_max_phaeo       = 0.851
-    grow_Tdep_diatoms  = 0.06
-    grow_Tdep_sp       = 0.06
-    grow_Tdep_phaeo    = 0.06
-    fr_graze_diatoms   = 0.0
-    fr_graze_sp        = 0.1
-    fr_graze_phaeo     = 0.1
+    mu_max_sp          = 0.41
+    mu_max_phaeo       = 0.63
+    grow_Tdep_diatoms  = 0.063
+    grow_Tdep_sp       = 0.063
+    grow_Tdep_phaeo    = 0.063
+    fr_graze_diatoms   = 0.19
+    fr_graze_sp        = 0.19
+    fr_graze_phaeo     = 0.19
     mort_pre_diatoms   = 0.007
     mort_pre_sp        = 0.007
     mort_pre_phaeo     = 0.007
@@ -403,10 +420,10 @@
     K_Fe_sp            = 0.2
     K_Fe_phaeo         = 0.1
     f_don_protein      = 0.6
-    kn_bac_protein     = 0.03
-    f_don_Am_protein   = 0.25
-    f_doc_s            = 0.4
-    f_doc_l            = 0.4
+    kn_bac_protein     = 0.2
+    f_don_Am_protein   = 1.0
+    f_doc_s            = 0.5
+    f_doc_l            = 0.5
     f_exude_s          = 1.0
     f_exude_l          = 1.0
     k_bac_s            = 0.03
@@ -416,36 +433,36 @@
     op_dep_min         = 0.1
     fr_graze_s         = 0.5
     fr_graze_e         = 0.5
-    fr_mort2min        = 0.5
-    fr_dFe             = 0.3
-    k_nitrif           = 0.0
+    fr_mort2min        = 0.9
+    fr_dFe             = 1.0
+    k_nitrif           = 0.046
     t_iron_conv        = 3065.0
     max_loss           = 0.9
     max_dfe_doc1       = 0.2
-    fr_resp_s          = 0.75
-    y_sk_DMS           = 0.5
-    t_sk_conv          = 3.0
-    t_sk_ox            = 10.0
+    fr_resp_s          = 0.9
+    y_sk_DMS           = 0.7
+    t_sk_conv          = 5.0
+    t_sk_ox            = 12.0
     algaltype_diatoms  = 0.0
-    algaltype_sp       = 0.5
-    algaltype_phaeo    = 0.5
+    algaltype_sp       = 0.0
+    algaltype_phaeo    = 0.0
     nitratetype        = -1.0
-    ammoniumtype       = 1.0
+    ammoniumtype       = 0.0
     silicatetype       = -1.0
     dmspptype          = 0.5
-    dmspdtype          = -1.0
-    humtype            = 1.0
-    doctype_s          = 0.5
-    doctype_l          = 0.5
-    dontype_protein    = 0.5
-    fedtype_1          = 0.5
+    dmspdtype          = 0.0
+    humtype            = 0.0
+    doctype_s          = 0.0
+    doctype_l          = 0.0
+    dontype_protein    = 0.0
+    fedtype_1          = 0.0
     feptype_1          = 0.5
-    zaerotype_bc1      = 1.0
-    zaerotype_bc2      = 1.0
-    zaerotype_dust1    = 1.0
-    zaerotype_dust2    = 1.0
-    zaerotype_dust3    = 1.0
-    zaerotype_dust4    = 1.0
+    zaerotype_bc1      = -1.0
+    zaerotype_bc2      = -1.0
+    zaerotype_dust1    = -1.0
+    zaerotype_dust2    = -1.0
+    zaerotype_dust3    = -1.0
+    zaerotype_dust4    = -1.0
     ratio_C2N_diatoms  = 7.0
     ratio_C2N_sp       = 7.0
     ratio_C2N_phaeo    = 7.0
@@ -455,10 +472,18 @@
     F_abs_chl_diatoms  = 2.0
     F_abs_chl_sp       = 4.0
     F_abs_chl_phaeo    = 5.0
-    ratio_C2N_proteins = 7.0
+    ratio_C2N_proteins = 5.0
 /
 
 &icefields_nml
+    f_tlon         = .true.
+    f_tlat         = .true.
+    f_ulon         = .true.
+    f_ulat         = .true.
+    f_nlon         = .true.
+    f_nlat         = .true.
+    f_elon         = .true.
+    f_elat         = .true.
     f_tmask        = .true.
     f_umask        = .false.
     f_nmask        = .false.
@@ -571,6 +596,7 @@
     f_strength     = 'm'
     f_divu         = 'm'
     f_shear        = 'm'
+    f_vort         = 'x'
     f_sig1         = 'm' 
     f_sig2         = 'm' 
     f_sigP         = 'm' 
@@ -630,10 +656,22 @@
     f_apondn       = 'x'
     f_apeffn       = 'x'
     f_hpondn       = 'x'
+    f_dpnd_flushn  = 'x'
+    f_dpnd_exponn  = 'x'
+    f_dpnd_freebdn = 'x'
+    f_dpnd_initialn= 'x'
+    f_dpnd_dlidn   = 'x'
     f_apond        = 'm'
     f_hpond        = 'm'
     f_ipond        = 'm'
     f_apeff        = 'm'
+    f_dpnd_flush   = 'x'
+    f_dpnd_expon   = 'x'
+    f_dpnd_freebd  = 'x'
+    f_dpnd_initial = 'x'
+    f_dpnd_dlid    = 'x'
+    f_dpnd_melt    = 'x'
+    f_dpnd_ridge   = 'x'
     f_apond_ai     = 'm'
     f_hpond_ai     = 'm'
     f_ipond_ai     = 'm'

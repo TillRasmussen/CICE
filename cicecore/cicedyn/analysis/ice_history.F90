@@ -3,7 +3,8 @@
 !
 ! The following variables are currently hard-wired as snapshots
 !   (instantaneous rather than time-averages):
-!   divu, shear, sig1, sig2, sigP, trsig, mlt_onset, frz_onset, hisnap, aisnap
+!   divu, shear, vort, sig1, sig2, sigP, trsig, mlt_onset,
+!   frz_onset, hisnap, aisnap
 !
 ! Options for histfreq: '1','h','d','m','y','x', where x means that
 !   output stream will not be used (recommended for efficiency).
@@ -68,7 +69,7 @@
       use ice_domain_size, only: max_blocks, max_nstrm, nilyr, nslyr, nblyr, ncat, nfsd
       use ice_dyn_shared, only: kdyn
       use ice_flux, only: mlt_onset, frz_onset, albcnt, snwcnt
-      use ice_grid, only: grid_ice, &
+      use ice_grid, only: grid_ice, grid_outfile, &
           grid_atm_thrm, grid_atm_dynu, grid_atm_dynv, &
           grid_ocn_thrm, grid_ocn_dynu, grid_ocn_dynv
       use ice_history_shared ! everything
@@ -238,15 +239,14 @@
          call get_fileunit(nu_nml)
          open (nu_nml, file=trim(nml_filename), status='old',iostat=nml_error)
          if (nml_error /= 0) then
-            call abort_ice(subname//'ERROR: '//trim(nml_name)//' open file '// &
-               trim(nml_filename), &
-               file=__FILE__, line=__LINE__)
+            call abort_ice(subname//' ERROR: '//trim(nml_name)//' open file '// &
+               trim(nml_filename), file=__FILE__, line=__LINE__)
          endif
 
          ! seek to this namelist
          call goto_nml(nu_nml,trim(nml_name),nml_error)
          if (nml_error /= 0) then
-            call abort_ice(subname//'ERROR: searching for '// trim(nml_name), &
+            call abort_ice(subname//' ERROR: searching for '// trim(nml_name), &
                file=__FILE__, line=__LINE__)
          endif
 
@@ -259,7 +259,7 @@
                ! backspace and re-read erroneous line
                backspace(nu_nml)
                read(nu_nml,fmt='(A)') tmpstr2
-               call abort_ice(subname//'ERROR: ' // trim(nml_name) // ' reading ' // &
+               call abort_ice(subname//' ERROR: ' // trim(nml_name) // ' reading ' // &
                     trim(tmpstr2), file=__FILE__, line=__LINE__)
             endif
          end do
@@ -277,22 +277,34 @@
                 nstreams = nstreams + 1
                 if (ns >= 2) then
                    if (histfreq(ns-1) == 'x') then
-                      call abort_ice(subname//'ERROR: histfreq all non x must be at start of array')
+                      call abort_ice(subname//' ERROR: histfreq all non x must be at start of array', &
+                           file=__FILE__, line=__LINE__)
                    endif
                 endif
          else if (histfreq(ns) /= 'x') then
-             call abort_ice(subname//'ERROR: histfreq contains illegal element')
+             write(nu_diag, * ) subname,' ns,histfreq = ',ns,histfreq(ns)
+             call abort_ice(subname//' ERROR: histfreq contains illegal element', &
+                  file=__FILE__, line=__LINE__)
          endif
       enddo
-      if (nstreams == 0) write (nu_diag,*) 'WARNING: No history output'
+      if (nstreams == 0 .and. my_task == master_task) write (nu_diag,*) subname,' WARNING: No history output'
       do ns1 = 1, nstreams
          do ns2 = 1, nstreams
             if (histfreq(ns1) == histfreq(ns2) .and. ns1/=ns2 &
                .and. my_task == master_task) then
-               call abort_ice(subname//'ERROR: histfreq elements must be unique')
+               call abort_ice(subname//' ERROR: histfreq elements must be unique', &
+                    file=__FILE__, line=__LINE__)
             endif
          enddo
       enddo
+
+      ! Turn on one-time grid output file
+      if (grid_outfile) then
+         nstreams = nstreams + 1
+         histfreq(nstreams) = 'g'
+         hist_avg(nstreams) = .false.
+         if (my_task == master_task) write (nu_diag,*) subname,' Writing one-time grid file'
+      endif
 
       if (.not. tr_iage) then
          f_iage = 'x'
@@ -361,6 +373,7 @@
          f_sidmasslat = 'mxxxx'
          f_sndmasssnf = 'mxxxx'
          f_sndmassmelt = 'mxxxx'
+         f_sndmassdyn = 'mxxxx'
          f_siflswdtop = 'mxxxx'
          f_siflswutop = 'mxxxx'
          f_siflswdbot = 'mxxxx'
@@ -401,6 +414,11 @@
          f_siu = f_CMIP
          f_siv = f_CMIP
          f_sispeed = f_CMIP
+         f_sndmasssubl = f_CMIP
+         f_sndmasssnf = f_CMIP
+         f_sndmassmelt = f_CMIP
+         f_sndmassdyn = f_CMIP
+         f_sidmasssi = f_CMIP
       endif
 
       if (grid_ice == 'CD' .or. grid_ice == 'C') then
@@ -438,14 +456,14 @@
          f_taubyE = f_tauby
       endif
 
-      ! write dimensions for 3D or 4D history variables
-      ! note: list of variables checked here is incomplete
-      if (f_aicen(1:1) /= 'x' .or. f_vicen(1:1) /= 'x' .or. &
-          f_Tinz (1:1) /= 'x' .or. f_Sinz (1:1) /= 'x') f_NCAT  = .true.
-      if (f_Tinz (1:1) /= 'x' .or. f_Sinz (1:1) /= 'x') f_VGRDi = .true.
-      if (f_Tsnz (1:1) /= 'x')                          f_VGRDs = .true.
-      if (tr_fsd)                                       f_NFSD  = .true.
-
+      call broadcast_scalar (f_tlon, master_task)
+      call broadcast_scalar (f_tlat, master_task)
+      call broadcast_scalar (f_ulon, master_task)
+      call broadcast_scalar (f_ulat, master_task)
+      call broadcast_scalar (f_nlon, master_task)
+      call broadcast_scalar (f_nlat, master_task)
+      call broadcast_scalar (f_elon, master_task)
+      call broadcast_scalar (f_elat, master_task)
       call broadcast_scalar (f_tmask, master_task)
       call broadcast_scalar (f_umask, master_task)
       call broadcast_scalar (f_nmask, master_task)
@@ -597,6 +615,7 @@
       call broadcast_scalar (f_strength, master_task)
       call broadcast_scalar (f_divu, master_task)
       call broadcast_scalar (f_shear, master_task)
+      call broadcast_scalar (f_vort, master_task)
       call broadcast_scalar (f_sig1, master_task)
       call broadcast_scalar (f_sig2, master_task)
       call broadcast_scalar (f_sigP, master_task)
@@ -644,6 +663,7 @@
       call broadcast_scalar (f_sidmasslat, master_task)
       call broadcast_scalar (f_sndmasssnf, master_task)
       call broadcast_scalar (f_sndmassmelt, master_task)
+      call broadcast_scalar (f_sndmassdyn, master_task)
       call broadcast_scalar (f_siflswdtop, master_task)
       call broadcast_scalar (f_siflswutop, master_task)
       call broadcast_scalar (f_siflswdbot, master_task)
@@ -1312,13 +1332,18 @@
 
          call define_hist_field(n_divu,"divu","%/day",tstr2D, tcstr, &
              "strain rate (divergence)",                           &
-             "none", secday*c100, c0,                              &
+             "divu is instantaneous, on T grid", secday*c100, c0,                              &
              ns1, f_divu)
 
          call define_hist_field(n_shear,"shear","%/day",tstr2D, tcstr, &
              "strain rate (shear)",                                  &
-             "none", secday*c100, c0,                                &
+             "shear is instantaneous, on T grid", secday*c100, c0,                                &
              ns1, f_shear)
+
+         call define_hist_field(n_vort,"vort","%/day",tstr2D, tcstr, &
+             "strain rate (vorticity)",                                  &
+             "vort is instantaneous, on T grid", secday*c100, c0,                                &
+             ns1, f_vort)
 
          select case (grid_ice)
          case('B')
@@ -1633,7 +1658,7 @@
              "none", c1, c0,         &
              ns1, f_sidmassevapsubl)
 
-         call define_hist_field(n_sndmasssubl,"sndmassubl","kg m-2 s-1",tstr2D, tcstr,  &
+         call define_hist_field(n_sndmasssubl,"sndmasssubl","kg m-2 s-1",tstr2D, tcstr,  &
              "snow mass change from evaporation and sublimation", &
              "none", c1, c0,         &
              ns1, f_sndmasssubl)
@@ -1662,6 +1687,11 @@
              "snow mass change from snow melt",                      &
              "none", c1, c0,         &
              ns1, f_sndmassmelt)
+
+         call define_hist_field(n_sndmassdyn,"sndmassdyn","kg m-2 s-1",tstr2D, tcstr,  &
+             "snow mass change from dynamics ridging",                      &
+             "none", c1, c0,         &
+             ns1, f_sndmassdyn)
 
          call define_hist_field(n_siflswdtop,"siflswdtop","W/m2",tstr2D, tcstr, &
              "down shortwave flux over sea ice", &
@@ -1967,6 +1997,21 @@
        call init_hist_fsd_4Df
 
       !-----------------------------------------------------------------
+      ! fill icoord array with namelist values
+      !-----------------------------------------------------------------
+
+       icoord=.true.
+
+       icoord(n_tlon   ) = f_tlon
+       icoord(n_tlat   ) = f_tlat
+       icoord(n_ulon   ) = f_ulon
+       icoord(n_ulat   ) = f_ulat
+       icoord(n_nlon   ) = f_nlon
+       icoord(n_nlat   ) = f_nlat
+       icoord(n_elon   ) = f_elon
+       icoord(n_elat   ) = f_elat
+
+      !-----------------------------------------------------------------
       ! fill igrd array with namelist values
       !-----------------------------------------------------------------
 
@@ -2130,7 +2175,7 @@
           taubxN, taubyN, strocnxN, strocnyN, &
           strairxE, strairyE, strtltxE, strtltyE, strintxE, strintyE, &
           taubxE, taubyE, strocnxE, strocnyE, &
-          fmU, fmN, fmE, daidtt, dvidtt, daidtd, dvidtd, fsurf, &
+          fmU, fmN, fmE, daidtt, dvidtt, daidtd, dvidtd, dvsdtd, fsurf, &
           fcondtop, fcondbot, fsurfn, fcondtopn, flatn, fsensn, albcnt, snwcnt, &
           stressp_1, stressm_1, stress12_1, &
           stresspT, stressmT, stress12T, &
@@ -2277,15 +2322,17 @@
             timedbl = (timesecs-dt)/(secday)
             time_beg(ns) = real(timedbl,kind=real_kind)
          endif
-      enddo
+      enddo  ! ns
 
       !---------------------------------------------------------------
       ! increment field
       !---------------------------------------------------------------
 
+#ifndef __INTEL_LLVM_COMPILER
       !$OMP PARALLEL DO PRIVATE(iblk,i,j,ilo,ihi,jlo,jhi,this_block, &
       !$OMP             k,n,qn,ns,sn,rho_ocn,rho_ice,Tice,Sbr,phi,rhob,dfresh,dfsalt,sicen, &
       !$OMP             worka,workb,worka3,Tinz4d,Sinz4d,Tsnz4d)
+#endif
 
       do iblk = 1, nblocks
          this_block = get_block(blocks_ice(iblk),iblk)
@@ -2623,7 +2670,7 @@
          if (f_strength(1:1)/= 'x') &
              call accum_hist_field(n_strength,iblk, strength(:,:,iblk), a2D)
 
-! The following fields (divu, shear, sig1, and sig2) will be smeared
+! The following fields (divu, shear, vort, sig1, and sig2) will be smeared
 !  if averaged over more than a few days.
 ! Snapshots may be more useful (see below).
 
@@ -2631,6 +2678,8 @@
 !             call accum_hist_field(n_divu,    iblk, divu(:,:,iblk), a2D)
 !        if (f_shear  (1:1) /= 'x') &
 !             call accum_hist_field(n_shear,   iblk, shear(:,:,iblk), a2D)
+!        if (f_vort  (1:1) /= 'x') &
+!             call accum_hist_field(n_vort,    iblk, vort(:,:,iblk), a2D)
 !        if (f_sig1   (1:1) /= 'x') &
 !             call accum_hist_field(n_sig1,    iblk, sig1(:,:,iblk), a2D)
 !        if (f_sig2   (1:1) /= 'x') &
@@ -3036,7 +3085,7 @@
            do j = jlo, jhi
            do i = ilo, ihi
               if (aice(i,j,iblk) > puny) then
-                 worka(i,j) = evaps(i,j,iblk)*rhos
+                 worka(i,j) = evaps(i,j,iblk)
               endif
            enddo
            enddo
@@ -3048,7 +3097,7 @@
            do j = jlo, jhi
            do i = ilo, ihi
               if (aice(i,j,iblk) > puny) then
-                 worka(i,j) = aice(i,j,iblk)*fsnow(i,j,iblk)*rhos
+                 worka(i,j) = aice(i,j,iblk)*fsnow(i,j,iblk)
               endif
            enddo
            enddo
@@ -3065,6 +3114,18 @@
            enddo
            enddo
            call accum_hist_field(n_sndmassmelt, iblk, worka(:,:), a2D)
+         endif
+
+         if (f_sndmassdyn(1:1) /= 'x') then
+           worka(:,:) = c0
+           do j = jlo, jhi
+           do i = ilo, ihi
+              if (aice(i,j,iblk) > puny) then
+                 worka(i,j) = dvsdtd(i,j,iblk)*rhos
+              endif
+           enddo
+           enddo
+           call accum_hist_field(n_sndmassdyn, iblk, worka(:,:), a2D)
          endif
 
          if (f_siflswdtop(1:1) /= 'x') then
@@ -3581,7 +3642,9 @@
          call accum_hist_snow (iblk)
 
       enddo                     ! iblk
+#ifndef __INTEL_LLVM_COMPILER
       !$OMP END PARALLEL DO
+#endif
 
       call icepack_warnings_flush(nu_diag)
       if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
@@ -3967,6 +4030,7 @@
               if (.not. tmask(i,j,iblk)) then ! mask out land points
                  if (n_divu     (ns) /= 0) a2D(i,j,n_divu(ns),     iblk) = spval_dbl
                  if (n_shear    (ns) /= 0) a2D(i,j,n_shear(ns),    iblk) = spval_dbl
+                 if (n_vort     (ns) /= 0) a2D(i,j,n_vort(ns),     iblk) = spval_dbl
                  if (n_sig1     (ns) /= 0) a2D(i,j,n_sig1(ns),     iblk) = spval_dbl
                  if (n_sig2     (ns) /= 0) a2D(i,j,n_sig2(ns),     iblk) = spval_dbl
                  if (n_sigP     (ns) /= 0) a2D(i,j,n_sigP(ns),     iblk) = spval_dbl
@@ -3996,6 +4060,8 @@
                        divu (i,j,iblk)*avail_hist_fields(n_divu(ns))%cona
                  if (n_shear    (ns) /= 0) a2D(i,j,n_shear(ns),iblk)     = &
                        shear(i,j,iblk)*avail_hist_fields(n_shear(ns))%cona
+                 if (n_vort     (ns) /= 0) a2D(i,j,n_vort(ns),iblk)      = &
+                       vort(i,j,iblk)*avail_hist_fields(n_vort(ns))%cona
                  if (n_sig1     (ns) /= 0) a2D(i,j,n_sig1(ns),iblk)      = &
                        sig1 (i,j,iblk)*avail_hist_fields(n_sig1(ns))%cona
                  if (n_sig2     (ns) /= 0) a2D(i,j,n_sig2(ns),iblk)      = &
@@ -4132,6 +4198,13 @@
         enddo
 
       endif  ! write_history or write_ic
+
+      ! Turn off one-time grid output file
+      if (histfreq(ns) == 'g') then
+         histfreq(ns) = 'x'
+         nstreams = nstreams - 1
+      endif
+
       enddo  ! nstreams
 
       !$OMP PARALLEL DO PRIVATE(iblk,i,j,ilo,ihi,jlo,jhi,this_block)

@@ -79,7 +79,7 @@ module ice_import_export
   ! Private module data
 
   type fld_list_type
-    character(len=128) :: stdname
+    character(char_len) :: stdname
     integer :: ungridded_lbound = 0
     integer :: ungridded_ubound = 0
   end type fld_list_type
@@ -363,45 +363,55 @@ contains
          mesh=mesh, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 #ifdef CESMCOUPLED
-    ! Get mesh areas from second field - using second field since the
-    ! first field is the scalar field
-    if (single_column) return
 
+    ! allocate area correction factors
     call ESMF_MeshGet(mesh, numOwnedElements=numOwnedElements, rc=rc)
     if (chkerr(rc,__LINE__,u_FILE_u)) return
-    call ESMF_StateGet(exportState, itemName=trim(fldsFrIce(2)%stdname), field=lfield, rc=rc)
-    if (ChkErr(rc,__LINE__,u_FILE_u)) return
-    call ESMF_FieldRegridGetArea(lfield, rc=rc)
-    if (chkerr(rc,__LINE__,u_FILE_u)) return
-    call ESMF_FieldGet(lfield, farrayPtr=dataptr, rc=rc)
-    if (chkerr(rc,__LINE__,u_FILE_u)) return
-    allocate(mesh_areas(numOwnedElements))
-    mesh_areas(:) = dataptr(:)
+    allocate (mod2med_areacor(numOwnedElements))
+    allocate (med2mod_areacor(numOwnedElements))
 
-    ! Determine flux correction factors (module variables)
-    allocate(model_areas(numOwnedElements))
-    allocate(mod2med_areacor(numOwnedElements))
-    allocate(med2mod_areacor(numOwnedElements))
-    mod2med_areacor(:) = 1._dbl_kind
-    med2mod_areacor(:) = 1._dbl_kind
-    n = 0
-    do iblk = 1, nblocks
-       this_block = get_block(blocks_ice(iblk),iblk)
-       ilo = this_block%ilo
-       ihi = this_block%ihi
-       jlo = this_block%jlo
-       jhi = this_block%jhi
-       do j = jlo, jhi
-          do i = ilo, ihi
-             n = n+1
-             model_areas(n) = tarea(i,j,iblk)/(radius*radius)
-             mod2med_areacor(n) = model_areas(n) / mesh_areas(n)
-             med2mod_areacor(n) = mesh_areas(n) / model_areas(n)
+    if (single_column) then
+
+       mod2med_areacor(:) = 1._dbl_kind
+       med2mod_areacor(:) = 1._dbl_kind
+
+    else
+
+       ! Get mesh areas from second field - using second field since the
+       ! first field is the scalar field
+
+       call ESMF_StateGet(exportState, itemName=trim(fldsFrIce(2)%stdname), field=lfield, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       call ESMF_FieldRegridGetArea(lfield, rc=rc)
+       if (chkerr(rc,__LINE__,u_FILE_u)) return
+       call ESMF_FieldGet(lfield, farrayPtr=dataptr, rc=rc)
+       if (chkerr(rc,__LINE__,u_FILE_u)) return
+       allocate(mesh_areas(numOwnedElements))
+       mesh_areas(:) = dataptr(:)
+
+       ! Determine flux correction factors (module variables)
+       allocate(model_areas(numOwnedElements))
+       mod2med_areacor(:) = 1._dbl_kind
+       med2mod_areacor(:) = 1._dbl_kind
+       n = 0
+       do iblk = 1, nblocks
+          this_block = get_block(blocks_ice(iblk),iblk)
+          ilo = this_block%ilo
+          ihi = this_block%ihi
+          jlo = this_block%jlo
+          jhi = this_block%jhi
+          do j = jlo, jhi
+             do i = ilo, ihi
+                n = n+1
+                model_areas(n) = tarea(i,j,iblk)/(radius*radius)
+                mod2med_areacor(n) = model_areas(n) / mesh_areas(n)
+                med2mod_areacor(n) = mesh_areas(n) / model_areas(n)
+             enddo
           enddo
        enddo
-    enddo
-    deallocate(model_areas)
-    deallocate(mesh_areas)
+       deallocate(model_areas)
+       deallocate(mesh_areas)
+    end if
 
     min_mod2med_areacor = minval(mod2med_areacor)
     max_mod2med_areacor = maxval(mod2med_areacor)
@@ -1399,7 +1409,7 @@ contains
     ! local variables
     integer                :: n
     type(ESMF_Field)       :: field
-    character(len=80)      :: stdname
+    character(char_len)    :: stdname
     character(ESMF_MAXSTR) :: msg
     character(len=*),parameter  :: subname='(ice_import_export:fld_list_realize)'
     ! ----------------------------------------------
@@ -1485,6 +1495,7 @@ contains
       ! local variables
       type(ESMF_Distgrid) :: distgrid
       type(ESMF_Grid)     :: grid
+      real(ESMF_KIND_R8), pointer :: fldptr2d(:,:)
       character(len=*), parameter :: subname='(ice_import_export:SetScalarField)'
       ! ----------------------------------------------
 
@@ -1500,6 +1511,11 @@ contains
       field = ESMF_FieldCreate(name=trim(flds_scalar_name), grid=grid, typekind=ESMF_TYPEKIND_R8, &
            ungriddedLBound=(/1/), ungriddedUBound=(/flds_scalar_num/), gridToFieldMap=(/2/), rc=rc)
       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+      ! initialize fldptr to zero
+      call ESMF_FieldGet(field, farrayPtr=fldptr2d, rc=rc)
+      if (ChkErr(rc,__LINE__,u_FILE_u)) return
+      fldptr2d(:,:) = 0.0
 
     end subroutine SetScalarField
 
@@ -1763,9 +1779,11 @@ contains
                 end do
              end do
           else
-             do i = ilo, ihi
-                n = n+1
-                dataPtr1d(n) = input(i,j,index,iblk)
+             do j = jlo, jhi
+                do i = ilo, ihi
+                   n = n+1
+                   dataPtr1d(n) = input(i,j,index,iblk)
+                end do
              end do
           end if
        end do

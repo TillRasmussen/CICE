@@ -8,13 +8,16 @@ MODULE ice_memusage
 !-------------------------------------------------------------------------------
 
    use ice_kinds_mod, only : dbl_kind, log_kind
+   use ice_fileunits, only : nu_diag
+   use ice_exit, only : abort_ice
 
    implicit none
    private
 
 ! PUBLIC: Public interfaces
 
-   public ::  ice_memusage_getusage, &
+   public ::  ice_memusage_allocErr, &
+              ice_memusage_getusage, &
               ice_memusage_init, &
               ice_memusage_print
 
@@ -28,6 +31,35 @@ MODULE ice_memusage
 !===============================================================================
 
 contains
+
+!===============================================================================
+! check memory alloc/dealloc return code
+
+logical function ice_memusage_allocErr(istat, errstr)
+
+   implicit none
+
+   !----- arguments -----
+
+   integer :: istat    !< input error code
+
+   character(len=*), optional :: errstr   !< error string
+
+   !----- local -----
+
+   character(*),parameter  :: subname = '(ice_memusage_allocErr)'
+
+   ice_memusage_allocErr = .false.
+   if (istat /= 0) then
+      ice_memusage_allocErr = .true.
+      if (present(errstr)) then
+         write(nu_diag,*) 'ERROR: '//trim(errstr)
+      endif
+      call abort_ice(subname//'ERROR: alloc/dealloc', file=__FILE__, line=__LINE__)
+      return
+   endif
+
+end function ice_memusage_allocErr
 
 !===============================================================================
 ! Initialize memory conversion to MB
@@ -74,7 +106,8 @@ subroutine ice_memusage_init(iunit)
       write(iunit,'(A,l4)')    subname//' Initset conversion flag is ',initset
       write(iunit,'(A,f16.2)') subname//' 8 MB memory   alloc in MB is ',(mrss1-mrss0)*mb_blk
       write(iunit,'(A,f16.2)') subname//' 8 MB memory dealloc in MB is ',(mrss1-mrss2)*mb_blk
-      write(iunit,'(A,f16.2)') subname//' Memory block size conversion in bytes is ',mb_blk*1024_dbl_kind*1024.0_dbl_kind
+      write(iunit,'(A,f16.2)') subname//' Memory block size conversion in bytes is ', &
+                               mb_blk*1024_dbl_kind*1024.0_dbl_kind
    endif
 
 end subroutine ice_memusage_init

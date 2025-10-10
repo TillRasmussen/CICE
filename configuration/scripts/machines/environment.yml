@@ -6,6 +6,7 @@ dependencies:
 # Build dependencies
   - compilers
   - netcdf-fortran
+  - parallelio 
   - openmpi
   - make
   - liblapack
@@ -14,6 +15,9 @@ dependencies:
   - matplotlib-base
   - cartopy
   - netcdf4
+  - basemap=1.4.1
+  - basemap-data
+  - basemap-data-hires
 # Python dependencies for building the HTML documentation
   - sphinx
   - sphinxcontrib-bibtex

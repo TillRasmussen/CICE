@@ -66,7 +66,7 @@
           floe_binwidth, c_fsd_range
       use ice_state, only: alloc_state
       use ice_flux_bgc, only: alloc_flux_bgc
-      use ice_calendar, only: dt, dt_dyn, write_ic, &
+      use ice_calendar, only: dt, write_ic, &
           init_calendar, advance_timestep, calc_timesteps
       use ice_communicate, only: init_communicate, my_task, master_task
       use ice_diagnostics, only: init_diags
@@ -144,9 +144,9 @@
 
       call init_thermo_vertical ! initialize vertical thermodynamics
 
-      call icepack_init_itd(ncat=ncat, hin_max=hin_max)  ! ice thickness distribution
+      call icepack_init_itd(hin_max=hin_max)  ! ice thickness distribution
       if (my_task == master_task) then
-         call icepack_init_itd_hist(ncat=ncat, hin_max=hin_max, c_hi_range=c_hi_range) ! output
+         call icepack_init_itd_hist(hin_max=hin_max, c_hi_range=c_hi_range) ! output
       endif
 
       call icepack_query_tracer_flags(tr_fsd_out=tr_fsd)
@@ -154,13 +154,12 @@
       if (icepack_warnings_aborted()) call abort_ice(trim(subname), &
           file=__FILE__,line= __LINE__)
 
-      if (tr_fsd) call icepack_init_fsd_bounds (nfsd, & ! floe size distribution
-         floe_rad_l,    &  ! fsd size lower bound in m (radius)
-         floe_rad_c,    &  ! fsd size bin centre in m (radius)
-         floe_binwidth, &  ! fsd size bin width in m (radius)
-         c_fsd_range,   &  ! string for history output
+      if (tr_fsd) call icepack_init_fsd_bounds ( &
+         floe_rad_l_out = floe_rad_l,    &  ! fsd size lower bound in m (radius)
+         floe_rad_c_out = floe_rad_c,    &  ! fsd size bin centre in m (radius)
+         floe_binwidth_out = floe_binwidth, &  ! fsd size bin width in m (radius)
+         c_fsd_range_out = c_fsd_range,   &  ! string for history output
          write_diags=(my_task == master_task))  ! write diag on master only
-
       call icepack_warnings_flush(nu_diag)
       if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
          file=__FILE__, line=__LINE__)
@@ -244,6 +243,7 @@
       call init_flux_ocn        ! initialize ocean fluxes sent to coupler
 
       call dealloc_grid         ! deallocate temporary grid arrays
+
       if (my_task == master_task) then
          call ice_memusage_print(nu_diag,subname//':end')
       endif
@@ -265,11 +265,12 @@
       use ice_grid, only: tmask
       use ice_init, only: ice_ic
       use ice_init_column, only: init_age, init_FY, init_lvl, init_snowtracers, &
-          init_meltponds_lvl, init_meltponds_topo, &
+          init_meltponds_lvl, init_meltponds_sealvl, init_meltponds_topo, &
           init_isotope, init_aerosol, init_hbrine, init_bgc, init_fsd
       use ice_restart_column, only: restart_age, read_restart_age, &
           restart_FY, read_restart_FY, restart_lvl, read_restart_lvl, &
           restart_pond_lvl, read_restart_pond_lvl, &
+          restart_pond_sealvl, read_restart_pond_sealvl, &
           restart_pond_topo, read_restart_pond_topo, &
           restart_snow, read_restart_snow, &
           restart_fsd, read_restart_fsd, &
@@ -286,7 +287,7 @@
          i, j        , & ! horizontal indices
          iblk            ! block index
       logical(kind=log_kind) :: &
-          tr_iage, tr_FY, tr_lvl, tr_pond_lvl, &
+          tr_iage, tr_FY, tr_lvl, tr_pond_lvl, tr_pond_sealvl, &
           tr_pond_topo, tr_snow, tr_fsd, tr_iso, tr_aero, tr_brine, &
           skl_bgc, z_tracers
       integer(kind=int_kind) :: &
@@ -307,6 +308,7 @@
            z_tracers_out=z_tracers)
       call icepack_query_tracer_flags(tr_iage_out=tr_iage, tr_FY_out=tr_FY, &
            tr_lvl_out=tr_lvl, tr_pond_lvl_out=tr_pond_lvl, &
+           tr_pond_sealvl_out = tr_pond_sealvl, &
            tr_pond_topo_out=tr_pond_topo, tr_aero_out=tr_aero, tr_brine_out=tr_brine, &
            tr_snow_out=tr_snow, tr_fsd_out=tr_fsd, tr_iso_out=tr_iso)
       call icepack_query_tracer_indices(nt_alvl_out=nt_alvl, nt_vlvl_out=nt_vlvl, &
@@ -335,8 +337,7 @@
       ! tracers
       ! ice age tracer
       if (tr_iage) then
-         if (trim(runtype) == 'continue') &
-              restart_age = .true.
+         if (trim(runtype) == 'continue') restart_age = .true.
          if (restart_age) then
             call read_restart_age
          else
@@ -370,8 +371,7 @@
       endif
       ! level-ice melt ponds
       if (tr_pond_lvl) then
-         if (trim(runtype) == 'continue') &
-              restart_pond_lvl = .true.
+         if (trim(runtype) == 'continue') restart_pond_lvl = .true.
          if (restart_pond_lvl) then
             call read_restart_pond_lvl
          else
@@ -383,10 +383,23 @@
             enddo ! iblk
          endif
       endif
+      ! sealvl melt ponds
+      if (tr_pond_sealvl) then
+         if (trim(runtype) == 'continue') restart_pond_sealvl = .true.
+         if (restart_pond_sealvl) then
+            call read_restart_pond_sealvl
+         else
+            do iblk = 1, nblocks
+               call init_meltponds_sealvl(trcrn(:,:,nt_apnd,:,iblk), &
+                                          trcrn(:,:,nt_hpnd,:,iblk), &
+                                          trcrn(:,:,nt_ipnd,:,iblk), &
+                                          dhsn(:,:,:,iblk))
+            enddo ! iblk
+         endif
+      endif
       ! topographic melt ponds
       if (tr_pond_topo) then
-         if (trim(runtype) == 'continue') &
-              restart_pond_topo = .true.
+         if (trim(runtype) == 'continue') restart_pond_topo = .true.
          if (restart_pond_topo) then
             call read_restart_pond_topo
          else
@@ -448,10 +461,8 @@
       endif
 
       if (trim(runtype) == 'continue') then
-         if (tr_brine) &
-             restart_hbrine = .true.
-         if (skl_bgc .or. z_tracers) &
-             restart_bgc = .true.
+         if (tr_brine) restart_hbrine = .true.
+         if (skl_bgc .or. z_tracers) restart_bgc = .true.
       endif
 
       if (tr_brine .or. skl_bgc) then ! brine height tracer
@@ -478,8 +489,7 @@
       do j = 1, ny_block
       do i = 1, nx_block
          if (tmask(i,j,iblk)) then
-            call icepack_aggregate(ncat  = ncat,                  &
-                                   aicen = aicen(i,j,:,iblk),     &
+            call icepack_aggregate(aicen = aicen(i,j,:,iblk),     &
                                    trcrn = trcrn(i,j,:,:,iblk),   &
                                    vicen = vicen(i,j,:,iblk),     &
                                    vsnon = vsnon(i,j,:,iblk),     &
@@ -488,7 +498,6 @@
                                    vice  = vice (i,j,  iblk),     &
                                    vsno  = vsno (i,j,  iblk),     &
                                    aice0 = aice0(i,j,  iblk),     &
-                                   ntrcr = ntrcr,                 &
                                    trcr_depend   = trcr_depend,   &
                                    trcr_base     = trcr_base,     &
                                    n_trcr_strata = n_trcr_strata, &

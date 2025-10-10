@@ -46,7 +46,6 @@ jobs:
         run: |
           sudo xcode-select -r
           sudo xcode-select -s /Library/Developer/CommandLineTools
-          sudo ln -s /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/* /usr/local/include/
           echo "xcrun --show-sdk-path: $(xcrun --show-sdk-path)"
           echo "xcode-select -p: $(xcode-select -p)"
       - name: system info
@@ -55,7 +54,7 @@ jobs:
           type wget
           type curl
           type csh
-          echo "readlink \$(which csh): $(python -c 'import os, sys; print os.path.realpath(sys.argv[1])' $(which csh))"
+          echo "readlink \$(which csh): $(python -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' $(which csh))"
           echo "csh --version: $(csh --version)"
           echo "uname -a: $(uname -a)"
           echo "sw_vers: $(sw_vers)"
@@ -147,8 +146,11 @@ jobs:
         run: |
           cd $HOME/cice-dirs/input
           wget --progress=dot:giga https://zenodo.org/record/3728358/files/CICE_data_gx3_grid_ic-20200320.tar.gz && tar xvfz CICE_data_gx3_grid_ic-20200320.tar.gz
-          wget --progress=dot:giga https://zenodo.org/record/3728364/files/CICE_data_gx3_forcing_JRA55-20200320.tar.gz && tar xvfz CICE_data_gx3_forcing_JRA55-20200320.tar.gz
+          wget --progress=dot:giga https://zenodo.org/records/10419929/files/CICE_data_gx3_forcing_JRA55_200501_20231220.tar.gz && tar xvfz CICE_data_gx3_forcing_JRA55_200501_20231220.tar.gz
           pwd
+          cd CICE_data/forcing/gx3/JRA55/8XDAILY
+          ln -s JRA55_gx3_03hr_forcing_200501.nc JRA55_gx3_03hr_forcing_2005.nc
+          cd $HOME/cice-dirs/input
           ls -alR
 #      - name: run case
 #        run: |

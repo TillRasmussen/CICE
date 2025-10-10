@@ -16,59 +16,90 @@ To run stand-alone, CICE requires
 
 - bash and csh
 - gmake (GNU Make)
-- Fortran and C	compilers (Intel, PGI, GNU, Cray, and NAG have been tested)
-- NetCDF (this is actually optional but required to test out of the box configurations)
-- MPI (this is actually	optional but without it	you can	only run on 1 processor)
+- Fortran and C	compilers (Intel, PGI, GNU, Cray, NVHPC, AOCC, and NAG have been tested)
+- NetCDF (optional, but required to test standard configurations that have netCDF grid, input, and forcing files)
+- MPI (optional, but required for running on more than 1 processor)
+- PIO (optional, but required for running with PIO I/O interfaces)
 
 Below are lists of software versions that the Consortium has tested at some point.  There is no
 guarantee that all compiler versions work with all CICE model versions.  At any given
 point, the Consortium is regularly testing on several different compilers, but not 
-necessarily on all possible versions or combinations.  A CICE goal is to be relatively portable
+necessarily on all possible versions or combinations.  CICE supports both PIO1 and PIO2.  To
+use PIO1, the ``USE_PIO1`` macro should also be set.  A CICE goal is to be relatively portable
 across different hardware, compilers, and other software.  As a result, the coding
 implementation tends to be on the conservative side at times.  If there are problems 
 porting to a particular system, please let the Consortium know.
 
 The Consortium has tested the following compilers at some point,
 
-- Intel 15.0.3.187
-- Intel 16.0.1.150
-- Intel 17.0.1.132
-- Intel 17.0.2.174
-- Intel 17.0.5.239
-- Intel 18.0.1.163
-- Intel 18.0.5
-- Intel 19.0.2
-- Intel 19.0.3.199
-- Intel 19.1.0.166
-- Intel 19.1.1.217
+- AOCC 3.0.0
+- Intel ifort 15.0.3.187
+- Intel ifort 16.0.1.150
+- Intel ifort 17.0.1.132
+- Intel ifort 17.0.2.174
+- Intel ifort 17.0.5.239
+- Intel ifort 18.0.1.163
+- Intel ifort 18.0.5
+- Intel ifort 19.0.2
+- Intel ifort 19.0.3.199
+- Intel ifort 19.1.0.166
+- Intel ifort 19.1.1.217
+- Intel ifort 19.1.2.254
+- Intel ifort 2021.4.0
+- Intel ifort 2021.6.0
+- Intel ifort 2021.8.0
+- Intel ifort 2021.9.0
+- Intel ifort 2021.10.0
+- Intel ifort 2022.2.1
 - PGI 16.10.0
 - PGI 19.9-0
 - PGI 20.1-0
+- PGI 20.4-0
 - GNU 6.3.0
 - GNU 7.2.0
 - GNU 7.3.0
+- GNU 7.7.0
 - GNU 8.3.0
 - GNU 9.3.0
-- Cray 8.5.8
-- Cray 8.6.4
+- GNU 10.1.0
+- GNU 11.2.0
+- GNU 12.1.0
+- GNU 12.2.0
+- Cray CCE 8.5.8
+- Cray CCE 8.6.4
+- Cray CCE 13.0.2
+- Cray CCE 14.0.3
+- Cray CCE 15.0.1
 - NAG 6.2
+- NVC 23.5-0
 
-The Consortium has tested the following mpi versions,
+The Consortium has tested the following MPI implementations and versions,
 
 - MPICH 7.3.2
 - MPICH 7.5.3
 - MPICH 7.6.2
 - MPICH 7.6.3
+- MPICH 7.7.0
 - MPICH 7.7.6
+- MPICH 7.7.7
+- MPICH 7.7.19
+- MPICH 7.7.20
+- MPICH 8.1.14
+- MPICH 8.1.21
+- MPICH 8.1.25
+- MPICH 8.1.26
 - Intel MPI 18.0.1
 - Intel MPI 18.0.4
 - Intel MPI 2019 Update 6
+- Intel MPI 2019 Update 8
 - MPT 2.14
 - MPT 2.17
 - MPT 2.18
 - MPT 2.19
 - MPT 2.20
 - MPT 2.21
+- MPT 2.22
+- MPT 2.25
 - mvapich2-2.3.3
 - OpenMPI 1.6.5
 - OpenMPI 4.0.2
@@ -79,6 +110,7 @@ The NetCDF implementation is relatively general and should work with any version
 - NetCDF 4.3.2
 - NetCDF 4.4.0
 - NetCDF 4.4.1.1.3
+- NetCDF 4.4.1.1.6
 - NetCDF 4.4.1.1
 - NetCDF 4.4.2
 - NetCDF 4.5.0
@@ -88,6 +120,23 @@ The NetCDF implementation is relatively general and should work with any version
 - NetCDF 4.6.3.2
 - NetCDF 4.7.2
 - NetCDF 4.7.4
+- NetCDF 4.8.1
+- NetCDF 4.8.1.1
+- NetCDF 4.8.1.3
+- NetCDF 4.9.0.1
+- NetCDF 4.9.0.3
+- NetCDF 4.9.2
+
+CICE has been tested with
+
+- PIO 1.10.1
+- PIO 2.5.4
+- PIO 2.5.9
+- PIO 2.6.0
+- PIO 2.6.1
+- PnetCDF 1.12.2
+- PnetCDF 1.12.3
+- PnetCDF 2.6.2
 
 Please email the Consortium if this list can be extended.
 
@@ -796,12 +845,13 @@ A few notes about the conda configuration:
     mpirun -np ${ntasks} --oversubscribe ./cice >&! \$ICE_RUNLOG_FILE
   
 - It is not recommeded to run other test suites than ``quick_suite`` or ``travis_suite`` on a personal computer.
-- The conda environment is automatically activated when compiling or running the model using the ``./cice.build`` and ``./cice.run`` scripts in the case directory. These scripts source the file ``env.conda_{linux.macos}``, which calls ``conda activate cice``.
+- If needed, the conda environment is automatically activated when compiling or running the model using the ``./cice.build`` and ``./cice.run`` scripts in the case directory. These scripts source the file ``env.conda_{linux.macos}``, which calls ``conda activate cice``.
 - To use the "cice" conda environment with the Python plotting (see :ref:`timeseries`) and quality control (QC) scripts (see :ref:`CodeValidation`), you must manually activate the environment:
 
   .. code-block:: bash
   
     cd ~/cice-dirs/cases/case1
+    conda env create -f configuration/scripts/machines/environment.yml --force
     conda activate cice
     python timeseries.py ~/cice-dirs/cases/case1/logs
     conda deactivate  # to deactivate the environment
@@ -906,58 +956,49 @@ in shell startup files or otherwise at users discretion:
 
 .. _timeseries:
 
-Timeseries Plotting
+Plotting Tools
 -------------------
 
-The CICE scripts include two scripts that will generate timeseries figures from a 
-diagnostic output file, a Python version (``timeseries.py``) and a csh version 
-(``timeseries.csh``).  Both scripts create the same set of plots, but the Python 
-script has more capabilities, and it's likely that the csh
-script will be removed in the future.  
+CICE includes a couple of simple scripts to generate plots.  The ``timeseries.py``
+scripts generates northern and southern hemisphere timeseries plots for several
+fields from the CICE log file.  The ``ciceplots2d.py`` script generates some
+two-dimensional plots from CICE history files as global and polar projections.
+The script ``ciceplots.csh`` is a general script that sets up the inputs for the
+python plotting tools and calls them.  Both python tools produce png files.
 
-To use the ``timeseries.py`` script, the following requirements must be met:
+To use the python scripts, the following python packages are required:
 
-* Python v2.7 or later
-* numpy Python package
-* matplotlib Python package
-* datetime Python package
+* Python3
+* numpy
+* matplotlib
+* re
+* datetime
+* netcdf4
+* basemap, basemap-data, basemap-data-hires
 
-See :ref:`CodeValidation` for additional information about how to setup the Python 
-environment, but we recommend using ``pip`` as follows: ::
+The easist way to install the package is via the cice env file provided with CICE via conda:
 
-  pip install --user numpy
-  pip install --user matplotlib
-  pip install --user datetime
+  .. code-block:: bash
 
-When creating a case or test via ``cice.setup``, the ``timeseries.csh`` and 
-``timeseries.py`` scripts are automatically copied to the case directory.  
-Alternatively, the plotting scripts can be found in ``./configuration/scripts``, and can be
-run from any directory.
+    conda env create -f configuration/scripts/machines/environment.yml --force
+    conda activate cice
 
-The Python script can be passed a directory, a specific log file, or no directory at all:
+Then edit the ``ciceplots.csh`` script and run it.  ``ciceplots.csh`` also demonstrates
+how to call each python script separately.
 
-  - If a directory is passed, the script will look either in that directory or in 
-    directory/logs for a filename like cice.run*.  As such, users can point the script
-    to either a case directory or the ``logs`` directory directly.  The script will use 
-    the file with the most recent creation time.
-  - If a specific file is passed the script parses that file, assuming that the file
-    matches the same form of cice.run* files.
-  - If nothing is passed, the script will look for log files or a ``logs`` directory in the 
-    directory from where the script was run.
+When creating a case or test via ``cice.setup``, these three plotting scripts
+are automatically copied to the case directory.
+Alternatively, the plotting scripts can be found in ``./configuration/scripts`` and can
+be run as needed.
 
-For example:
+Briefly, the ``timeseries.py`` script has a few options but can be called as follows:
 
-Run the timeseries script on the desired case. ::
+  .. code-block:: bash
 
-$ python timeseries.py /p/work1/turner/CICE_RUNS/conrad_intel_smoke_col_1x1_diag1_run1year.t00/
+    ./timeseries.py /p/work1/turner/CICE_RUNS/conrad_intel_smoke_col_1x1_diag1_run1year.t00 --grid --case CICE6.0.1
 
-or ::
-
-$ python timeseries.py /p/work1/turner/CICE_RUNS/conrad_intel_smoke_col_1x1_diag1_run1year.t00/logs
-    
-The output figures are placed in the directory where the ``timeseries.py`` script is run.
-
-The plotting script will plot the following variables by default, but you can also select 
+The timeseries script parses the log file, so the temporal resolution is based on the log output frequency.
+The timeseries plotting script will plot the following variables by default, but you can also select
 specific plots to create via the optional command line arguments.
 
   - total ice area (:math:`km^2`)
@@ -966,30 +1007,14 @@ specific plots to create via the optional command line arguments.
   - total snow volume (:math:`m^3`)
   - RMS ice speed (:math:`m/s`)
 
-For example, to plot only total ice volume and total snow volume ::
+The ``ciceplots2d.py`` script is called as follows:
 
-$ python timeseries.py /p/work1/turner/CICE_RUNS/conrad_intel_smoke_col_1x1_diag1_run1year.t00/ --volume --snw_vol
+  .. code-block:: bash
 
-To generate plots for all of the cases within a suite with a testid, create and run a script such as  ::
+    ./ciceplots2d.py aice /p/work1/turner/CICE_RUNS/conrad_intel_smoke_col_1x1_diag1_run1year.t00/history/iceh.2005-09.nc CICE6.0.1 "Sept 2005 Mean" 2005Sep
 
-     #!/bin/csh
-     foreach dir (`ls -1  | grep testid`)
-       echo $dir
-       python timeseries.py $dir
-     end
-
-Plots are only made for a single output file at a time.  The ability to plot output from 
-a series of cice.run* files is not currently possible, but may be added in the future.
-However, using the ``--bdir`` option will plot two datasets (from log files) on the
-same figure.
-
-For the latest help information for the script, run ::
-
-$ python timeseries.py -h
-
-The ``timeseries.csh`` script works basically the same way as the Python version, however it
-does not include all of the capabilities present in the Python version.  
-
-To use the C-Shell version of the script, ::
-
-$ ./timeseries.csh /p/work1/turner/CICE_RUNS/conrad_intel_smoke_col_1x1_diag1_run1year.t00/
+In the example above, a global, northern hemisphere, and southern hemisphere plot would be created
+for the aice field from iceh.2005-09.nc file.  Titles on the plot would reference CICE6.0.1 and
+"Sept 2005 Mean" and the png files would contain the string 2005Sep as well as the field name and region.
+The two-dimensional plots are generated using the scatter feature from matplotlib, so they are fairly
+primitive.

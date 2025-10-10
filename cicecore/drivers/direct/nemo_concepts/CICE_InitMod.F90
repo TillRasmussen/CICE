@@ -133,9 +133,9 @@
       call init_coupler_flux    ! initialize fluxes exchanged with coupler
       call init_thermo_vertical ! initialize vertical thermodynamics
 
-      call icepack_init_itd(ncat=ncat, hin_max=hin_max)  ! ice thickness distribution
+      call icepack_init_itd(hin_max=hin_max)  ! ice thickness distribution
       if (my_task == master_task) then
-         call icepack_init_itd_hist(ncat=ncat, hin_max=hin_max, c_hi_range=c_hi_range) ! output
+         call icepack_init_itd_hist(hin_max=hin_max, c_hi_range=c_hi_range) ! output
       endif
 
       call icepack_query_tracer_flags(tr_fsd_out=tr_fsd)
@@ -143,13 +143,12 @@
       if (icepack_warnings_aborted()) call abort_ice(trim(subname), &
           file=__FILE__,line= __LINE__)
 
-      if (tr_fsd) call icepack_init_fsd_bounds (nfsd, & ! floe size distribution
-         floe_rad_l,    &  ! fsd size lower bound in m (radius)
-         floe_rad_c,    &  ! fsd size bin centre in m (radius)
-         floe_binwidth, &  ! fsd size bin width in m (radius)
-         c_fsd_range,   &  ! string for history output
+      if (tr_fsd) call icepack_init_fsd_bounds ( &
+         floe_rad_l = floe_rad_l,    &  ! fsd size lower bound in m (radius)
+         floe_rad_c = floe_rad_c,    &  ! fsd size bin centre in m (radius)
+         floe_binwidth = floe_binwidth, &  ! fsd size bin width in m (radius)
+         c_fsd_range = c_fsd_range,   &  ! string for history output
          write_diags=(my_task == master_task))  ! write diag on master only
-
       call icepack_warnings_flush(nu_diag)
       if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
          file=__FILE__, line=__LINE__)
@@ -243,7 +242,7 @@
           restart_fsd, read_restart_fsd, &
           restart_aero, read_restart_aero, &
           restart_hbrine, read_restart_hbrine, &
-          restart_zsal, restart_bgc
+          restart_bgc
       use ice_restart_driver, only: restartfile, restartfile_v4
       use ice_restart_shared, only: runtype, restart
       use ice_state ! almost everything
@@ -254,7 +253,7 @@
       logical(kind=log_kind) :: &
           tr_iage, tr_FY, tr_lvl, tr_pond_lvl, &
           tr_pond_topo, tr_fsd, tr_aero, tr_brine, &
-          skl_bgc, z_tracers, solve_zsal
+          skl_bgc, z_tracers
       integer(kind=int_kind) :: &
           ntrcr
       integer(kind=int_kind) :: &
@@ -269,7 +268,7 @@
           file=__FILE__, line=__LINE__)
 
       call icepack_query_parameters(skl_bgc_out=skl_bgc, &
-           z_tracers_out=z_tracers, solve_zsal_out=solve_zsal)
+           z_tracers_out=z_tracers)
       call icepack_query_tracer_flags(tr_iage_out=tr_iage, tr_FY_out=tr_FY, &
            tr_lvl_out=tr_lvl, tr_pond_lvl_out=tr_pond_lvl, &
            tr_pond_topo_out=tr_pond_topo, tr_aero_out=tr_aero, tr_brine_out=tr_brine, &
@@ -297,8 +296,7 @@
       ! tracers
       ! ice age tracer
       if (tr_iage) then
-         if (trim(runtype) == 'continue') &
-              restart_age = .true.
+         if (trim(runtype) == 'continue') restart_age = .true.
          if (restart_age) then
             call read_restart_age
          else
@@ -332,8 +330,7 @@
       endif
       ! level-ice melt ponds
       if (tr_pond_lvl) then
-         if (trim(runtype) == 'continue') &
-              restart_pond_lvl = .true.
+         if (trim(runtype) == 'continue') restart_pond_lvl = .true.
          if (restart_pond_lvl) then
             call read_restart_pond_lvl
          else
@@ -347,8 +344,7 @@
       endif
       ! topographic melt ponds
       if (tr_pond_topo) then
-         if (trim(runtype) == 'continue') &
-              restart_pond_topo = .true.
+         if (trim(runtype) == 'continue') restart_pond_topo = .true.
          if (restart_pond_topo) then
             call read_restart_pond_topo
          else
@@ -380,12 +376,8 @@
       endif
 
       if (trim(runtype) == 'continue') then
-         if (tr_brine) &
-             restart_hbrine = .true.
-         if (solve_zsal) &
-             restart_zsal = .true.
-         if (skl_bgc .or. z_tracers) &
-             restart_bgc = .true.
+         if (tr_brine) restart_hbrine = .true.
+         if (skl_bgc .or. z_tracers) restart_bgc = .true.
       endif
 
       if (tr_brine .or. skl_bgc) then ! brine height tracer
@@ -393,7 +385,7 @@
          if (tr_brine .and. restart_hbrine) call read_restart_hbrine
       endif
 
-      if (solve_zsal .or. skl_bgc .or. z_tracers) then ! biogeochemistry
+      if (skl_bgc .or. z_tracers) then ! biogeochemistry
          if (tr_fsd) then
             write (nu_diag,*) 'FSD implementation incomplete for use with BGC'
             call icepack_warnings_flush(nu_diag)
@@ -412,8 +404,7 @@
       do j = 1, ny_block
       do i = 1, nx_block
          if (tmask(i,j,iblk)) then
-            call icepack_aggregate(ncat  = ncat,                  &
-                                   aicen = aicen(i,j,:,iblk),     &
+            call icepack_aggregate(aicen = aicen(i,j,:,iblk),     &
                                    trcrn = trcrn(i,j,:,:,iblk),   &
                                    vicen = vicen(i,j,:,iblk),     &
                                    vsnon = vsnon(i,j,:,iblk),     &
@@ -422,7 +413,6 @@
                                    vice  = vice (i,j,  iblk),     &
                                    vsno  = vsno (i,j,  iblk),     &
                                    aice0 = aice0(i,j,  iblk),     &
-                                   ntrcr = ntrcr,                 &
                                    trcr_depend   = trcr_depend,   &
                                    trcr_base     = trcr_base,     &
                                    n_trcr_strata = n_trcr_strata, &

@@ -23,21 +23,23 @@ module ice_comp_nuopc
   use ice_domain_size    , only : nx_global, ny_global
   use ice_grid           , only : grid_format, init_grid2
   use ice_communicate    , only : init_communicate, my_task, master_task, mpi_comm_ice
-  use ice_calendar       , only : force_restart_now, write_ic, init_calendar
-  use ice_calendar       , only : idate, mday, mmonth, myear, year_init
-  use ice_calendar       , only : msec, dt, calendar, calendar_type, nextsw_cday, istep
-  use ice_calendar       , only : ice_calendar_noleap, ice_calendar_gregorian
+  use ice_calendar       , only : force_restart_now, write_ic
+  use ice_calendar       , only : idate, idate0,  mday, mmonth, myear, year_init, month_init, day_init
+  use ice_calendar       , only : msec, dt, calendar, calendar_type, nextsw_cday, istep, use_leap_years
+  use ice_calendar       , only : ice_calendar_noleap, ice_calendar_proleptic_gregorian, ice_calendar_gregorian
   use ice_kinds_mod      , only : dbl_kind, int_kind, char_len, char_len_long
   use ice_fileunits      , only : nu_diag, nu_diag_set, inst_index, inst_name
   use ice_fileunits      , only : inst_suffix, release_all_fileunits, flush_fileunit
-  use ice_restart_shared , only : runid, runtype, restart, use_restart_time, restart_dir, restart_file
+  use ice_restart_shared , only : runid, runtype, restart, use_restart_time, restart_dir, restart_file, &
+                                  restart_format, restart_chunksize, pointer_date
   use ice_history        , only : accum_hist
+  use ice_history_shared , only : history_format, history_chunksize
   use ice_exit           , only : abort_ice
   use icepack_intfc      , only : icepack_warnings_flush, icepack_warnings_aborted
   use icepack_intfc      , only : icepack_init_orbit, icepack_init_parameters, icepack_query_orbit
   use icepack_intfc      , only : icepack_query_tracer_flags, icepack_query_parameters
   use cice_wrapper_mod   , only : t_startf, t_stopf, t_barrierf
-  use cice_wrapper_mod   , only : shr_file_getlogunit, shr_file_setlogunit
+  use cice_wrapper_mod   , only : shr_log_getlogunit, shr_log_setlogunit
   use cice_wrapper_mod   , only : ufs_settimer, ufs_logtimer, ufs_file_setlogunit, wtime
 #ifdef CESMCOUPLED
   use shr_const_mod
@@ -54,6 +56,9 @@ module ice_comp_nuopc
   use ice_mesh_mod       , only : ice_mesh_init_tlon_tlat_area_hm, ice_mesh_create_scolumn
   use ice_prescribed_mod , only : ice_prescribed_init
   use ice_scam           , only : scol_valid, single_column
+#ifndef CESMCOUPLED
+  use shr_is_restart_fh_mod, only : init_is_restart_fh, is_restart_fh, is_restart_fh_type
+#endif
 
   implicit none
   private
@@ -94,6 +99,10 @@ module ice_comp_nuopc
   logical                      :: profile_memory = .false.
   logical                      :: mastertask
   logical                      :: runtimelog = .false.
+  logical                      :: restart_eor = .false. !End of run restart flag
+#ifndef CESMCOUPLED
+  type(is_restart_fh_type)     :: restartfh_info     ! For flexible restarts in UFS
+#endif
   integer                      :: start_ymd          ! Start date (YYYYMMDD)
   integer                      :: start_tod          ! start time of day (s)
   integer                      :: curr_ymd           ! Current date (YYYYMMDD)
@@ -315,6 +324,21 @@ contains
     write(logmsg,*) runtimelog
     call ESMF_LogWrite('CICE_cap:RunTimeLog = '//trim(logmsg), ESMF_LOGMSG_INFO)
 
+    call NUOPC_CompAttributeGet(gcomp, name="write_restart_at_endofrun", value=cvalue, isPresent=isPresent, isSet=isSet, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    if (isPresent .and. isSet) then
+       if (trim(cvalue) .eq. '.true.') restart_eor = .true.
+    endif
+
+#ifdef CESMCOUPLED
+    pointer_date = .true.
+#endif
+
+    ! set CICE internal pointer_date variable based on nuopc settings
+    ! this appends a datestamp to the "rpointer" file
+    call NUOPC_CompAttributeGet(gcomp, name="restart_pointer_append_date", value=cvalue, isPresent=isPresent, isSet=isSet, rc=rc)
+    if (ChkErr(rc,__LINE__,u_FILE_u)) return
+    if (isPresent .and. isSet) pointer_date = (trim(cvalue) .eq. ".true.")
     !----------------------------------------------------------------------------
     ! generate local mpi comm
     !----------------------------------------------------------------------------
@@ -403,6 +427,7 @@ contains
     ! Determine attributes - also needed in realize phase to get grid information
     !----------------------------------------------------------------------------
 
+
     ! Get orbital values
     ! Note that these values are obtained in a call to init_orbit in ice_shortwave.F90
     ! if CESMCOUPLED is not defined
@@ -484,7 +509,7 @@ contains
     if (esmf_caltype == ESMF_CALKIND_NOLEAP) then
        calendar_type = ice_calendar_noleap
     else if (esmf_caltype == ESMF_CALKIND_GREGORIAN) then
-       calendar_type = ice_calendar_gregorian
+       calendar_type = ice_calendar_proleptic_gregorian
     else
        call abort_ice( subname//'ERROR:: bad calendar for ESMF' )
     end if
@@ -496,7 +521,7 @@ contains
     ! Note that sets the nu_diag module variable in ice_fileunits
     ! Set the nu_diag_set flag so it's not reset later
 
-    call shr_file_setLogUnit (shrlogunit)
+    call shr_log_setLogUnit (shrlogunit)
     call ufs_file_setLogUnit('./log.ice.timer',nu_timer,runtimelog)
 
     call NUOPC_CompAttributeGet(gcomp, name="diro", value=cvalue, &
@@ -645,6 +670,36 @@ contains
        call abort_ice(trim(errmsg))
     endif
 
+    ! Netcdf output created by PIO
+    call NUOPC_CompAttributeGet(gcomp, name="pio_typename", value=cvalue, &
+         isPresent=isPresent, isSet=isSet, rc=rc)
+    if (chkerr(rc,__LINE__,u_FILE_u)) return
+    if (isPresent .and. isSet) then
+      if (trim(history_format)/='cdf1' .and. mastertask) then
+         write(nu_diag,*) trim(subname)//history_format//'WARNING: history_format from cice_namelist ignored'
+         write(nu_diag,*) trim(subname)//'WARNING: using '//trim(cvalue)//' from ICE_modelio'
+      endif
+      if (trim(restart_format)/='cdf1' .and. mastertask) then
+         write(nu_diag,*) trim(subname)//restart_format//'WARNING: restart_format from cice_namelist ignored'
+         write(nu_diag,*) trim(subname)//'WARNING: using '//trim(cvalue)//' from ICE_modelio'
+      endif
+
+      ! The only reason to set these is to detect in ice_history_write if the chunk/deflate settings are ok.
+      select case (trim(cvalue))
+      case ('netcdf4p')
+         history_format='hdf5'
+         restart_format='hdf5'
+      case ('netcdf4c')
+         if (mastertask) write(nu_diag,*) trim(subname)//'WARNING: pio_typename = netcdf4c is superseded, use netcdf4p'
+         history_format='hdf5'
+         restart_format='hdf5'
+      case default !pio_typename=netcdf or pnetcdf
+         ! do nothing
+      end select
+    else
+      if(mastertask) write(nu_diag,*) trim(subname)//'WARNING: pio_typename from driver needs to be set for netcdf output to work'
+    end if
+
 #else
 
     ! Read the cice namelist as part of the call to cice_init1
@@ -758,7 +813,7 @@ contains
     call cice_init2()
     call t_stopf ('cice_init2')
     !---------------------------------------------------------------------------
-    ! use EClock to reset calendar information on initial start
+    ! use EClock to reset calendar information
     !---------------------------------------------------------------------------
 
     ! - on initial run
@@ -774,7 +829,7 @@ contains
        if (ref_ymd /= start_ymd .or. ref_tod /= start_tod) then
           if (my_task == master_task) then
              write(nu_diag,*) trim(subname),': ref_ymd ',ref_ymd, ' must equal start_ymd ',start_ymd
-             write(nu_diag,*) trim(subname),': ref_ymd ',ref_tod, ' must equal start_ymd ',start_tod
+             write(nu_diag,*) trim(subname),': ref_tod',ref_tod, ' must equal start_tod ',start_tod
           end if
        end if
 
@@ -795,6 +850,7 @@ contains
        myear = (idate/10000)                     ! integer year of basedate
        mmonth= (idate-myear*10000)/100           ! integer month of basedate
        mday  =  idate-myear*10000-mmonth*100     ! day of month of basedate
+       msec  = start_tod                         ! start from basedate
 
        if (my_task == master_task) then
           write(nu_diag,*) trim(subname),' curr_ymd = ',curr_ymd
@@ -805,6 +861,19 @@ contains
        endif
 
     end if
+
+    !  - start time from ESMF clock. Used to set history time units
+    idate0    = start_ymd
+    year_init = (idate0/10000)
+    month_init= (idate0-year_init*10000)/100           ! integer month of basedate
+    day_init  = idate0-year_init*10000-month_init*100
+
+    !  - Set use_leap_years based on calendar (as some CICE calls use this instead of the calendar type)
+    if (calendar_type == ice_calendar_proleptic_gregorian) then
+      use_leap_years = .true.
+    else
+      use_leap_years = .false. ! no_leap calendars
+    endif
 
     call calendar()     ! update calendar info
 
@@ -839,7 +908,7 @@ contains
     ! Prescribed ice initialization
     !-----------------------------------------------------------------
 
-    call ice_prescribed_init(clock, ice_mesh, rc)
+    call ice_prescribed_init(gcomp, clock, ice_mesh, rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
 #ifdef CESMCOUPLED
@@ -873,6 +942,12 @@ contains
           end if
        enddo
        deallocate(lfieldnamelist)
+       call State_SetScalar(dble(0), flds_scalar_index_nx, exportState, &
+            flds_scalar_name, flds_scalar_num, rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       call State_SetScalar(dble(0), flds_scalar_index_ny, exportState, &
+            flds_scalar_name, flds_scalar_num, rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
        ! *******************
        ! *** RETURN HERE ***
        ! *******************
@@ -965,6 +1040,9 @@ contains
     character(char_len_long)   :: restart_date
     character(char_len_long)   :: restart_filename
     logical                    :: isPresent, isSet
+#ifndef CESMCOUPLED
+    logical                    :: write_restartfh
+#endif
     character(len=*),parameter :: subname=trim(modName)//':(ModelAdvance) '
     character(char_len_long)   :: msgString
     !--------------------------------
@@ -1015,8 +1093,8 @@ contains
     ! Reset shr logging to my log file
     !--------------------------------
 
-    call shr_file_getLogUnit (shrlogunit)
-    call shr_file_setLogUnit (nu_diag)
+    call shr_log_getLogUnit (shrlogunit)
+    call shr_log_setLogUnit (nu_diag)
 
     !--------------------------------
     ! Query the Component for its clock, importState and exportState
@@ -1087,6 +1165,8 @@ contains
     call ESMF_ClockGetAlarm(clock, alarmname='alarm_restart', alarm=alarm, rc=rc)
     if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
+    force_restart_now = .false.
+
     if (ESMF_AlarmIsRinging(alarm, rc=rc)) then
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
        force_restart_now = .true.
@@ -1100,9 +1180,24 @@ contains
 
        write(restart_date,"(i4.4,a,i2.2,a,i2.2,a,i5.5)") yy, '-', mm, '-',dd,'-',tod
        write(restart_filename,'(4a)') trim(restart_dir), trim(restart_file), '.', trim(restart_date)
-    else
-       force_restart_now = .false.
     endif
+
+    ! Handle end of run restart
+    if (restart_eor) then
+       call ESMF_ClockGetAlarm(clock, alarmname='alarm_stop', alarm=alarm, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       if (ESMF_AlarmIsRinging(alarm, rc=rc)) then
+          if (ChkErr(rc,__LINE__,u_FILE_u)) return
+          force_restart_now = .true.
+          call ESMF_AlarmRingerOff( alarm, rc=rc )
+          if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       endif
+    endif
+
+#ifndef CESMCOUPLED
+    call is_restart_fh(clock, restartfh_info, write_restartfh)
+    if (write_restartfh) force_restart_now = .true.
+#endif
 
     !--------------------------------
     ! Unpack import state
@@ -1155,7 +1250,7 @@ contains
     end if
 
     ! reset shr logging to my original values
-    call shr_file_setLogUnit (shrlogunit)
+    call shr_log_setLogUnit (shrlogunit)
 
     !--------------------------------
     ! stop timers and print timer info
@@ -1221,6 +1316,9 @@ contains
     type(ESMF_ALARM)         :: stop_alarm
     character(len=128)       :: name
     integer                  :: alarmcount
+#ifndef CESMCOUPLED
+    integer                  :: dtime
+#endif
     character(len=*),parameter :: subname=trim(modName)//':(ModelSetRunClock) '
     !--------------------------------
 
@@ -1259,30 +1357,6 @@ contains
        call ESMF_LogWrite(subname//'setting alarms for ' // trim(name), ESMF_LOGMSG_INFO)
 
        !----------------
-       ! Restart alarm
-       !----------------
-       call NUOPC_CompAttributeGet(gcomp, name="restart_option", value=restart_option, rc=rc)
-       if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
-       call NUOPC_CompAttributeGet(gcomp, name="restart_n", value=cvalue, rc=rc)
-       if (ChkErr(rc,__LINE__,u_FILE_u)) return
-       read(cvalue,*) restart_n
-
-       call NUOPC_CompAttributeGet(gcomp, name="restart_ymd", value=cvalue, rc=rc)
-       if (ChkErr(rc,__LINE__,u_FILE_u)) return
-       read(cvalue,*) restart_ymd
-
-       call alarmInit(mclock, restart_alarm, restart_option, &
-            opt_n   = restart_n,           &
-            opt_ymd = restart_ymd,         &
-            RefTime = mcurrTime,           &
-            alarmname = 'alarm_restart', rc=rc)
-       if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
-       call ESMF_AlarmSet(restart_alarm, clock=mclock, rc=rc)
-       if (ChkErr(rc,__LINE__,u_FILE_u)) return
-
-       !----------------
        ! Stop alarm
        !----------------
        call NUOPC_CompAttributeGet(gcomp, name="stop_option", value=stop_option, rc=rc)
@@ -1306,6 +1380,35 @@ contains
        call ESMF_AlarmSet(stop_alarm, clock=mclock, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
 
+       !----------------
+       ! Restart alarm
+       !----------------
+       call NUOPC_CompAttributeGet(gcomp, name="restart_option", value=restart_option, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+       call NUOPC_CompAttributeGet(gcomp, name="restart_n", value=cvalue, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       read(cvalue,*) restart_n
+
+       call NUOPC_CompAttributeGet(gcomp, name="restart_ymd", value=cvalue, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       read(cvalue,*) restart_ymd
+
+       call alarmInit(mclock, restart_alarm, restart_option, &
+            opt_n   = restart_n,           &
+            opt_ymd = restart_ymd,         &
+            RefTime = mcurrTime,           &
+            alarmname = 'alarm_restart', rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+       call ESMF_AlarmSet(restart_alarm, clock=mclock, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+#ifndef CESMCOUPLED
+       call ESMF_TimeIntervalGet( dtimestep, s=dtime, rc=rc )
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       call init_is_restart_fh(mcurrTime, dtime, my_task == master_task, restartfh_info)
+#endif
     end if
 
     !--------------------------------
@@ -1374,8 +1477,9 @@ contains
     type(ESMF_Time)              :: CurrTime ! current time
     integer                      :: year     ! model year at current time
     integer                      :: orb_year ! orbital year for current orbital computation
+    integer, save                :: prev_orb_year=0 ! orbital year for previous orbital computation
     logical                      :: lprint
-    logical                      :: first_time = .true.
+    logical, save                :: first_time = .true.
     character(len=*) , parameter :: subname = "(cice_orbital_init)"
     !-------------------------------------------------------------------------------
 
@@ -1457,24 +1561,24 @@ contains
           return  ! bail out
        endif
     end if
-
+    lprint = .false.
     if (trim(orb_mode) == trim(orb_variable_year)) then
        call ESMF_ClockGet(clock, CurrTime=CurrTime, rc=rc)
        if (chkerr(rc,__LINE__,u_FILE_u)) return
        call ESMF_TimeGet(CurrTime, yy=year, rc=rc)
        if (chkerr(rc,__LINE__,u_FILE_u)) return
        orb_year = orb_iyear + (year - orb_iyear_align)
-       lprint = mastertask
     else
        orb_year = orb_iyear
-       if (first_time) then
-          lprint = mastertask
-       else
-          lprint = .false.
-       end if
     end if
 
+    if (orb_year .ne. prev_orb_year) then
+       lprint = mastertask
+       ! this prevents the orbital print happening before the log file is opened.
+       if (.not. first_time) prev_orb_year = orb_year
+    endif
     eccen = orb_eccen
+
     call shr_orb_params(orb_year, eccen, orb_obliq, orb_mvelp, obliqr, lambm0, mvelpp, lprint)
 
     if ( eccen  == SHR_ORB_UNDEF_REAL .or. obliqr == SHR_ORB_UNDEF_REAL .or. &

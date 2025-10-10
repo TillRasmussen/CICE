@@ -12,7 +12,7 @@ module ice_shr_methods
   use ESMF         , only : ESMF_Mesh, ESMF_MeshGet
   use ESMF         , only : ESMF_GEOMTYPE_MESH, ESMF_GEOMTYPE_GRID, ESMF_FIELDSTATUS_COMPLETE
   use ESMF         , only : ESMF_Clock, ESMF_ClockCreate, ESMF_ClockGet, ESMF_ClockSet
-  use ESMF         , only : ESMF_ClockPrint, ESMF_ClockAdvance
+  use ESMF         , only : ESMF_ClockPrint, ESMF_ClockAdvance, ESMF_ClockGetAlarm
   use ESMF         , only : ESMF_Alarm, ESMF_AlarmCreate, ESMF_AlarmGet, ESMF_AlarmSet
   use ESMF         , only : ESMF_Calendar, ESMF_CALKIND_NOLEAP, ESMF_CALKIND_GREGORIAN
   use ESMF         , only : ESMF_Time, ESMF_TimeGet, ESMF_TimeSet
@@ -23,7 +23,7 @@ module ice_shr_methods
   use ice_kinds_mod, only : r8 => dbl_kind, cl=>char_len_long, cs=>char_len
   use ice_exit     , only : abort_ice
 #ifdef CESMCOUPLED
-  use shr_file_mod , only : shr_file_setlogunit, shr_file_getLogUnit
+  use shr_log_mod , only : shr_log_setlogunit
 #endif
 
   implicit none
@@ -65,6 +65,7 @@ module ice_shr_methods
        optMonthly        = "monthly"   , &
        optYearly         = "yearly"    , &
        optDate           = "date"      , &
+       optEnd            = "end"       , &
        optIfdays0        = "ifdays0"
 
   ! Module data
@@ -165,7 +166,7 @@ contains
     endif
 
 #ifdef CESMCOUPLED
-    call shr_file_setLogUnit (logunit)
+    call shr_log_setLogUnit (logunit)
 #endif
 
   end subroutine set_component_logging
@@ -920,6 +921,14 @@ contains
        if (chkerr(rc,__LINE__,u_FILE_u)) return
        update_nextalarm  = .true.
 
+    case (optEnd)
+       call ESMF_TimeIntervalSet(AlarmInterval, yy=9999, rc=rc)
+       if (chkerr(rc,__LINE__,u_FILE_u)) return
+       call ESMF_ClockGetAlarm(clock, alarmname="alarm_stop", alarm=alarm, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+       call ESMF_AlarmGet(alarm, ringTime=NextAlarm, rc=rc)
+       if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
     case default
        call abort_ice(subname//'unknown option '//trim(option))
 
@@ -962,8 +971,7 @@ contains
 
     ! local variables
     integer :: year, mon, day ! year, month, day as integers
-    integer :: tdate          ! temporary date
-    integer :: date           ! coded-date (yyyymmdd)
+    integer :: tdate          ! temporary date (yyyymmdd)
     character(len=*), parameter :: subname='(timeInit)'
     !-------------------------------------------------------------------------------
 
@@ -973,9 +981,9 @@ contains
        call abort_ice( subname//'ERROR yymmdd is a negative number or time-of-day out of bounds' )
     end if
 
-    tdate = abs(date)
+    tdate = abs(ymd)
     year = int(tdate/10000)
-    if (date < 0) year = -year
+    if (ymd < 0) year = -year
     mon = int( mod(tdate,10000)/  100)
     day = mod(tdate,  100)
 

@@ -4,7 +4,8 @@
 !
 ! The following variables are currently hard-wired as snapshots
 !   (instantaneous rather than time-averages):
-!   divu, shear, sig1, sig2, sigP, trsig, mlt_onset, frz_onset, hisnap, aisnap
+!   divu, shear, vort, sig1, sig2, sigP, trsig, mlt_onset,
+!   frz_onset, hisnap, aisnap
 !
 ! Options for histfreq: '1','h','d','m','y','x', where x means that
 !   output stream will not be used (recommended for efficiency).
@@ -48,17 +49,22 @@
          history_dir   , & ! directory name for history file
          incond_dir        ! directory for snapshot initial conditions
 
-      character (len=char_len_long), public :: &
-         pointer_file      ! input pointer file for restarts
-
       character (len=char_len), public :: &
          version_name
 
       character (len=char_len), public :: &
-         history_format
+         history_format      , & ! history format, cdf1, cdf2, cdf5, etc
+         history_rearranger      ! history file rearranger, box or subset for pio
 
       character (len=char_len), public :: &
-         hist_suffix(max_nstrm)  ! appended to 'h' in filename when not 'x'
+         hist_suffix(max_nstrm)  ! appended to history_file in filename
+
+      integer (kind=int_kind), public :: &
+         history_iotasks     , & ! iotasks, root, stride defines io pes for pio
+         history_root        , & ! iotasks, root, stride defines io pes for pio
+         history_stride      , & ! iotasks, root, stride defines io pes for pio
+         history_deflate     , & ! compression level for hdf5/netcdf4
+         history_chunksize(2) ! chunksize for hdf5/netcdf4
 
       !---------------------------------------------------------------
       ! Instructions for adding a field: (search for 'example')
@@ -125,6 +131,7 @@
          avail_hist_fields(max_avail_hist_fields)
 
       integer (kind=int_kind), parameter, public :: &
+         ncoord   = 8           , & ! number of coordinate variables: TLON, TLAT, ULON, ULAT, NLON, NLAT, ELON, ELAT
          nvar_grd = 21          , & ! number of grid fields that can be written
                                     !   excluding grid vertices
          nvar_grdz = 6              ! number of category/vertical grid fields written
@@ -159,6 +166,7 @@
          avgct(max_nstrm)   ! average sample counter
 
       logical (kind=log_kind), public :: &
+         icoord(ncoord) , &    ! true if coord field is written to output file
          igrd (nvar_grd), &    ! true if grid field is written to output file
          igrdz(nvar_grdz)      ! true if category/vertical grid field is written
 
@@ -188,6 +196,10 @@
       !---------------------------------------------------------------
 
       logical (kind=log_kind), public :: &
+           f_tlon      = .true., f_tlat       = .true., &
+           f_ulon      = .true., f_ulat       = .true., &
+           f_nlon      = .true., f_nlat       = .true., &
+           f_elon      = .true., f_elat       = .true., &
            f_tmask     = .true., f_umask      = .true., &
            f_nmask     = .true., f_emask      = .true., &
            f_blkmask   = .true., &
@@ -267,7 +279,7 @@
            f_strocnxE  = 'x', f_strocnyE   = 'x', &
            f_strintxE  = 'x', f_strintyE   = 'x', &
            f_taubxE    = 'x', f_taubyE     = 'x', &
-           f_strength  = 'm', &
+           f_strength  = 'm', f_vort       = 'm', &
            f_divu      = 'm', f_shear      = 'm', &
            f_sig1      = 'm', f_sig2       = 'm', &
            f_sigP      = 'm', &
@@ -302,6 +314,7 @@
            f_sidmasslat = 'x', &
            f_sndmasssnf = 'x', &
            f_sndmassmelt = 'x', &
+           f_sndmassdyn = 'x', &
            f_siflswdtop = 'x', &
            f_siflswutop = 'x', &
            f_siflswdbot = 'x', &
@@ -356,6 +369,10 @@
       !---------------------------------------------------------------
 
       namelist / icefields_nml /     &
+           f_tlon     , f_tlat     , &
+           f_ulon     , f_ulat     , &
+           f_nlon     , f_nlat     , &
+           f_elon     , f_elat     , &
            f_tmask    , f_umask    , &
            f_nmask    , f_emask    , &
            f_blkmask  , &
@@ -434,7 +451,7 @@
 !          f_strocnxE,  f_strocnyE , &
 !          f_strintxE,  f_strintyE , &
 !          f_taubxE,    f_taubyE   , &
-           f_strength,  &
+           f_strength,  f_vort     , &
            f_divu,      f_shear    , &
            f_sig1,      f_sig2     , &
            f_sigP,      &
@@ -469,6 +486,7 @@
            f_sidmasslat, &
            f_sndmasssnf, &
            f_sndmassmelt, &
+           f_sndmassdyn, &
            f_siflswdtop, &
            f_siflswutop, &
            f_siflswdbot, &
@@ -523,6 +541,15 @@
       !---------------------------------------------------------------
 
       integer (kind=int_kind), parameter, public :: &
+           n_tlon       = 1,  &
+           n_tlat       = 2,  &
+           n_ulon       = 3,  &
+           n_ulat       = 4,  &
+           n_nlon       = 5,  &
+           n_nlat       = 6,  &
+           n_elon       = 7,  &
+           n_elat       = 8,  &
+
            n_tmask      = 1,  &
            n_umask      = 2,  &
            n_nmask      = 3,  &
@@ -626,7 +653,7 @@
            n_strocnxE   , n_strocnyE   , &
            n_strintxE   , n_strintyE   , &
            n_taubxE     , n_taubyE     , &
-           n_strength   , &
+           n_strength   , n_vort       , &
            n_divu       , n_shear      , &
            n_sig1       , n_sig2       , &
            n_sigP       , &
@@ -659,6 +686,7 @@
            n_sidmasslat,  &
            n_sndmasssnf,  &
            n_sndmassmelt,  &
+           n_sndmassdyn,  &
            n_siflswdtop,  &
            n_siflswutop,  &
            n_siflswdbot,  &
@@ -729,18 +757,22 @@
                               dt
       use ice_restart_shared, only: lenstr
 
-      character (char_len_long), intent(inout) :: ncfile
-      character (len=2), intent(in) :: suffix
+      character (len=*), intent(inout) :: ncfile
+      character (len=*), intent(in) :: suffix
       integer (kind=int_kind), intent(in) :: ns
 
       integer (kind=int_kind) :: iyear, imonth, iday, isec
-      character (len=1) :: cstream
+      integer (kind=int_kind) :: n
+      character (len=char_len) :: cstream
+      character (len=char_len_long), save :: ncfile_last(max_nstrm) = 'UnDefineD'
       character(len=*), parameter :: subname = '(construct_filename)'
 
         iyear = myear
         imonth = mmonth
         iday = mday
         isec = int(msec - dt,int_kind)
+        cstream = ''
+        if (hist_suffix(ns) /= 'x') cstream = hist_suffix(ns)
 
         ! construct filename
         if (write_ic) then
@@ -764,9 +796,6 @@
                  iday = iday - 1
               endif
            endif
-
-           cstream = ''
-           if (hist_suffix(ns) /= 'x') cstream = hist_suffix(ns)
 
            if (hist_avg(ns)) then    ! write averaged data
               if (histfreq(ns) == '1' .and. histfreq_n(ns) == 1)  then ! timestep
@@ -793,15 +822,44 @@
                  write(ncfile,'(a,a,i4.4,a,a)') &
                        history_file(1:lenstr(history_file))//trim(cstream),'.', &
                        iyear,'.',trim(suffix)
+              elseif (histfreq(ns) == 'g') then
+                 write(ncfile,'(a,a,a,a)')  &
+                       history_file(1:lenstr(history_file)),'_grid', &
+                       '.',trim(suffix)
               endif
 
            else                     ! instantaneous
-              write(ncfile,'(a,a,i4.4,a,i2.2,a,i2.2,a,i5.5,a,a)')  &
-                    history_file(1:lenstr(history_file))//trim(cstream),'_inst.', &
-                    iyear,'-',imonth,'-',iday,'-',msec,'.',trim(suffix)
+              if (histfreq(ns) == 'g') then
+                 write(ncfile,'(a,a,a,a)')  &
+                       history_file(1:lenstr(history_file)),'_grid', &
+                       '.',trim(suffix)
+              else
+                 write(ncfile,'(a,a,i4.4,a,i2.2,a,i2.2,a,i5.5,a,a)')  &
+                       history_file(1:lenstr(history_file))//trim(cstream),'_inst.', &
+                       iyear,'-',imonth,'-',iday,'-',msec,'.',trim(suffix)
+              endif
            endif
 
         endif
+
+        ! Check whether the filename is already in use.
+        ! Same filename in multiple history streams leads to files being overwritten (not good).
+        ! The current filename convention means we just have to check latest filename,
+        ! not all filenames ever generated because of use of current model date/time in filename.
+
+        ! write(nu_diag,'(2a,i2,1x,a)') subname, 'debug ncfile= ',ns,trim(ncfile)
+        do n = 1,max_nstrm
+           ! write(nu_diag,'(2a,i2,1x,a)') subname, 'debug nfile_last= ',n,trim(ncfile_last(n))
+           if (ncfile == ncfile_last(n)) then
+              write(nu_diag,*) subname,' history stream = ',ns
+              write(nu_diag,*) subname,' history filename = ',trim(ncfile)
+              write(nu_diag,*) subname,' filename in use for stream ',n
+              write(nu_diag,*) subname,' filename for stream ',trim(ncfile_last(n))
+              write(nu_diag,*) subname,' Use namelist hist_suffix so history filenames are unique'
+              call abort_ice(subname//' ERROR: history filename already used for another history stream '//trim(ncfile))
+           endif
+        enddo
+        ncfile_last(ns) = ncfile
 
       end subroutine construct_filename
 
@@ -863,7 +921,7 @@
       if(present(mask_ice_free_points)) l_mask_ice_free_points = mask_ice_free_points
 
       if (histfreq(ns) == 'x') then
-         call abort_ice(subname//'ERROR: define_hist_fields has histfreq x')
+         call abort_ice(subname//' ERROR: define_hist_fields has histfreq x')
       endif
 
       if (ns == 1) id(:) = 0
@@ -873,7 +931,7 @@
          if (vhistfreq(ns1:ns1) == histfreq(ns)) then
 
             if (ns1 > 1 .and. index(vhistfreq(1:ns1-1),'x') /= 0) then
-               call abort_ice(subname//'ERROR: history frequency variable f_' // vname // ' can''t contain ''x'' along with active frequencies')
+               call abort_ice(subname//' ERROR: history frequency variable f_' // vname // ' can''t contain ''x'' along with active frequencies')
             endif
 
             num_avail_hist_fields_tot = num_avail_hist_fields_tot + 1
@@ -903,7 +961,7 @@
                   write(nu_diag,*) subname,' num_avail_hist_fields_tot = ',num_avail_hist_fields_tot
                   write(nu_diag,*) subname,' max_avail_hist_fields     = ',max_avail_hist_fields
                endif
-               call abort_ice(subname//'ERROR: Need in computation of max_avail_hist_fields')
+               call abort_ice(subname//' ERROR: Need in computation of max_avail_hist_fields')
             endif
 
             if (num_avail_hist_fields_tot /= &
@@ -919,7 +977,7 @@
                if (my_task == master_task) then
                   write(nu_diag,*) subname,' num_avail_hist_fields_tot = ',num_avail_hist_fields_tot
                endif
-               call abort_ice(subname//'ERROR: in num_avail_hist_fields')
+               call abort_ice(subname//' ERROR: in num_avail_hist_fields')
             endif
 
             id(ns) = num_avail_hist_fields_tot

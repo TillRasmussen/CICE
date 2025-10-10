@@ -112,7 +112,11 @@
          fswthrun_vdf , & ! vis dif SW through ice to ocean            (W/m^2)
          fswthrun_idr , & ! nir dir SW through ice to ocean            (W/m^2)
          fswthrun_idf , & ! nir dif SW through ice to ocean            (W/m^2)
-         fswintn         ! SW absorbed in ice interior, below surface (W m-2)
+         fswthrun_uvrdr,& ! vis uvr dir SW through ice to ocean        (W/m^2)
+         fswthrun_uvrdf,& ! vis uvr dif SW through ice to ocean        (W/m^2)
+         fswthrun_pardr,& ! vis par dir SW through ice to ocean        (W/m^2)
+         fswthrun_pardf,& ! vis par dif SW through ice to ocean        (W/m^2)
+         fswintn          ! SW absorbed in ice interior, below surface (W m-2)
 
       real (kind=dbl_kind), dimension (:,:,:,:,:), allocatable, public :: &
          fswpenln        ! visible SW entering ice layers (W m-2)
@@ -229,12 +233,8 @@
          bgc_data_dir   ! directory for biogeochemistry data
 
       real (kind=dbl_kind), dimension(:), allocatable, public :: &
-         R_C2N_DON      ! carbon to nitrogen mole ratio of DON pool
-
-      real (kind=dbl_kind), dimension(:), allocatable, public :: &
-         R_C2N     ,      & ! algal C to N (mole/mole)
-         R_chl2N   ,      & ! 3 algal chlorophyll to N (mg/mmol)
-         R_Si2N             ! silica to nitrogen mole ratio for algal groups
+         R_chl2N,       &  ! 3 algal chlorophyll to N (mg/mmol)
+         R_C2N             ! algal C to N (mole/mole)
 
       ! floe size distribution
       real(kind=dbl_kind), dimension(:), allocatable, public ::  &
@@ -324,6 +324,10 @@
          fswthrun_vdf  (nx_block,ny_block,ncat,max_blocks), & ! vis dif SW through ice to ocean            (W/m^2)
          fswthrun_idr  (nx_block,ny_block,ncat,max_blocks), & ! nir dir SW through ice to ocean            (W/m^2)
          fswthrun_idf  (nx_block,ny_block,ncat,max_blocks), & ! nir dif SW through ice to ocean            (W/m^2)
+         fswthrun_uvrdr(nx_block,ny_block,ncat,max_blocks), & ! vis uvr dir SW uhrough ice to ocean        (W/m^2)
+         fswthrun_uvrdf(nx_block,ny_block,ncat,max_blocks), & ! vis uvr dif SW through ice to ocean        (W/m^2)
+         fswthrun_pardr(nx_block,ny_block,ncat,max_blocks), & ! vis par dir SW through ice to ocean        (W/m^2)
+         fswthrun_pardf(nx_block,ny_block,ncat,max_blocks), & ! vis par dif SW through ice to ocean        (W/m^2)
          fswintn      (nx_block,ny_block,ncat,max_blocks), & ! SW absorbed in ice interior, below surface (W m-2)
          first_ice_real                                    &
                       (nx_block,ny_block,ncat,max_blocks), & ! .true. = c1, .false. = c0

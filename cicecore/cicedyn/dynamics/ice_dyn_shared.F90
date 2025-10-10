@@ -11,7 +11,7 @@
 
       use ice_kinds_mod
       use ice_communicate, only: my_task, master_task, get_num_procs
-      use ice_constants, only: c0, c1, c2, c3, c4, c6
+      use ice_constants, only: c0, c1, c2, c3, c4, c6, c1p5
       use ice_constants, only: omega, spval_dbl, p01, p001, p5
       use ice_blocks, only: nx_block, ny_block
       use ice_domain_size, only: max_blocks
@@ -51,6 +51,8 @@
                         ! shared_mem_1d = 1d without mpi call and refactorization to 1d
 
       real (kind=dbl_kind), public :: &
+         dyn_area_min,& ! minimum ice area concentration to activate dynamics
+         dyn_mass_min,& ! minimum ice mass to activate dynamics (kg/m^2)
          elasticDamp    ! coefficient for calculating the parameter E, elastic damping parameter
 
       ! other EVP parameters
@@ -64,9 +66,7 @@
       real (kind=dbl_kind), parameter, public :: &
          u0    = 5e-5_dbl_kind, & ! residual velocity for seabed stress (m/s)
          cosw  = c1           , & ! cos(ocean turning angle)  ! turning angle = 0
-         sinw  = c0           , & ! sin(ocean turning angle)  ! turning angle = 0
-         a_min = p001         , & ! minimum ice area
-         m_min = p01              ! minimum ice mass (kg/m^2)
+         sinw  = c0               ! sin(ocean turning angle)  ! turning angle = 0
 
       real (kind=dbl_kind), public :: &
          revp        , & ! 0 for classic EVP, 1 for revised EVP
@@ -118,6 +118,14 @@
 
       real (kind=dbl_kind), allocatable, public :: &
          DminTarea(:,:,:)    ! deltamin * tarea (m^2/s)
+
+      real (kind=dbl_kind), dimension (:,:,:), allocatable, public :: &
+         cyp    , & ! 1.5*HTE(i,j)-0.5*HTW(i,j) = 1.5*HTE(i,j)-0.5*HTE(i-1,j)
+         cxp    , & ! 1.5*HTN(i,j)-0.5*HTS(i,j) = 1.5*HTN(i,j)-0.5*HTN(i,j-1)
+         cym    , & ! 0.5*HTE(i,j)-1.5*HTW(i,j) = 0.5*HTE(i,j)-1.5*HTE(i-1,j)
+         cxm    , & ! 0.5*HTN(i,j)-1.5*HTS(i,j) = 0.5*HTN(i,j)-1.5*HTN(i,j-1)
+         dxhy   , & ! 0.5*(HTE(i,j) - HTW(i,j)) = 0.5*(HTE(i,j) - HTE(i-1,j))
+         dyhx       ! 0.5*(HTN(i,j) - HTS(i,j)) = 0.5*(HTN(i,j) - HTN(i,j-1))
 
       ! ice isotropic tensile strength parameter
       real (kind=dbl_kind), public :: &
@@ -192,6 +200,22 @@
          stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
 
+      allocate( &
+         cyp(nx_block,ny_block,max_blocks), & ! 1.5*HTE - 0.5*HTW
+         cxp(nx_block,ny_block,max_blocks), & ! 1.5*HTN - 0.5*HTS
+         cym(nx_block,ny_block,max_blocks), & ! 0.5*HTE - 1.5*HTW
+         cxm(nx_block,ny_block,max_blocks), & ! 0.5*HTN - 1.5*HTS
+         stat=ierr)
+      if (ierr/=0) call abort_ice(subname//': Out of memory')
+
+      if (grid_ice == 'B' .and. evp_algorithm == "standard_2d") then
+         allocate( &
+            dxhy(nx_block,ny_block,max_blocks), & ! 0.5*(HTE - HTW)
+            dyhx(nx_block,ny_block,max_blocks), & ! 0.5*(HTN - HTS)
+            stat=ierr)
+         if (ierr/=0) call abort_ice(subname//': Out of memory')
+      endif
+
       if (grid_ice == 'CD' .or. grid_ice == 'C') then
          allocate( &
             uvelE_init (nx_block,ny_block,max_blocks), & ! x-component of velocity (m/s), beginning of timestep
@@ -214,8 +238,10 @@
 
       subroutine init_dyn_shared (dt)
 
-      use ice_blocks, only: nx_block, ny_block
-      use ice_domain, only: nblocks, halo_dynbundle
+      use ice_blocks, only: block, get_block
+      use ice_boundary, only: ice_halo, ice_haloUpdate
+      use ice_domain, only: nblocks, halo_dynbundle, blocks_ice, halo_info, &
+          ns_boundary_type
       use ice_domain_size, only: max_blocks
       use ice_flux, only: &
           stressp_1, stressp_2, stressp_3, stressp_4, &
@@ -224,7 +250,8 @@
           stresspT, stressmT, stress12T, &
           stresspU, stressmU, stress12U
       use ice_state, only: uvel, vvel, uvelE, vvelE, uvelN, vvelN
-      use ice_grid, only: ULAT, NLAT, ELAT, tarea
+      use ice_grid, only: ULAT, NLAT, ELAT, tarea, HTE, HTN
+      use ice_constants, only: field_loc_center, field_type_vector
 
       real (kind=dbl_kind), intent(in) :: &
          dt      ! time step
@@ -232,11 +259,22 @@
       ! local variables
 
       integer (kind=int_kind) :: &
-         i, j  , &  ! indices
-         nprocs, &  ! number of processors
-         iblk       ! block index
+         i, j  ,             & ! indices
+         ilo, ihi, jlo, jhi, & !min and max index for interior of blocks
+         nprocs,             & ! number of processors
+         iblk                  ! block index
+
+      type (block) :: &
+         this_block   ! block information for current block
 
       character(len=*), parameter :: subname = '(init_dyn_shared)'
+
+      ! checks
+      if (kdyn == 1 .and. evp_algorithm == 'shared_mem_1d' .and. &
+          (ns_boundary_type == 'tripole' .or. ns_boundary_type == 'tripoleT')) then
+         call abort_ice(subname//' ERROR: evp_alg shared mem 1d not supported with tripole', &
+            file=__FILE__, line=__LINE__)
+      endif
 
       call set_evp_parameters (dt)
       ! allocate dyn shared (init_uvel,init_vvel)
@@ -332,6 +370,48 @@
       enddo                     ! j
       enddo                     ! iblk
       !$OMP END PARALLEL DO
+
+      if (grid_ice == 'B' .and. evp_algorithm == "standard_2d") then
+         do iblk = 1, nblocks
+            this_block = get_block(blocks_ice(iblk),iblk)
+            ilo = this_block%ilo
+            ihi = this_block%ihi
+            jlo = this_block%jlo
+            jhi = this_block%jhi
+
+            do j = jlo, jhi
+            do i = ilo, ihi
+               dxhy(i,j,iblk) = p5*(HTE(i,j,iblk) - HTE(i-1,j,iblk))
+               dyhx(i,j,iblk) = p5*(HTN(i,j,iblk) - HTN(i,j-1,iblk))
+            enddo
+            enddo
+         enddo
+
+         call ice_HaloUpdate (dxhy,               halo_info, &
+                              field_loc_center,   field_type_vector, &
+                              fillValue=c1)
+         call ice_HaloUpdate (dyhx,               halo_info, &
+                              field_loc_center,   field_type_vector, &
+                              fillValue=c1)
+
+     endif
+
+     do iblk = 1, nblocks
+        this_block = get_block(blocks_ice(iblk),iblk)
+        ilo = this_block%ilo
+        ihi = this_block%ihi
+        jlo = this_block%jlo
+        jhi = this_block%jhi
+        do j = jlo, jhi+1
+        do i = ilo, ihi+1
+           cyp(i,j,iblk) = (c1p5*HTE(i,j,iblk) - p5*HTE(i-1,j,iblk))
+           cxp(i,j,iblk) = (c1p5*HTN(i,j,iblk) - p5*HTN(i,j-1,iblk))
+            ! match order of operations in cyp, cxp for tripole grids
+           cym(i,j,iblk) = -(c1p5*HTE(i-1,j,iblk) - p5*HTE(i,j,iblk))
+           cxm(i,j,iblk) = -(c1p5*HTN(i,j-1,iblk) - p5*HTN(i,j,iblk))
+        enddo
+        enddo
+     enddo
 
   end subroutine init_dyn_shared
 
@@ -445,8 +525,8 @@
          !-----------------------------------------------------------------
          ! ice extent mask (T-cells)
          !-----------------------------------------------------------------
-         tmphm(i,j) = Tmask(i,j) .and. (aice (i,j) > a_min) &
-                                 .and. (Tmass(i,j) > m_min)
+         tmphm(i,j) = Tmask(i,j) .and. (aice (i,j) > dyn_area_min) &
+                                 .and. (Tmass(i,j) > dyn_mass_min)
 
          !-----------------------------------------------------------------
          ! augmented mask (land + open ocean)
@@ -656,8 +736,8 @@
       do i = ilo, ihi
          iceXmask_old(i,j) = iceXmask(i,j) ! save
          ! ice extent mask (U-cells)
-         iceXmask(i,j) = (Xmask(i,j)) .and. (aiX  (i,j) > a_min) &
-                                      .and. (Xmass(i,j) > m_min)
+         iceXmask(i,j) = (Xmask(i,j)) .and. (aiX  (i,j) > dyn_area_min) &
+                                      .and. (Xmass(i,j) > dyn_mass_min)
 
          if (iceXmask(i,j)) then
             icellX = icellX + 1
@@ -1683,9 +1763,10 @@
                                indxTi,     indxTj,     &
                                uvel,       vvel,       &
                                dxT,        dyT,        &
+                               dxU,        dyU,        &
                                cxp,        cyp,        &
                                cxm,        cym,        &
-                               tarear,                 &
+                               tarear,     vort,       &
                                shear,      divu,       &
                                rdg_conv,   rdg_shear )
 
@@ -1704,6 +1785,8 @@
          vvel     , & ! y-component of velocity (m/s)
          dxT      , & ! width of T-cell through the middle (m)
          dyT      , & ! height of T-cell through the middle (m)
+         dxU      , & ! width of U-cell through the middle (m)
+         dyU      , & ! height of U-cell through the middle (m)
          cyp      , & ! 1.5*HTE - 0.5*HTW
          cxp      , & ! 1.5*HTN - 0.5*HTS
          cym      , & ! 0.5*HTE - 1.5*HTW
@@ -1711,6 +1794,7 @@
          tarear       ! 1/tarea
 
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(inout) :: &
+         vort     , & ! vorticity (1/s)
          shear    , & ! strain rate II component (1/s)
          divu     , & ! strain rate I component, velocity divergence (1/s)
          rdg_conv , & ! convergence term for ridging (1/s)
@@ -1727,6 +1811,9 @@
         shearne, shearnw, shearse, shearsw        , & ! shearing
         Deltane, Deltanw, Deltase, Deltasw        , & ! Delta
         tmp                                           ! useful combination
+
+      real (kind=dbl_kind) :: &                       ! at edges for vorticity calc :
+         dvdxn, dvdxs, dudye, dudyw                   ! dvdx and dudy terms on edges
 
       character(len=*), parameter :: subname = '(deformations)'
 
@@ -1766,6 +1853,13 @@
                       (tensionne + tensionnw + tensionse + tensionsw)**2 + &
                       (shearne   + shearnw   + shearse   + shearsw  )**2)
 
+         ! vorticity
+         dvdxn = dyU(i,j)*vvel(i,j) - dyU(i-1,j)*vvel(i-1,j)
+         dvdxs = dyU(i,j-1)*vvel(i,j-1) - dyU(i-1,j-1)*vvel(i-1,j-1)
+         dudye = dxU(i,j)*uvel(i,j) - dxU(i,j-1)*uvel(i,j-1)
+         dudyw = dxU(i-1,j)*uvel(i-1,j) - dxU(i-1,j-1)*uvel(i-1,j-1)
+         vort(i,j) = p5*tarear(i,j)*(dvdxn + dvdxs - dudye - dudyw)
+
       enddo                     ! ij
 
       end subroutine deformations
@@ -1783,7 +1877,7 @@
                                    uvelN,      vvelN,      &
                                    dxN,        dyE,        &
                                    dxT,        dyT,        &
-                                   tarear,                 &
+                                   tarear,     vort,       &
                                    shear,      divu,       &
                                    rdg_conv,   rdg_shear )
 
@@ -1809,6 +1903,7 @@
          tarear       ! 1/tarea
 
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(inout) :: &
+         vort     , & ! vorticity (1/s)
          shear    , & ! strain rate II component (1/s)
          divu     , & ! strain rate I component, velocity divergence (1/s)
          rdg_conv , & ! convergence term for ridging (1/s)
@@ -1860,6 +1955,9 @@
          ! diagnostic only
          ! shear = sqrt(tension**2 + shearing**2)
          shear(i,j) = tarear(i,j)*sqrt( tensionT(i,j)**2 + shearT(i,j)**2 )
+         ! vorticity
+         vort (i,j) = tarear(i,j)*( ( dyE(i,j)*vvelE(i,j) - dyE(i-1,j)*vvelE(i-1,j) ) &
+                                  - ( dxN(i,j)*uvelN(i,j) - dxN(i,j-1)*uvelN(i,j-1)) )
 
       enddo                     ! ij
 
@@ -1880,7 +1978,7 @@
                                 dxN,        dyE,        &
                                 dxT,        dyT,        &
                                 tarear,     uarea,      &
-                                shearU,                 &
+                                shearU,     vort,       &
                                 shear,      divu,       &
                                 rdg_conv,   rdg_shear )
 
@@ -1908,6 +2006,7 @@
          shearU       ! shearU
 
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(inout) :: &
+         vort     , & ! vorticity (1/s)
          shear    , & ! strain rate II component (1/s)
          divu     , & ! strain rate I component, velocity divergence (1/s)
          rdg_conv , & ! convergence term for ridging (1/s)
@@ -1971,6 +2070,9 @@
          ! diagnostic only...maybe we dont want to use shearTsqr here????
          ! shear = sqrt(tension**2 + shearing**2)
          shear(i,j) = tarear(i,j)*sqrt( tensionT(i,j)**2 + shearT(i,j)**2 )
+         ! vorticity
+         vort (i,j) = tarear(i,j)*( ( dyE(i,j)*vvelE(i,j) - dyE(i-1,j)*vvelE(i-1,j) ) &
+                                  - ( dxN(i,j)*uvelN(i,j) - dxN(i,j-1)*uvelN(i,j-1)) )
 
       enddo                     ! ij
 

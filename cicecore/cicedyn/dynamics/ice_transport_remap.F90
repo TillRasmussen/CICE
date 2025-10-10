@@ -13,6 +13,12 @@
 !  transport using incremental remapping, Mon. Wea. Rev., 132,
 !  1341-1354.
 !
+! Lemieux, J.-F., Lipscomb, W. H., Craig, A., Bailey, D. A.,
+! Hunke, E. C., Blain, P., Rasmussen, T. A. S., Bentsen, M.,
+! Dupont, F., Hebert, D., and Allard, R., 2024: CICE on a
+! C-grid: new momentum, stress, and transport schemes for CICEv6.5,
+! Geosci. Model Dev., 17, 6703-6724.
+!
 ! authors William H. Lipscomb, LANL
 !         John Baumgardner, LANL
 !
@@ -25,6 +31,8 @@
 !           can be specified (following an idea of Mats Bentsen)
 ! 2010: ECH removed unnecessary grid arrays and optional arguments from
 !       horizontal_remap
+! 2023: TAR, DMI Remove commented code and unnecessary arrays
+! 2024: JFL and WHL improved robustness of Bentsen's approach for area flux.
 
       module ice_transport_remap
 
@@ -59,9 +67,9 @@
          p52083 = 25._dbl_kind/48._dbl_kind
 
       logical :: &
-         l_fixed_area ! if true, prescribe area flux across each edge
-                      ! if false, area flux is determined internally
-                      ! and is passed out
+         l_edge_flux_adj ! if true, prescribe area flux across each edge
+                         ! if false, area flux is determined internally
+                         ! and is passed out
 
       logical (kind=log_kind), parameter :: bugcheck = .false.
 
@@ -238,12 +246,13 @@
 ! field implied by the remapping was, in general, different from the
 ! value of del*u computed in the dynamics.  For energetic consistency
 ! (in CICE as well as in layered ocean models such as HYPOP),
-! these two values should agree.  This can be ensured by setting
-! l_fixed_area = T and specifying the area transported across each grid
-! cell edge in the arrays edgearea_e and edgearea_n.  The departure
-! regions are then tweaked, following an idea by Mats Bentsen, such
-! that they have the desired area.  If l_fixed_area = F, these regions
-! are not tweaked, and the edgearea arrays are output variables.
+! these two values should agree.  This can be ensured by using the
+! edge flux adjustment (EFA) method by setting l_edge_flux_adj = T.
+! The EFA method specifies the area transported across each grid cell
+! edge in the arrays edgearea_e and edgearea_n.  The departure regions
+! are then tweaked, following an idea by Mats Bentsen, such that they
+! have the desired area.  If l_edge_flux_adj = F, these regions are
+! not tweaked, and the edgearea arrays are output variables.
 !
 !=======================================================================
 
@@ -253,73 +262,36 @@
 !
 ! Grid quantities used by the remapping transport scheme
 !
-! Note:  the arrays xyav, xxxav, etc are not needed for rectangular grids
-! but may be needed in the future for other nonuniform grids.  They have
-! been commented out here to save memory and flops.
+! Note: Arrays needed for nonuniform grids has been deleted.
+!       They can be found in version 6.5 and earlier
 !
 ! author William H. Lipscomb, LANL
 
       subroutine init_remap
 
-      use ice_domain, only: nblocks
-      use ice_grid, only: xav, yav, xxav, yyav
-!                          dxT, dyT, xyav, &
-!                          xxxav, xxyav, xyyav, yyyav
-
-      integer (kind=int_kind) ::     &
-        i, j, iblk     ! standard indices
-
       character(len=*), parameter :: subname = '(init_remap)'
 
-      ! Compute grid cell average geometric quantities on the scaled
-      ! rectangular grid with dx = 1, dy = 1.
-      !
-      ! Note: On a rectangular grid, the integral of any odd function
-      !       of x or y = 0.
-
-      !$OMP PARALLEL DO PRIVATE(iblk,i,j) SCHEDULE(runtime)
-      do iblk = 1, nblocks
-         do j = 1, ny_block
-         do i = 1, nx_block
-            xav(i,j,iblk) = c0
-            yav(i,j,iblk) = c0
-!!!            These formulas would be used on a rectangular grid
-!!!            with dimensions (dxT, dyT):
-!!!            xxav(i,j,iblk) = dxT(i,j,iblk)**2 / c12
-!!!            yyav(i,j,iblk) = dyT(i,j,iblk)**2 / c12
-            xxav(i,j,iblk) = c1/c12
-            yyav(i,j,iblk) = c1/c12
-!            xyav(i,j,iblk) = c0
-!            xxxav(i,j,iblk) = c0
-!            xxyav(i,j,iblk) = c0
-!            xyyav(i,j,iblk) = c0
-!            yyyav(i,j,iblk) = c0
-         enddo
-         enddo
-      enddo
-      !$OMP END PARALLEL DO
-
       !-------------------------------------------------------------------
-      ! Set logical l_fixed_area depending of the grid type.
+      ! Set logical l_edge_flux_adj depending of the grid type.
       !
-      ! If l_fixed_area is true, the area of each departure region is
-      !  computed in advance (e.g., by taking the divergence of the
-      !  velocity field and passed to locate_triangles.  The departure
-      !  regions are adjusted to obtain the desired area.
+      ! If l_edge_flux_adj is true, the area of each departure region is
+      ! computed in advance (e.g., by taking the divergence of the
+      ! velocity field and passed to locate_triangles.  The departure
+      ! regions are adjusted to obtain the desired area.
       ! If false, edgearea is computed in locate_triangles and passed out.
       !
-      ! l_fixed_area = .false. has been the default approach in CICE. It is
-      ! used like this for the B-grid. However, idealized tests with the
-      ! C-grid have shown that l_fixed_area = .false. leads to a checkerboard
-      ! pattern in prognostic fields (e.g. aice). Using l_fixed_area = .true.
-      ! eliminates the checkerboard pattern in C-grid simulations.
-      !
+      ! l_edge_flux_adj = .false. has been the default approach in CICE.
+      ! It is used like this for the B-grid. However, idealized tests with
+      ! the C-grid have shown that l_edge_flux_adj = .false. leads to a
+      ! checkerboard pattern in prognostic fields such as aice Using
+      ! l_edge_flux_adj = .true. eliminates the checkerboard pattern in
+      ! C-grid simulations (Lemieux et al. 2024).
       !-------------------------------------------------------------------
 
       if (grid_ice == 'CD' .or. grid_ice == 'C') then
-         l_fixed_area = .true.
+         l_edge_flux_adj = .true.
       else
-         l_fixed_area = .false.
+         l_edge_flux_adj = .false.
       endif
 
       end subroutine init_remap
@@ -356,9 +328,7 @@
       use ice_domain, only: nblocks, blocks_ice, halo_info, maskhalo_remap
       use ice_blocks, only: block, get_block, nghost
       use ice_grid, only: HTE, HTN, dxu, dyu,       &
-                          earea, narea, tarear, hm,                  &
-                          xav, yav, xxav, yyav
-!                          xyav, xxxav, xxyav, xyyav, yyyav
+                          earea, narea, tarear, hm
       use ice_timers, only: ice_timer_start, ice_timer_stop, timer_bound
 
       real (kind=dbl_kind), intent(in) ::     &
@@ -519,12 +489,7 @@
                                tracer_type,       depend,            &
                                has_dependents,    icellsnc(0,iblk),  &
                                indxinc(:,0),      indxjnc(:,0),      &
-                               hm     (:,:,iblk), xav   (:,:,iblk),  &
-                               yav    (:,:,iblk), xxav  (:,:,iblk),  &
-                               yyav   (:,:,iblk),                    &
-!                               xyav   (:,:,iblk),                    &
-!                               xxxav  (:,:,iblk), xxyav (:,:,iblk),  &
-!                               xyyav  (:,:,iblk), yyyav (:,:,iblk),  &
+                               hm     (:,:,iblk),                    &
                                mm   (:,:,0,iblk), mc  (:,:,0,iblk),  &
                                mx   (:,:,0,iblk), my  (:,:,0,iblk),  &
                                mmask(:,:,0) )
@@ -539,12 +504,7 @@
                                   tracer_type,         depend,              &
                                   has_dependents,      icellsnc (n,iblk),   &
                                   indxinc  (:,n),      indxjnc(:,n),        &
-                                  hm       (:,:,iblk), xav    (:,:,iblk),   &
-                                  yav      (:,:,iblk), xxav   (:,:,iblk),   &
-                                  yyav     (:,:,iblk),                      &
-!                                  xyav     (:,:,iblk),                      &
-!                                  xxxav    (:,:,iblk), xxyav  (:,:,iblk),   &
-!                                  xyyav    (:,:,iblk), yyyav  (:,:,iblk),   &
+                                  hm       (:,:,iblk),                      &
                                   mm     (:,:,n,iblk),  mc  (:,:,n,iblk),    &
                                   mx     (:,:,n,iblk),  my  (:,:,n,iblk),    &
                                   mmask  (:,:,n),                            &
@@ -666,8 +626,8 @@
          jhi = this_block%jhi
 
          !-------------------------------------------------------------------
-         ! If l_fixed_area is true, compute edgearea by taking the divergence
-         !  of the velocity field.  Otherwise, initialize edgearea.
+         ! If l_edge_flux_adj is true, compute edgearea by taking the
+         ! divergence of the velocity field. Otherwise, initialize edgearea.
          !-------------------------------------------------------------------
 
          do j = 1, ny_block
@@ -677,10 +637,10 @@
          enddo
          enddo
 
-         if (l_fixed_area) then
+         if (l_edge_flux_adj) then
             if (grid_ice == 'CD' .or. grid_ice == 'C') then ! velocities are already on the center
                if (.not.present(uvelE).or..not.present(vvelN)) then
-                  call abort_ice (subname//'ERROR: uvelE,vvelN required with C|CD and l_fixed_area')
+                  call abort_ice (subname//'ERROR: uvelE,vvelN required with C|CD and l_edge_flux_adj')
                endif
 
                do j = jlo, jhi
@@ -1052,12 +1012,7 @@
                                    tracer_type,    depend,     &
                                    has_dependents, icells,     &
                                    indxi,          indxj,      &
-                                   hm,             xav,        &
-                                   yav,            xxav,       &
-                                   yyav,       &
-!                                   xyav,      &
-!                                   xxxav,          xxyav,      &
-!                                   xyyav,          yyyav,      &
+                                   hm,                         &
                                    mm,             mc,         &
                                    mx,             my,         &
                                    mmask,                      &
@@ -1084,11 +1039,7 @@
          indxj
 
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) ::   &
-         hm                , & ! land/boundary mask, thickness (T-cell)
-         xav,  yav         , & ! mean T-cell values of x, y
-         xxav, yyav            ! mean T-cell values of xx, yy
-!         xyav,             , & ! mean T-cell values of xy
-!         xxxav,xxyav,xyyav,yyyav ! mean T-cell values of xxx, xxy, xyy, yyy
+         hm                    ! land/boundary mask, thickness (T-cell)
 
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) ::   &
          mm                , & ! mean value of mass field
@@ -1114,8 +1065,13 @@
          ij                    ! combined i/j horizontal index
 
       real (kind=dbl_kind), dimension (nx_block,ny_block) ::    &
+         xav               , & ! mean T-cell values of x
+         yav               , & ! mean T-cell values of y
          mxav              , & ! x coordinate of center of mass
          myav                  ! y coordinate of center of mass
+
+      real (kind=dbl_kind), parameter :: xxav=c1/c12 ! mean T-cell values of xx
+      real (kind=dbl_kind), parameter :: yyav=c1/c12 ! mean T-cell values of yy
 
       real (kind=dbl_kind), dimension (nx_block,ny_block,ntrace) ::  &
          mtxav             , & ! x coordinate of center of mass*tracer
@@ -1123,7 +1079,7 @@
 
       real (kind=dbl_kind) ::   &
          puny, &
-         w1, w2, w3, w7        ! work variables
+         w2, w3, w7        ! work variables
 
       character(len=*), parameter :: subname = '(construct_fields)'
 
@@ -1177,9 +1133,11 @@
 
       do j = 1, ny_block
       do i = 1, nx_block
-         mc(i,j)  = c0
-         mx(i,j)  = c0
-         my(i,j)  = c0
+         xav(i,j)  = c0
+         yav(i,j)  = c0
+         mc(i,j)   = c0
+         mx(i,j)   = c0
+         my(i,j)   = c0
          mxav(i,j) = c0
          myav(i,j) = c0
       enddo
@@ -1213,11 +1171,7 @@
          j = indxj(ij)
 
          ! mass field at geometric center
-         ! echmod: xav = yav = 0
          mc(i,j) = mm(i,j)
-
-!         mc(i,j) = mm(i,j) - xav(i,j)*mx(i,j)   &
-!                           - yav(i,j)*my(i,j)
 
       enddo                     ! ij
 
@@ -1230,18 +1184,10 @@
             j = indxj(ij)
 
             ! center of mass (mxav,myav) for each cell
-            ! echmod: xyav = 0
-            mxav(i,j) = (mx(i,j)*xxav(i,j)    &
-                       + mc(i,j)*xav (i,j)) / mm(i,j)
-            myav(i,j) = (my(i,j)*yyav(i,j)    &
-                       + mc(i,j)*yav(i,j)) / mm(i,j)
 
-!            mxav(i,j) = (mx(i,j)*xxav(i,j)    &
-!                       + my(i,j)*xyav(i,j)    &
-!                       + mc(i,j)*xav (i,j)) / mm(i,j)
-!            myav(i,j) = (mx(i,j)*xyav(i,j)    &
-!                       + my(i,j)*yyav(i,j)    &
-!                       + mc(i,j)*yav(i,j)) / mm(i,j)
+            mxav(i,j) = mx(i,j)*xxav / mm(i,j)
+            myav(i,j) = my(i,j)*yyav / mm(i,j)
+
          enddo
 
          do nt = 1, ntrace
@@ -1276,30 +1222,14 @@
                      if (tmask(i,j,nt) > puny) then
 
                         ! center of area*tracer
-                        w1 = mc(i,j)*tc(i,j,nt)
                         w2 = mc(i,j)*tx(i,j,nt)   &
                            + mx(i,j)*tc(i,j,nt)
                         w3 = mc(i,j)*ty(i,j,nt)   &
                            + my(i,j)*tc(i,j,nt)
-!                        w4 = mx(i,j)*tx(i,j,nt)
-!                        w5 = mx(i,j)*ty(i,j,nt)   &
-!                           + my(i,j)*tx(i,j,nt)
-!                        w6 = my(i,j)*ty(i,j,nt)
                         w7 = c1 / (mm(i,j)*tm(i,j,nt))
                         ! echmod: grid arrays = 0
-                        mtxav(i,j,nt) = (w1*xav (i,j)  + w2*xxav (i,j))   &
-                                       * w7
-                        mtyav(i,j,nt) = (w1*yav(i,j)   + w3*yyav(i,j)) &
-                                       * w7
-
-!                        mtxav(i,j,nt) = (w1*xav (i,j)  + w2*xxav (i,j)   &
-!                                       + w3*xyav (i,j) + w4*xxxav(i,j)   &
-!                                       + w5*xxyav(i,j) + w6*xyyav(i,j))  &
-!                                       * w7
-!                        mtyav(i,j,nt) = (w1*yav(i,j)   + w2*xyav (i,j)   &
-!                                       + w3*yyav(i,j)  + w4*xxyav(i,j)   &
-!                                       + w5*xyyav(i,j) + w6*yyyav(i,j))  &
-!                                       * w7
+                        mtxav(i,j,nt) = w2*xxav *w7
+                        mtyav(i,j,nt) = w3*yyav * w7
                      endif         ! tmask
 
                   enddo            ! ij
@@ -1342,8 +1272,6 @@
                   j = indxj(ij)
 
                   tc(i,j,nt) = tm(i,j,nt)
-!                  tx(i,j,nt) = c0   ! already initialized to 0.
-!                  ty(i,j,nt) = c0
                enddo               ! ij
 
             endif                  ! tracer_type
@@ -1355,7 +1283,6 @@
       end subroutine construct_fields
 
 !=======================================================================
-!
 ! Compute a limited gradient of the scalar field phi in scaled coordinates.
 ! "Limited" means that we do not create new extrema in phi.  For
 ! instance, field values at the cell corners can neither exceed the
@@ -1379,11 +1306,13 @@
 
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent (in) ::   &
          phi      , & ! input tracer field (mean values in each grid cell)
-         cnx      , & ! x-coordinate of phi relative to geometric center of cell
-         cny      , & ! y-coordinate of phi relative to geometric center of cell
          phimask      ! phimask(i,j) = 1 if phi(i,j) has physical meaning, = 0 otherwise.
                       ! For instance, aice has no physical meaning in land cells,
                       ! and hice no physical meaning where aice = 0.
+
+      real (kind=dbl_kind), dimension (nx_block,ny_block), intent (in) ::   &
+         cnx      , & ! x-coordinate of phi relative to geometric center of cell
+         cny          ! y-coordinate of phi relative to geometric center of cell½
 
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(out) ::   &
          gx       , & ! limited x-direction gradient
@@ -1794,7 +1723,7 @@
          xicl, yicl   , & ! left-hand x-axis intersection point
          xicr, yicr   , & ! right-hand x-axis intersection point
          xdm, ydm     , & ! midpoint of segment connecting DL and DR;
-                          ! shifted if l_fixed_area = T
+                          ! shifted if l_edge_flux_adj = T
          md           , & ! slope of line connecting DL and DR
          mdl          , & ! slope of line connecting DL and DM
          mdr          , & ! slope of line connecting DR and DM
@@ -2119,9 +2048,8 @@
          ! areafact_c or areafac_ce (areafact_c for the other edge) are used
          ! (with shifted indices) to make sure that a flux area on one edge
          ! is consistent with the analogous area on the other edge and to
-         ! ensure that areas add up when using l_fixed_area = T. See PR #849
-         ! for details.
-         !
+         ! ensure that areas add up when using l_edge_flux_adj = T.
+         ! See PR #849 for details.
          !-------------------------------------------------------------------
 
          if (yil > c0 .and. xdl < xcl .and. ydl >= c0) then
@@ -2320,11 +2248,11 @@
          endif
 
          !-------------------------------------------------------------------
-         ! For l_fixed_area = T, shift the midpoint so that the departure
+         ! For l_edge_flux_adj = T, shift the midpoint so that the departure
          ! region has the prescribed area
          !-------------------------------------------------------------------
 
-         if (l_fixed_area) then
+         if (l_edge_flux_adj) then
 
             ! Sum the areas of the left and right triangles.
             ! Note that yp(i,j,1,ng) = 0 for all triangles, so we can
@@ -2454,7 +2382,7 @@
 
             endif   ! ydl*ydr >= c0
 
-         endif  ! l_fixed_area
+         endif  ! l_edge_flux_adj
 
          !-------------------------------------------------------------------
          ! Locate triangles in BC cell (H for both north and east edges)
@@ -2986,8 +2914,8 @@
       !        The fluxes work out correctly in the end.
       !
       ! Also compute the cumulative area transported across each edge.
-      ! If l_fixed_area = T, this area is compared to edgearea as a bug check.
-      ! If l_fixed_area = F, this area is passed as an output array.
+      ! If l_edge_flux_adj = T, this area is compared to edgearea as a bug check.
+      ! If l_edge_flux_adj = F, this area is passed as an output array.
       !-------------------------------------------------------------------
 
       areasum(:,:) = c0
@@ -3019,7 +2947,7 @@
          enddo                  ! ij
       enddo                     ! ng
 
-      if (l_fixed_area) then
+      if (l_edge_flux_adj) then
          if (bugcheck) then   ! set bugcheck = F to speed up code
             do ij = 1, icellsd
                i = indxid(ij)
@@ -3042,13 +2970,13 @@
             enddo
          endif          ! bugcheck
 
-      else            ! l_fixed_area = F
+      else            ! l_edge_flux_adj = F
          do ij = 1, icellsd
             i = indxid(ij)
             j = indxjd(ij)
             edgearea(i,j) = areasum(i,j)
          enddo
-      endif     ! l_fixed_area
+      endif     ! l_edge_flux_adj
 
       !-------------------------------------------------------------------
       ! Transform triangle vertices to a scaled coordinate system centered
@@ -3102,10 +3030,6 @@
                      write(nu_diag,*) ''
                      write(nu_diag,*) 'WARNING: xp =', xp(i,j,nv,ng)
                      write(nu_diag,*) 'm, i, j, ng, nv =', my_task, i, j, ng, nv
-!                     write(nu_diag,*) 'yil,xdl,xcl,ydl=',yil,xdl,xcl,ydl
-!                     write(nu_diag,*) 'yir,xdr,xcr,ydr=',yir,xdr,xcr,ydr
-!                     write(nu_diag,*) 'ydm=',ydm
-!                      stop
                   endif
                   if (abs(yp(i,j,nv,ng)) > p5+puny) then
                      write(nu_diag,*) ''
