@@ -777,17 +777,37 @@
          uee(:,:,:)=uvelE(:,:,:)
          vnn(:,:,:)=vvelN(:,:,:)
       else
-         !$OMP PARALLEL DO PRIVATE(iblk,i,j,ilo,ihi,jlo,jhi,this_block) SCHEDULE(runtime)
-         do iblk = 1, nblocks
-            this_block = get_block(blocks_ice(iblk),iblk)
-            ilo = this_block%ilo
-            ihi = this_block%ihi
-            jlo = this_block%jlo
-            jhi = this_block%jhi
+         ! On C and CD the branch above is natural: uvelE and vvelN ARE
+         ! E- and N-point velocities, defined over the whole array.  On B
+         ! there is no such velocity -- it has to be INTERPOLATED from the
+         ! corner values -- and that interpolation only ran over
+         ! ilo..ihi, jlo..jhi, while ice_HaloExtrapolate below reads
+         ! ilo-nghost..ihi+nghost.  The ghost columns it read had never
+         ! been written.
+         !
+         ! ice_HaloUpdate overwrites most ghosts straight afterwards, so
+         ! the only values that survived were at a true domain boundary,
+         ! where there is no neighbour -- and those were extrapolated from
+         ! whatever was in memory.
+         !
+         ! So interpolate into the ghosts too.  The inputs are there: the
+         ! commented-out halo calls above record that velocities are
+         ! already known for ghost cells.  Only the outermost line each way
+         ! cannot be done -- uee needs uvel one row south, vnn needs vvel
+         ! one column west -- and those keep c0.
+         uee(:,:,:) = c0
+         vnn(:,:,:) = c0
 
-            do j = jlo, jhi
-            do i = ilo, ihi
+         !$OMP PARALLEL DO PRIVATE(iblk,i,j) SCHEDULE(runtime)
+         do iblk = 1, nblocks
+            do j = 2, ny_block          ! uee needs uvel one row south
+            do i = 1, nx_block
                uee(i,j,iblk) = p5*(uvel(i,j,iblk) + uvel(i  ,j-1,iblk))
+            enddo
+            enddo
+
+            do j = 1, ny_block
+            do i = 2, nx_block          ! vnn needs vvel one column west
                vnn(i,j,iblk) = p5*(vvel(i,j,iblk) + vvel(i-1,j  ,iblk))
             enddo
             enddo
