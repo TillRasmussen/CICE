@@ -272,11 +272,31 @@
       ! Only metrics a compressed kernel actually reads are here.  A metric
       ! read at a NEIGHBOUR has to be one of these: reaching it block-wise
       ! would need dynIJ(nbr(is,d)), a second indirection on every access.
+      ! Static geometric skip flag for the remap loops.  Four loops in
+      ! ice_transport_remap run over ilo-nghost+1 .. ihi+nghost-1 rather than
+      ! the physical domain: at nghost = 1 that is the physical cells only,
+      ! with the ghost values filled by a halo exchange afterwards.  Slots
+      ! cover the ghost rim, so a slot loop would compute where the block
+      ! loop deliberately leaves c0.
+      !
+      ! ⚠ Unlike skipT and skipU this is STATIC -- pure block geometry, built
+      ! once here.  It says nothing about where the ice is; a kernel that
+      ! needs both tests both.
+      logical (kind=log_kind), dimension(:), allocatable, public :: &
+         skipRmp     , & ! .true. outside the remap loop range
+         skipEdgeN   , & ! .true. outside the NORTH-edge loop range
+         skipEdgeE   , & ! .true. outside the EAST-edge loop range
+         skipPhys        ! .true. outside the PHYSICAL domain
+
       real (kind=dbl_kind), dimension(:), allocatable, public :: &
          uarear_slot , & ! 1/uarea            B grid, stepu
          tarear_slot , & ! 1/tarea            B grid, deformations
          dxN_slot    , & ! width of N-cell    C/CD, strain_rates_T
          dyE_slot    , & ! height of E-cell   C/CD, strain_rates_T
+         HTN_slot    , & ! length of N edge   remap, departure_points
+         HTE_slot    , & ! length of E edge   remap, departure_points
+         HTNe_slot   , & ! HTN one cell EAST  remap, departure_points
+         HTEn_slot   , & ! HTE one cell NORTH remap, departure_points
          uarea_slot  , & ! U-cell area        C/CD, stressC_T
          tarea_slot  , & ! T-cell area        C/CD, weight for T2US
          earea_slot  , & ! E-cell area        C/CD, weight for E2UA, E2NA
@@ -6424,14 +6444,22 @@
 
       character(len=*), parameter :: subname = '(set_neighbours)'
 
-      di(nbr_W ) = -1 ; dj(nbr_W ) =  0
-      di(nbr_SW) = -1 ; dj(nbr_SW) = -1
-      di(nbr_S ) =  0 ; dj(nbr_S ) = -1
-      di(nbr_E ) = +1 ; dj(nbr_E ) =  0
-      di(nbr_NE) = +1 ; dj(nbr_NE) = +1
-      di(nbr_N ) =  0 ; dj(nbr_N ) = +1
-      di(nbr_NW) = -1 ; dj(nbr_NW) = +1
-      di(nbr_SE) = +1 ; dj(nbr_SE) = -1
+      di(nbr_W ) = -1
+      dj(nbr_W ) =  0
+      di(nbr_SW) = -1
+      dj(nbr_SW) = -1
+      di(nbr_S ) =  0
+      dj(nbr_S ) = -1
+      di(nbr_E ) = +1
+      dj(nbr_E ) =  0
+      di(nbr_NE) = +1
+      dj(nbr_NE) = +1
+      di(nbr_N ) =  0
+      dj(nbr_N ) = +1
+      di(nbr_NW) = -1
+      dj(nbr_NW) = +1
+      di(nbr_SE) = +1
+      dj(nbr_SE) = -1
 
       nbr(:,:) = 0   ! overwritten per stored cell below
 
@@ -6724,6 +6752,8 @@
       ! ------------------------------------------------------------------
       allocate(uarear_slot(dynTot), tarear_slot(dynTot),               &
                dxN_slot(dynTot), dyE_slot(dynTot),                      &
+               HTN_slot(dynTot), HTE_slot(dynTot),                      &
+               HTNe_slot(dynTot), HTEn_slot(dynTot),                    &
                uarea_slot(dynTot), tarea_slot(dynTot),                  &
                earea_slot(dynTot), narea_slot(dynTot), hm_slot(dynTot), &
                earear_slot(dynTot), narear_slot(dynTot), &
@@ -6734,19 +6764,46 @@
                uareaavg_slot(dynTot), wsumN_slot(dynTot),              &
                wsumE_slot(dynTot), wsumNW_slot(dynTot),                &
                wsumSE_slot(dynTot), wsumNE_slot(dynTot),               &
+               skipRmp(dynTot), skipEdgeN(dynTot), skipEdgeE(dynTot),   &
+               skipPhys(dynTot),                                        &
                stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
-      uarear_slot = c0 ; tarear_slot = c0
-      dxN_slot    = c0 ; dyE_slot   = c0
-      uarea_slot  = c0 ; tarea_slot = c0
-      earea_slot  = c0 ; narea_slot = c0 ; hm_slot    = c0
-      earear_slot = c0 ; narear_slot = c0
-      dxU_slot    = c0 ; dyT_slot   = c0
-      dxT_slot    = c0 ; dyU_slot   = c0
-      dxE_slot    = c0 ; dyN_slot   = c0
-      epm_slot    = c0 ; npm_slot   = c0 ; uvm_slot = c0
-      uareaavg_slot = c0 ; wsumN_slot  = c0 ; wsumE_slot  = c0
-      wsumNW_slot   = c0 ; wsumSE_slot = c0 ; wsumNE_slot = c0
+      ! default is SKIP: only slots inside the range below are cleared, so a
+      ! slot that is never reached can never be computed by mistake
+      skipRmp       = .true.
+      skipEdgeN     = .true.
+      skipEdgeE     = .true.
+      skipPhys      = .true.
+      uarear_slot   = c0
+      tarear_slot   = c0
+      dxN_slot      = c0
+      dyE_slot      = c0
+      HTN_slot      = c0
+      HTE_slot      = c0
+      HTNe_slot     = c0
+      HTEn_slot     = c0
+      uarea_slot    = c0
+      tarea_slot    = c0
+      earea_slot    = c0
+      narea_slot    = c0
+      hm_slot       = c0
+      earear_slot   = c0
+      narear_slot   = c0
+      dxU_slot      = c0
+      dyT_slot      = c0
+      dxT_slot      = c0
+      dyU_slot      = c0
+      dxE_slot      = c0
+      dyN_slot      = c0
+      epm_slot      = c0
+      npm_slot      = c0
+      uvm_slot      = c0
+      uareaavg_slot = c0
+      wsumN_slot    = c0
+      wsumE_slot    = c0
+      wsumNW_slot   = c0
+      wsumSE_slot   = c0
+      wsumNE_slot   = c0
 
       do iblk = 1, nblocks
          if (dynCnt(iblk) == 0) cycle
@@ -6756,6 +6813,13 @@
               tarear_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
          call pack_to_slots(dxN   (:,iblk), dynMap(:,iblk), &
               dxN_slot   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         ! departure_points reads these at the E and N neighbours, so they
+         ! have to be slot arrays: reaching them block-wise would need
+         ! dynIJ(nbr(is,d)), a second indirection on every access.
+         call pack_to_slots(HTN   (:,iblk), dynMap(:,iblk), &
+              HTN_slot   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         call pack_to_slots(HTE   (:,iblk), dynMap(:,iblk), &
+              HTE_slot   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
          call pack_to_slots(dyE   (:,iblk), dynMap(:,iblk), &
               dyE_slot   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
          call pack_to_slots(uarea (:,iblk), dynMap(:,iblk), &
@@ -6848,6 +6912,18 @@
             m   = dynMap(ijb,iblk)
             if (m < 1 .or. m > dynCnt(iblk)) cycle
             m = dynOff(iblk) + m
+            ! ⚠ HTN and HTE are edge LENGTHS -- nonzero over land, like the
+            ! areas below.  departure_points compares dpx against HTN one
+            ! cell east, and a neighbour with no slot would hand it c0, so
+            ! every positive dpx would look out of bounds and abort the run.
+            !
+            ! These belong in THIS loop, not the one above: they reach
+            ! FORWARD, and the remap range is ilo-nghost+1..ihi+nghost-1,
+            ! which is 2..nx_block-1 for nghost 1 and 2 alike -- exactly what
+            ! this range covers.
+            HTNe_slot(m) = HTN(ijb+1       ,iblk)
+            HTEn_slot(m) = HTE(ijb+nx_block,iblk)
+
             wsumN_slot (m) = earea(ijb,iblk) + earea(ijb+nx_block,iblk)
             wsumE_slot (m) = narea(ijb,iblk) + narea(ijb+1       ,iblk)
             wsumNW_slot(m) = earea(ijb-1         ,iblk) &
@@ -6862,6 +6938,56 @@
                            + hm(ijb+1         ,iblk)*tarea(ijb+1         ,iblk) &
                            + hm(ijb+nx_block  ,iblk)*tarea(ijb+nx_block  ,iblk) &
                            + hm(ijb+nx_block+1,iblk)*tarea(ijb+nx_block+1,iblk)
+         enddo
+         enddo
+      enddo
+
+      ! The remap loop ranges, in slot form.  Built from block geometry
+      ! alone, so they are valid for the whole run.
+      !
+      ! Four different ranges, which is why there are four masks:
+      !   skipRmp    ilo-nghost+1..ihi+nghost-1  limited_gradient,
+      !                                          departure_points
+      !   skipEdgeN  jlo-1..jhi  x  ilo..ihi     the NORTH edges this block
+      !                                          computes a flux across
+      !   skipEdgeE  jlo..jhi    x  ilo-1..ihi   likewise for EAST edges
+      !   skipPhys   jlo..jhi    x  ilo..ihi     the physical domain proper,
+      !                                          which is what update_fields
+      !                                          steps forward in time
+      !
+      ! The edge ranges are offset by one in opposite directions because a
+      ! north edge belongs to the cell above it and an east edge to the cell
+      ! to its right; locate_triangles builds its icellsd list over exactly
+      ! these.
+      do iblk = 1, nblocks
+         if (dynCnt(iblk) == 0) cycle
+         this_block_x = get_block(blocks_ice(iblk),iblk)
+
+         do j = this_block_x%jlo-nghost+1, this_block_x%jhi+nghost-1
+         do i = this_block_x%ilo-nghost+1, this_block_x%ihi+nghost-1
+            m = dynMap((j-1)*nx_block + i, iblk)
+            if (m >= 1 .and. m <= dynCnt(iblk)) skipRmp(dynOff(iblk)+m) = .false.
+         enddo
+         enddo
+
+         do j = this_block_x%jlo-1, this_block_x%jhi
+         do i = this_block_x%ilo  , this_block_x%ihi
+            m = dynMap((j-1)*nx_block + i, iblk)
+            if (m >= 1 .and. m <= dynCnt(iblk)) skipEdgeN(dynOff(iblk)+m) = .false.
+         enddo
+         enddo
+
+         do j = this_block_x%jlo  , this_block_x%jhi
+         do i = this_block_x%ilo-1, this_block_x%ihi
+            m = dynMap((j-1)*nx_block + i, iblk)
+            if (m >= 1 .and. m <= dynCnt(iblk)) skipEdgeE(dynOff(iblk)+m) = .false.
+         enddo
+         enddo
+
+         do j = this_block_x%jlo, this_block_x%jhi
+         do i = this_block_x%ilo, this_block_x%ihi
+            m = dynMap((j-1)*nx_block + i, iblk)
+            if (m >= 1 .and. m <= dynCnt(iblk)) skipPhys(dynOff(iblk)+m) = .false.
          enddo
          enddo
       enddo

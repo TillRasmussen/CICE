@@ -132,6 +132,7 @@
              ice_HaloUpdate3DR8_compressed, &
              ice_HaloUpdate_stress, &
              ice_HaloExtrapolate, &
+             ice_HaloExtrapolate2DR8_compressed, &
              ice_HaloDestroy
 
    interface ice_HaloUpdate  ! generic interface
@@ -10147,6 +10148,172 @@ contains
    call ice_HaloExtrapolate2DR8(ARRAY_3d, dist, ew_bndy_type, ns_bndy_type)
 
  end subroutine ice_HaloExtrapolate2DR8_flat
+
+!***********************************************************************
+
+ subroutine ice_HaloExtrapolate2DR8_compressed(ARRAY, dist,           &
+                                               ew_bndy_type,          &
+                                               ns_bndy_type, map, off)
+
+!  As ice_HaloExtrapolate2DR8, for an array in the compressed layout:
+!  dimension(dynTot), with cell (i,j) of block iblk at
+!  off(iblk) + map((j-1)*nx_block+i, iblk), and zero meaning no slot.
+!
+!  This is local work, not communication -- it writes a block's own outer
+!  ghost ring from the two cells inboard of it -- so there is no message
+!  passing here and nothing tripole-specific.
+!
+!  ⚠ PRECONDITION.  Where a SOURCE cell has no slot this substitutes c0,
+!  whereas the block form reads whatever the block array holds there.  The
+!  two agree only for a field that is already zero outside mask_any.  That
+!  is true of the velocities this exists for -- uee and vnn are masked to
+!  zero over land -- and is NOT true in general, which is why this is a
+!  separately named routine rather than another arm of the generic
+!  interface.  Do not point it at a grid metric: dxU and friends are
+!  nonzero over land, and they are extrapolated once at setup in ice_grid
+!  while still block-shaped, which is the right place for them.
+
+   use ice_blocks, only: block, nblocks_x, nblocks_y, get_block
+   use ice_constants, only: c0, c2
+   use ice_distribution, only: ice_distributionGetBlockID
+
+   character (char_len) :: &
+       ew_bndy_type,    &! type of domain bndy in each logical
+       ns_bndy_type      !    direction (ew is i, ns is j)
+
+   type (distrb), intent(in) :: &
+      dist                 ! block distribution for array X
+
+   real (dbl_kind), dimension(:), intent(inout) :: &
+      ARRAY          ! array containing distributed field, compressed
+
+   integer (int_kind), dimension(:,:), intent(in) :: &
+      map            ! dynMap: cell -> block-local slot, 0 if none
+
+   integer (int_kind), dimension(:), intent(in) :: &
+      off            ! dynOff: first slot of each block, minus one
+
+!-----------------------------------------------------------------------
+!
+!  local variables
+!
+!-----------------------------------------------------------------------
+
+   integer (int_kind) :: &
+     i,j,n,iblk,ii,jj,   &! dummy loop indices
+     ilo,ihi,jlo,jhi,    &! active block indices
+     m0, m1, m2,         &! slots of the target and its two sources
+     numBlocks,          &! number of local blocks
+     blockID              ! block location
+
+   real (dbl_kind) :: &
+     w1, w2               ! source values, c0 where there is no slot
+
+   type (block) :: &
+     this_block  ! block info for current block
+
+   character(len=*), parameter :: subname = '(ice_HaloExtrapolate2DR8_compressed)'
+
+!-----------------------------------------------------------------------
+!
+!  Linear extrapolation
+!
+!-----------------------------------------------------------------------
+
+   call ice_distributionGet(dist, &
+                            numLocalBlocks = numBlocks)
+
+   do iblk = 1, numBlocks
+      call ice_distributionGetBlockID(dist, iblk, blockID)
+      this_block = get_block(blockID, blockID)
+      ilo = this_block%ilo
+      ihi = this_block%ihi
+      jlo = this_block%jlo
+      jhi = this_block%jhi
+
+      if (this_block%iblock == 1) then              ! west edge
+         if (trim(ew_bndy_type) /= 'cyclic') then
+            do n = 1, nghost
+            ii = ilo - n  ! gridcell to extrapolate to
+            do j = jlo-nghost, jhi+nghost
+               m0 = map((j-1)*nx_block + ii  , iblk)
+               if (m0 < 1) cycle
+               m1 = map((j-1)*nx_block + ii+1, iblk)
+               m2 = map((j-1)*nx_block + ii+2, iblk)
+               w1 = c0
+               if (m1 >= 1) w1 = ARRAY(off(iblk)+m1)
+               w2 = c0
+               if (m2 >= 1) w2 = ARRAY(off(iblk)+m2)
+               ARRAY(off(iblk)+m0) = c2*w1 - w2
+            enddo
+            enddo
+         endif
+      endif
+
+      if (this_block%iblock == nblocks_x) then      ! east edge
+         if (trim(ew_bndy_type) /= 'cyclic') then
+            do n = 1, nghost
+            ii = ihi + n  ! gridcell to extrapolate to
+            do j = jlo-nghost, jhi+nghost
+               m0 = map((j-1)*nx_block + ii  , iblk)
+               if (m0 < 1) cycle
+               m1 = map((j-1)*nx_block + ii-1, iblk)
+               m2 = map((j-1)*nx_block + ii-2, iblk)
+               w1 = c0
+               if (m1 >= 1) w1 = ARRAY(off(iblk)+m1)
+               w2 = c0
+               if (m2 >= 1) w2 = ARRAY(off(iblk)+m2)
+               ARRAY(off(iblk)+m0) = c2*w1 - w2
+            enddo
+            enddo
+         endif
+      endif
+
+      if (this_block%jblock == 1) then              ! south edge
+         if (trim(ns_bndy_type) /= 'cyclic') then
+            do n = 1, nghost
+            jj = jlo - n  ! gridcell to extrapolate to
+            do i = ilo-nghost, ihi+nghost
+               m0 = map((jj-1)*nx_block + i, iblk)
+               if (m0 < 1) cycle
+               m1 = map((jj+1-1)*nx_block + i, iblk)
+               m2 = map((jj+2-1)*nx_block + i, iblk)
+               w1 = c0
+               if (m1 >= 1) w1 = ARRAY(off(iblk)+m1)
+               w2 = c0
+               if (m2 >= 1) w2 = ARRAY(off(iblk)+m2)
+               ARRAY(off(iblk)+m0) = c2*w1 - w2
+            enddo
+            enddo
+         endif
+      endif
+
+      if (this_block%jblock == nblocks_y) then      ! north edge
+         if (trim(ns_bndy_type) /= 'cyclic' .and. &
+             trim(ns_bndy_type) /= 'tripole' .and. &
+             trim(ns_bndy_type) /= 'tripoleT' ) then
+            do n = 1, nghost
+            jj = jhi + n  ! gridcell to extrapolate to
+            do i = ilo-nghost, ihi+nghost
+               m0 = map((jj-1)*nx_block + i, iblk)
+               if (m0 < 1) cycle
+               m1 = map((jj-1-1)*nx_block + i, iblk)
+               m2 = map((jj-2-1)*nx_block + i, iblk)
+               w1 = c0
+               if (m1 >= 1) w1 = ARRAY(off(iblk)+m1)
+               w2 = c0
+               if (m2 >= 1) w2 = ARRAY(off(iblk)+m2)
+               ARRAY(off(iblk)+m0) = c2*w1 - w2
+            enddo
+            enddo
+         endif
+      endif
+
+   enddo ! iblk
+
+!-----------------------------------------------------------------------
+
+ end subroutine ice_HaloExtrapolate2DR8_compressed
 
 !***********************************************************************
 

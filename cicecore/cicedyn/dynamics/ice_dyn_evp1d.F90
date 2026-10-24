@@ -1140,12 +1140,18 @@ module ice_dyn_evp1d
         ! this a cell that loses its ice would keep its stress and resume from
         ! it on re-icing.
         if (skipTcell(iw)) then
-           stressp_1 (iw) = c0 ; stressp_2 (iw) = c0
-           stressp_3 (iw) = c0 ; stressp_4 (iw) = c0
-           stressm_1 (iw) = c0 ; stressm_2 (iw) = c0
-           stressm_3 (iw) = c0 ; stressm_4 (iw) = c0
-           stress12_1(iw) = c0 ; stress12_2(iw) = c0
-           stress12_3(iw) = c0 ; stress12_4(iw) = c0
+           stressp_1 (iw) = c0
+           stressp_2 (iw) = c0
+           stressp_3 (iw) = c0
+           stressp_4 (iw) = c0
+           stressm_1 (iw) = c0
+           stressm_2 (iw) = c0
+           stressm_3 (iw) = c0
+           stressm_4 (iw) = c0
+           stress12_1(iw) = c0
+           stress12_2(iw) = c0
+           stress12_3(iw) = c0
+           stress12_4(iw) = c0
         endif
         ! map
         strength(iw)   = G_strength(i,j)

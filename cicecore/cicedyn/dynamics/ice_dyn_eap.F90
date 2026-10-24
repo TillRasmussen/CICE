@@ -833,8 +833,14 @@
                 a12_3_slot(dynTot), a12_4_slot(dynTot),      &
                 stat=ierr)
       if (ierr/=0) call abort_ice(subname//' ERROR: Out of memory')
-      a11_1_slot = c0 ; a11_2_slot = c0 ; a11_3_slot = c0 ; a11_4_slot = c0
-      a12_1_slot = c0 ; a12_2_slot = c0 ; a12_3_slot = c0 ; a12_4_slot = c0
+      a11_1_slot = c0
+      a11_2_slot = c0
+      a11_3_slot = c0
+      a11_4_slot = c0
+      a12_1_slot = c0
+      a12_2_slot = c0
+      a12_3_slot = c0
+      a12_4_slot = c0
 
 
       !$OMP PARALLEL DO PRIVATE(iblk,i,j) SCHEDULE(runtime)
@@ -1535,8 +1541,14 @@
       ! Initialize
       !-----------------------------------------------------------------
 
-      strtmp1(:) = c0 ; strtmp2(:) = c0 ; strtmp3(:) = c0 ; strtmp4(:) = c0
-      strtmp5(:) = c0 ; strtmp6(:) = c0 ; strtmp7(:) = c0 ; strtmp8(:) = c0
+      strtmp1(:) = c0
+      strtmp2(:) = c0
+      strtmp3(:) = c0
+      strtmp4(:) = c0
+      strtmp5(:) = c0
+      strtmp6(:) = c0
+      strtmp7(:) = c0
+      strtmp8(:) = c0
 
       do is = 1, ncells
          if (skipme(is)) cycle

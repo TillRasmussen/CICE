@@ -313,13 +313,16 @@
                    rheofactE_slot(dynTot), rheofactN_slot(dynTot), &
                    stat=ierr)
          if (ierr/=0) call abort_ice(subname//' ERROR: Out of memory ratio slot')
-         ratiodxN_slot  = c0 ; ratiodyE_slot  = c0
-         ratiodxNr_slot = c0 ; ratiodyEr_slot = c0
+         ratiodxN_slot  = c0
+         ratiodyE_slot  = c0
+         ratiodxNr_slot = c0
+         ratiodyEr_slot = c0
          ! c1, not c0: since #1133 dyn_prep2 fills these only when
          ! free_drift_approx is set, so a c0 default would zero the internal
          ! stress everywhere with the flag off.  Matches rheofactE(:,:,:) = c1
          ! for the block-layout copies.
-         rheofactE_slot = c1 ; rheofactN_slot = c1
+         rheofactE_slot = c1
+         rheofactN_slot = c1
 
          ! constant for the run, so packed once here
          do iblk = 1, nblocks
@@ -2179,8 +2182,14 @@
       ! Initialize
       !-----------------------------------------------------------------
 
-      str1(:) = c0 ; str2(:) = c0 ; str3(:) = c0 ; str4(:) = c0
-      str5(:) = c0 ; str6(:) = c0 ; str7(:) = c0 ; str8(:) = c0
+      str1(:) = c0
+      str2(:) = c0
+      str3(:) = c0
+      str4(:) = c0
+      str5(:) = c0
+      str6(:) = c0
+      str7(:) = c0
+      str8(:) = c0
 
       do is = 1, ncells
          if (skipme(is)) cycle

@@ -197,26 +197,50 @@
                taubx_s(dynTot), tauby_s(dynTot))
       allocate(zetax2_s(dynTot,4), etax2_s(dynTot,4), &
                repprs_s(dynTot,4), stPr_s (dynTot,8))
-      zetax2_s = c0 ; etax2_s = c0 ; repprs_s = c0 ; stPr_s = c0
+      zetax2_s = c0
+      etax2_s = c0
+      repprs_s = c0
+      stPr_s = c0
       allocate(waterx_s(dynTot), watery_s(dynTot), bxfix_s(dynTot), &
                byfix_s (dynTot), bx_s    (dynTot), by_s   (dynTot))
-      waterx_s = c0 ; watery_s = c0 ; bxfix_s = c0
-      byfix_s  = c0 ; bx_s     = c0 ; by_s    = c0
+      waterx_s = c0
+      watery_s = c0
+      bxfix_s = c0
+      byfix_s  = c0
+      bx_s     = c0
+      by_s    = c0
       allocate(mvu_s(dynTot), mvv_s(dynTot), mvAu_s(dynTot), mvAv_s(dynTot), &
                umassdti_s(dynTot), fmU_s(dynTot))
-      mvu_s = c0 ; mvv_s = c0 ; mvAu_s = c0 ; mvAv_s = c0
-      umassdti_s = c0 ; fmU_s = c0
+      mvu_s = c0
+      mvv_s = c0
+      mvAu_s = c0
+      mvAv_s = c0
+      umassdti_s = c0
+      fmU_s = c0
       ! Krylov-side vectors.  solx/soly and diagx/diagy are packed per
       ! nonlinear iteration because arrays_to_vec and the history still read
       ! them in the block layout; Fx/Fy never leave the slot world.
       allocate(Fx_s(dynTot), Fy_s(dynTot), fpx_s(dynTot), fpy_s(dynTot), &
                diagx_s(dynTot), diagy_s(dynTot), solx_s(dynTot), soly_s(dynTot))
-      Fx_s = c0 ; Fy_s = c0 ; fpx_s = c0 ; fpy_s = c0
-      diagx_s = c0 ; diagy_s = c0 ; solx_s = c0 ; soly_s = c0
-      Cw_s   = c0 ; aiU_s  = c0 ; TbU_s = c0
-      uocn_s = c0 ; vocn_s = c0 ; ulin_s = c0
-      vlin_s = c0 ; vrel_s = c0 ; Cb_s  = c0
-      taubx_s = c0 ; tauby_s = c0
+      Fx_s = c0
+      Fy_s = c0
+      fpx_s = c0
+      fpy_s = c0
+      diagx_s = c0
+      diagy_s = c0
+      solx_s = c0
+      soly_s = c0
+      Cw_s   = c0
+      aiU_s  = c0
+      TbU_s = c0
+      uocn_s = c0
+      vocn_s = c0
+      ulin_s = c0
+      vlin_s = c0
+      vrel_s = c0
+      Cb_s  = c0
+      taubx_s = c0
+      tauby_s = c0
 
       end subroutine init_vp
 
@@ -1792,8 +1816,14 @@
       ! Initialize
       !-----------------------------------------------------------------
 
-      str1(:) = c0 ; str2(:) = c0 ; str3(:) = c0 ; str4(:) = c0
-      str5(:) = c0 ; str6(:) = c0 ; str7(:) = c0 ; str8(:) = c0
+      str1(:) = c0
+      str2(:) = c0
+      str3(:) = c0
+      str4(:) = c0
+      str5(:) = c0
+      str6(:) = c0
+      str7(:) = c0
+      str8(:) = c0
 
       do is = 1, ncells
          if (skipT(is)) cycle

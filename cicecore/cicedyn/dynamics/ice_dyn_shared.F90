@@ -538,8 +538,10 @@
       allocate(strintxU_slot(dynTot), strintyU_slot(dynTot), &
                taubxU_slot(dynTot), taubyU_slot(dynTot), stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
-      strintxU_slot = c0 ; strintyU_slot = c0
-      taubxU_slot   = c0 ; taubyU_slot   = c0
+      strintxU_slot = c0
+      strintyU_slot = c0
+      taubxU_slot   = c0
+      taubyU_slot   = c0
 
       ! stress and stress_eap both open by zeroing these, so the initial
       ! value is hygiene only -- but the dead slot must read as zero before
@@ -557,26 +559,43 @@
                stress12_1_slot(dynTot), stress12_2_slot(dynTot), &
                stress12_3_slot(dynTot), stress12_4_slot(dynTot), stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
-      stressp_1_slot  = c0 ; stressp_2_slot  = c0
-      stressp_3_slot  = c0 ; stressp_4_slot  = c0
-      stressm_1_slot  = c0 ; stressm_2_slot  = c0
-      stressm_3_slot  = c0 ; stressm_4_slot  = c0
-      stress12_1_slot = c0 ; stress12_2_slot = c0
-      stress12_3_slot = c0 ; stress12_4_slot = c0
+      stressp_1_slot  = c0
+      stressp_2_slot  = c0
+      stressp_3_slot  = c0
+      stressp_4_slot  = c0
+      stressm_1_slot  = c0
+      stressm_2_slot  = c0
+      stressm_3_slot  = c0
+      stressm_4_slot  = c0
+      stress12_1_slot = c0
+      stress12_2_slot = c0
+      stress12_3_slot = c0
+      stress12_4_slot = c0
 
       allocate(dxhy_slot(dynTot), dyhx_slot(dynTot), cxp_slot(dynTot), &
                cyp_slot(dynTot), cxm_slot(dynTot), cym_slot(dynTot), &
                DminTarea_slot(dynTot), stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
-      dxhy_slot = c0 ; dyhx_slot = c0 ; cxp_slot = c0 ; cyp_slot = c0
-      cxm_slot  = c0 ; cym_slot  = c0 ; DminTarea_slot = c0
+      dxhy_slot = c0
+      dyhx_slot = c0
+      cxp_slot = c0
+      cyp_slot = c0
+      cxm_slot  = c0
+      cym_slot  = c0
+      DminTarea_slot = c0
 
       allocate(str1_slot(dynTot), str2_slot(dynTot), str3_slot(dynTot), &
                str4_slot(dynTot), str5_slot(dynTot), str6_slot(dynTot), &
                str7_slot(dynTot), str8_slot(dynTot), stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
-      str1_slot = c0 ; str2_slot = c0 ; str3_slot = c0 ; str4_slot = c0
-      str5_slot = c0 ; str6_slot = c0 ; str7_slot = c0 ; str8_slot = c0
+      str1_slot = c0
+      str2_slot = c0
+      str3_slot = c0
+      str4_slot = c0
+      str5_slot = c0
+      str6_slot = c0
+      str7_slot = c0
+      str8_slot = c0
 
       allocate(aiU_slot(dynTot), fmU_slot(dynTot), TbU_slot(dynTot), &
                rheofactU_slot(dynTot), stat=ierr)
@@ -713,13 +732,20 @@
          stress12U_slot = c0
          stresspU_slot  = c0
          stressmU_slot  = c0
-         zetax2T_slot   = c0 ; etax2T_slot    = c0
-         zetax2U_slot   = c0 ; etax2U_slot    = c0
-         strength_slot  = c0 ; strengthU_slot = c0
-         strintxE_slot  = c0 ; strintyE_slot  = c0
-         strintxN_slot  = c0 ; strintyN_slot  = c0
-         taubxE_slot    = c0 ; taubyE_slot    = c0
-         taubxN_slot    = c0 ; taubyN_slot    = c0
+         zetax2T_slot   = c0
+         etax2T_slot    = c0
+         zetax2U_slot   = c0
+         etax2U_slot    = c0
+         strength_slot  = c0
+         strengthU_slot = c0
+         strintxE_slot  = c0
+         strintyE_slot  = c0
+         strintxN_slot  = c0
+         strintyN_slot  = c0
+         taubxE_slot    = c0
+         taubyE_slot    = c0
+         taubxN_slot    = c0
+         taubyN_slot    = c0
          aiE_slot = c0
          cdn_ocnE_slot = c0
          uocnE_slot = c0
