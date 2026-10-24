@@ -1065,7 +1065,6 @@
 
          endif
       enddo ! num_avail_hist_fields_2D
-      deallocate(worka2D)
 
       work_g1(:,:) = c0
 
@@ -1078,7 +1077,10 @@
                                  file=__FILE__, line=__LINE__)
             endif
             do k = 1, ncat_hist
-               call gather_global(work_g1, a3Dc(:,:,k,nn,:), master_task, distrb_info)
+               ! a3Dc is compressed; expand_a3Dc is the only place it becomes
+               ! two-dimensional, so gather_global is unchanged.
+               call expand_a3Dc(nn, k, worka2D)
+               call gather_global(work_g1, worka2D, master_task, distrb_info)
                if (my_task == master_task) then
                   status  = nf90_inq_varid(ncid,avail_hist_fields(n)%vname,varid)
                   call ice_check_nc(status, subname// ' ERROR: getting varid for '//avail_hist_fields(n)%vname, &
@@ -1173,7 +1175,8 @@
                                  file=__FILE__, line=__LINE__)
             endif
             do k = 1, nfsd_hist
-               call gather_global(work_g1, a3Df(:,:,k,nn,:), master_task, distrb_info)
+               call expand_hist_plane(a3Df(:,k,nn), worka2D)
+               call gather_global(work_g1, worka2D, master_task, distrb_info)
                if (my_task == master_task) then
                   status  = nf90_put_var(ncid,varid,work_g1, &
                                          start=(/        1,        1,k/), &
@@ -1197,7 +1200,8 @@
             endif
             do ic = 1, ncat_hist
             do k = 1, nzilyr
-               call gather_global(work_g1, a4Di(:,:,k,ic,nn,:), master_task, distrb_info)
+               call expand_hist_plane(a4Di(:,k,ic,nn), worka2D)
+               call gather_global(work_g1, worka2D, master_task, distrb_info)
                if (my_task == master_task) then
                   status  = nf90_put_var(ncid,varid,work_g1, &
                                          start=(/        1,        1,k,ic/), &
@@ -1222,7 +1226,8 @@
             endif
             do ic = 1, ncat_hist
             do k = 1, nzslyr
-               call gather_global(work_g1, a4Ds(:,:,k,ic,nn,:), master_task, distrb_info)
+               call expand_hist_plane(a4Ds(:,k,ic,nn), worka2D)
+               call gather_global(work_g1, worka2D, master_task, distrb_info)
                if (my_task == master_task) then
                   status  = nf90_put_var(ncid,varid,work_g1, &
                                          start=(/        1,        1,k,ic/), &
@@ -1245,7 +1250,8 @@
             endif
             do ic = 1, ncat_hist
             do k = 1, nfsd_hist
-               call gather_global(work_g1, a4Df(:,:,k,ic,nn,:), master_task, distrb_info)
+               call expand_hist_plane(a4Df(:,k,ic,nn), worka2D)
+               call gather_global(work_g1, worka2D, master_task, distrb_info)
                if (my_task == master_task) then
                   status  = nf90_put_var(ncid,varid,work_g1, &
                                          start=(/        1,        1,k,ic/), &
@@ -1257,6 +1263,7 @@
             enddo ! ic
          endif
       enddo ! num_avail_hist_fields_4Df
+      deallocate(worka2D)
 
       deallocate(work_g1)
 
@@ -1429,7 +1436,6 @@
                   endif
                endif
             enddo ! num_avail_hist_fields_2D
-            deallocate(worka2D)
 
             do n = n2D + 1, n3Dccum
                nn = n - n2D
@@ -1449,8 +1455,11 @@
                         endif
                         call broadcast_scalar(status,master_task)
                         if (status == nf90_noerr) then
-                           call scatter_global(a3Dc(:,:,k,nn,:), work_g1, master_task, distrb_info, &
+                           ! the scatter lands in the block layout; compress_a3Dc puts
+                           ! it back into the slots
+                           call scatter_global(worka2D, work_g1, master_task, distrb_info, &
                                                field_loc_noupdate, field_type_noupdate)
+                           call compress_a3Dc(nn, k, worka2D)
                         endif
                      enddo ! k
                   endif ! varid
@@ -1572,8 +1581,9 @@
                         endif
                         call broadcast_scalar(status,master_task)
                         if (status == nf90_noerr) then
-                           call scatter_global(a3Df(:,:,k,nn,:), work_g1, master_task, distrb_info, &
+                           call scatter_global(worka2D, work_g1, master_task, distrb_info, &
                                                field_loc_noupdate, field_type_noupdate)
+                           call compress_hist_plane(worka2D, a3Df(:,k,nn))
                         endif
                      enddo ! k
                   endif ! varid
@@ -1604,8 +1614,9 @@
                         endif
                         call broadcast_scalar(status,master_task)
                         if (status == nf90_noerr) then
-                           call scatter_global(a4Di(:,:,k,ic,nn,:), work_g1, master_task, distrb_info, &
+                           call scatter_global(worka2D, work_g1, master_task, distrb_info, &
                                                field_loc_noupdate, field_type_noupdate)
+                           call compress_hist_plane(worka2D, a4Di(:,k,ic,nn))
                         endif
                      enddo ! k
                      enddo ! ic
@@ -1637,8 +1648,9 @@
                         endif
                         call broadcast_scalar(status,master_task)
                         if (status == nf90_noerr) then
-                           call scatter_global(a4Ds(:,:,k,ic,nn,:), work_g1, master_task, distrb_info, &
+                           call scatter_global(worka2D, work_g1, master_task, distrb_info, &
                                                field_loc_noupdate, field_type_noupdate)
+                           call compress_hist_plane(worka2D, a4Ds(:,k,ic,nn))
                         endif
                      enddo ! k
                      enddo ! ic
@@ -1668,8 +1680,9 @@
                         endif
                         call broadcast_scalar(status,master_task)
                         if (status == nf90_noerr) then
-                           call scatter_global(a4Df(:,:,k,ic,nn,:), work_g1, master_task, distrb_info, &
+                           call scatter_global(worka2D, work_g1, master_task, distrb_info, &
                                                field_loc_noupdate, field_type_noupdate)
+                           call compress_hist_plane(worka2D, a4Df(:,k,ic,nn))
                         endif
                      enddo ! k
                      enddo ! ic
@@ -1679,6 +1692,7 @@
                   endif
                endif ! histfreq
             enddo ! num_avail_hist_fields_4Df
+            deallocate(worka2D)
 
             deallocate(work_g1)
 

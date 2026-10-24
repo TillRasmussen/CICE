@@ -262,13 +262,17 @@
 
       use ice_arrays_column, only: Cdn_ocn
       use ice_boundary, only: ice_HaloMask, ice_HaloUpdate, &
+          ice_HaloUpdate_stress_compressed, &
           ice_HaloDestroy, ice_HaloUpdate_stress
       use ice_blocks, only: block, get_block, nx_block, ny_block, &
           ns_boundary_type
       use ice_domain, only: blocks_ice, halo_info, maskhalo_dyn
       use ice_domain_size, only: max_blocks
       use ice_dyn_shared, only: deformations, iceTmask, iceUmask, &
-          cxp, cyp, cxm, cym
+          cxp, cyp, cxm, cym, &
+          stressp_1_slot, stressp_2_slot, stressp_3_slot, stressp_4_slot, &
+          stressm_1_slot, stressm_2_slot, stressm_3_slot, stressm_4_slot, &
+          stress12_1_slot, stress12_2_slot, stress12_3_slot, stress12_4_slot
       use ice_flux, only: rdg_conv, rdg_shear, strairxT, strairyT,                    &
           strairxU, strairyU, uocn, vocn, ss_tltx, ss_tlty, fmU,                      &
           strtltxU, strtltyU, strocnxU, strocnyU, strintxU, strintyU, taubxU, taubyU, &
@@ -490,7 +494,7 @@
                          stress12_3(:,iblk), stress12_4(:,iblk),                                                                       &
                          uvel_init (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),   vvel_init (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
                          uvel(:,iblk), vvel(:,iblk),                                                                                   &
-                        dynMap(:,iblk), skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),                                               &
+                        dynMap(:,iblk), dynOff(iblk), skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),                                               &
                         skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),                                                               &
                          TbU_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
 
@@ -636,16 +640,15 @@
                          cxm_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),          &
                          cym_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),          &
                          dynNbr  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:),          &
-                         dynIJ   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),            &
                          zetax2_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),        &
                          etax2_s (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),        &
                          repprs_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),        &
-                         stressp_1 (:,iblk), stressp_2 (:,iblk),                        &
-                         stressp_3 (:,iblk), stressp_4 (:,iblk),                        &
-                         stressm_1 (:,iblk), stressm_2 (:,iblk),                        &
-                         stressm_3 (:,iblk), stressm_4 (:,iblk),                        &
-                         stress12_1(:,iblk), stress12_2(:,iblk),                        &
-                         stress12_3(:,iblk), stress12_4(:,iblk))
+                         stressp_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), stressp_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),                        &
+                         stressp_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), stressp_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),                        &
+                         stressm_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), stressm_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),                        &
+                         stressm_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), stressm_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),                        &
+                         stress12_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), stress12_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),                        &
+                         stress12_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), stress12_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
       enddo ! iblk
       !$OMP END PARALLEL DO
 
@@ -710,63 +713,92 @@
          halomask = 0
          call ice_HaloMask(halo_info_mask, halo_info, halomask)
 
-         call ice_HaloUpdate_stress(stressp_1, stressp_3, halo_info_mask, &
-                              field_loc_center,  field_type_scalar)
-         call ice_HaloUpdate_stress(stressp_3, stressp_1, halo_info_mask, &
-                              field_loc_center,  field_type_scalar)
-         call ice_HaloUpdate_stress(stressp_2, stressp_4, halo_info_mask, &
-                              field_loc_center,  field_type_scalar)
-         call ice_HaloUpdate_stress(stressp_4, stressp_2, halo_info_mask, &
-                              field_loc_center,  field_type_scalar)
+         call ice_HaloUpdate_stress_compressed(stressp_1_slot, stressp_3_slot, halo_info_mask, &
+                              field_loc_center,  field_type_scalar, &
+                              dynMap, dynOff)
+         call ice_HaloUpdate_stress_compressed(stressp_3_slot, stressp_1_slot, halo_info_mask, &
+                              field_loc_center,  field_type_scalar, &
+                              dynMap, dynOff)
+         call ice_HaloUpdate_stress_compressed(stressp_2_slot, stressp_4_slot, halo_info_mask, &
+                              field_loc_center,  field_type_scalar, &
+                              dynMap, dynOff)
+         call ice_HaloUpdate_stress_compressed(stressp_4_slot, stressp_2_slot, halo_info_mask, &
+                              field_loc_center,  field_type_scalar, &
+                              dynMap, dynOff)
 
-         call ice_HaloUpdate_stress(stressm_1, stressm_3, halo_info_mask, &
-                              field_loc_center,  field_type_scalar)
-         call ice_HaloUpdate_stress(stressm_3, stressm_1, halo_info_mask, &
-                              field_loc_center,  field_type_scalar)
-         call ice_HaloUpdate_stress(stressm_2, stressm_4, halo_info_mask, &
-                              field_loc_center,  field_type_scalar)
-         call ice_HaloUpdate_stress(stressm_4, stressm_2, halo_info_mask, &
-                              field_loc_center,  field_type_scalar)
+         call ice_HaloUpdate_stress_compressed(stressm_1_slot, stressm_3_slot, halo_info_mask, &
+                              field_loc_center,  field_type_scalar, &
+                              dynMap, dynOff)
+         call ice_HaloUpdate_stress_compressed(stressm_3_slot, stressm_1_slot, halo_info_mask, &
+                              field_loc_center,  field_type_scalar, &
+                              dynMap, dynOff)
+         call ice_HaloUpdate_stress_compressed(stressm_2_slot, stressm_4_slot, halo_info_mask, &
+                              field_loc_center,  field_type_scalar, &
+                              dynMap, dynOff)
+         call ice_HaloUpdate_stress_compressed(stressm_4_slot, stressm_2_slot, halo_info_mask, &
+                              field_loc_center,  field_type_scalar, &
+                              dynMap, dynOff)
 
-         call ice_HaloUpdate_stress(stress12_1, stress12_3, halo_info_mask, &
-                              field_loc_center,  field_type_scalar)
-         call ice_HaloUpdate_stress(stress12_3, stress12_1, halo_info_mask, &
-                              field_loc_center,  field_type_scalar)
-         call ice_HaloUpdate_stress(stress12_2, stress12_4, halo_info_mask, &
-                              field_loc_center,  field_type_scalar)
-         call ice_HaloUpdate_stress(stress12_4, stress12_2, halo_info_mask, &
-                              field_loc_center,  field_type_scalar)
+         call ice_HaloUpdate_stress_compressed(stress12_1_slot, stress12_3_slot, halo_info_mask, &
+                              field_loc_center,  field_type_scalar, &
+                              dynMap, dynOff)
+         call ice_HaloUpdate_stress_compressed(stress12_3_slot, stress12_1_slot, halo_info_mask, &
+                              field_loc_center,  field_type_scalar, &
+                              dynMap, dynOff)
+         call ice_HaloUpdate_stress_compressed(stress12_2_slot, stress12_4_slot, halo_info_mask, &
+                              field_loc_center,  field_type_scalar, &
+                              dynMap, dynOff)
+         call ice_HaloUpdate_stress_compressed(stress12_4_slot, stress12_2_slot, halo_info_mask, &
+                              field_loc_center,  field_type_scalar, &
+                              dynMap, dynOff)
 
          call ice_HaloDestroy(halo_info_mask)
       else
-         call ice_HaloUpdate_stress(stressp_1, stressp_3, halo_info, &
-                              field_loc_center,  field_type_scalar)
-         call ice_HaloUpdate_stress(stressp_3, stressp_1, halo_info, &
-                              field_loc_center,  field_type_scalar)
-         call ice_HaloUpdate_stress(stressp_2, stressp_4, halo_info, &
-                              field_loc_center,  field_type_scalar)
-         call ice_HaloUpdate_stress(stressp_4, stressp_2, halo_info, &
-                              field_loc_center,  field_type_scalar)
+         call ice_HaloUpdate_stress_compressed(stressp_1_slot, stressp_3_slot, halo_info, &
+                              field_loc_center,  field_type_scalar, &
+                              dynMap, dynOff)
+         call ice_HaloUpdate_stress_compressed(stressp_3_slot, stressp_1_slot, halo_info, &
+                              field_loc_center,  field_type_scalar, &
+                              dynMap, dynOff)
+         call ice_HaloUpdate_stress_compressed(stressp_2_slot, stressp_4_slot, halo_info, &
+                              field_loc_center,  field_type_scalar, &
+                              dynMap, dynOff)
+         call ice_HaloUpdate_stress_compressed(stressp_4_slot, stressp_2_slot, halo_info, &
+                              field_loc_center,  field_type_scalar, &
+                              dynMap, dynOff)
 
-         call ice_HaloUpdate_stress(stressm_1, stressm_3, halo_info, &
-                              field_loc_center,  field_type_scalar)
-         call ice_HaloUpdate_stress(stressm_3, stressm_1, halo_info, &
-                              field_loc_center,  field_type_scalar)
-         call ice_HaloUpdate_stress(stressm_2, stressm_4, halo_info, &
-                              field_loc_center,  field_type_scalar)
-         call ice_HaloUpdate_stress(stressm_4, stressm_2, halo_info, &
-                              field_loc_center,  field_type_scalar)
+         call ice_HaloUpdate_stress_compressed(stressm_1_slot, stressm_3_slot, halo_info, &
+                              field_loc_center,  field_type_scalar, &
+                              dynMap, dynOff)
+         call ice_HaloUpdate_stress_compressed(stressm_3_slot, stressm_1_slot, halo_info, &
+                              field_loc_center,  field_type_scalar, &
+                              dynMap, dynOff)
+         call ice_HaloUpdate_stress_compressed(stressm_2_slot, stressm_4_slot, halo_info, &
+                              field_loc_center,  field_type_scalar, &
+                              dynMap, dynOff)
+         call ice_HaloUpdate_stress_compressed(stressm_4_slot, stressm_2_slot, halo_info, &
+                              field_loc_center,  field_type_scalar, &
+                              dynMap, dynOff)
 
-         call ice_HaloUpdate_stress(stress12_1, stress12_3, halo_info, &
-                              field_loc_center,  field_type_scalar)
-         call ice_HaloUpdate_stress(stress12_3, stress12_1, halo_info, &
-                              field_loc_center,  field_type_scalar)
-         call ice_HaloUpdate_stress(stress12_2, stress12_4, halo_info, &
-                              field_loc_center,  field_type_scalar)
-         call ice_HaloUpdate_stress(stress12_4, stress12_2, halo_info, &
-                              field_loc_center,  field_type_scalar)
+         call ice_HaloUpdate_stress_compressed(stress12_1_slot, stress12_3_slot, halo_info, &
+                              field_loc_center,  field_type_scalar, &
+                              dynMap, dynOff)
+         call ice_HaloUpdate_stress_compressed(stress12_3_slot, stress12_1_slot, halo_info, &
+                              field_loc_center,  field_type_scalar, &
+                              dynMap, dynOff)
+         call ice_HaloUpdate_stress_compressed(stress12_2_slot, stress12_4_slot, halo_info, &
+                              field_loc_center,  field_type_scalar, &
+                              dynMap, dynOff)
+         call ice_HaloUpdate_stress_compressed(stress12_4_slot, stress12_2_slot, halo_info, &
+                              field_loc_center,  field_type_scalar, &
+                              dynMap, dynOff)
       endif   ! maskhalo
       endif   ! tripole
+
+      ! ⚠ No block/slot sync here any more.  stress_vp writes the slot
+      ! copies directly, so they are the live state exactly as in evp and
+      ! eap.  The block arrays belong to the restart writer and the
+      ! history, which convert at their own boundary.
 
       !-----------------------------------------------------------------
       ! ice-ocean stress
@@ -1523,7 +1555,7 @@
                             dxT       , dyT       , &
                             cxp       , cyp       , &
                             cxm       , cym       , &
-                            nbr       , ijslot    , &
+                            nbr       ,             &
                             zetax2    , etax2     , &
                             rep_prs   ,             &
                             stressp_1 , stressp_2 , &
@@ -1558,14 +1590,12 @@
       integer (kind=int_kind), dimension (:,:), intent(in) :: &
          nbr
 
-      ! (j-1)*nx_block+i of the cell owning each slot.  The twelve stresses are
-      ! restart and history fields, so they stay in the block layout; writing
-      ! them through ijslot touches exactly the cells the icellT loop touched
-      ! and leaves every other cell at its previous value, as before.  That is
-      ! why there is no unpack here: an unpack would also write the cells the
-      ! block-layout loop deliberately skipped.
-      integer (kind=int_kind), dimension (:), intent(in) :: &
-         ijslot
+      ! The twelve stresses are written to the SLOT copies now.  They used
+      ! to go to the block layout through ijslot, so that only the cells
+      ! this loop visits were touched and every other cell kept its
+      ! previous value.  The slot form has the same property for free --
+      ! the loop writes the slots it visits and no others -- and the cells
+      ! it skips are the ones dyn_prep2 has already reset, in both layouts.
 
       real (kind=dbl_kind), dimension(:,:), intent(in) :: &
          zetax2   , & ! zetax2 = 2*zeta (bulk viscosity)
@@ -1581,8 +1611,7 @@
 
       integer (kind=int_kind) :: &
          is             , & ! slot counter
-         isW, isS, isSW , & ! the three neighbour slots this cell reads
-         ijb                ! 1D index of the owning cell in the block
+         isW, isS, isSW    ! the three neighbour slots this cell reads
 
       real (kind=dbl_kind) :: &
         divune, divunw, divuse, divusw            , & ! divergence
@@ -1598,7 +1627,6 @@
          isW  = nbr(is,nbr_W )
          isS  = nbr(is,nbr_S )
          isSW = nbr(is,nbr_SW)
-         ijb  = ijslot(is)
 
       !-----------------------------------------------------------------
       ! strain rates
@@ -1625,20 +1653,20 @@
       ! (1) northeast, (2) northwest, (3) southwest, (4) southeast
       !-----------------------------------------------------------------
 
-         stressp_1(ijb) = zetax2(is,1)*divune - rep_prs(is,1)
-         stressp_2(ijb) = zetax2(is,2)*divunw - rep_prs(is,2)
-         stressp_3(ijb) = zetax2(is,3)*divusw - rep_prs(is,3)
-         stressp_4(ijb) = zetax2(is,4)*divuse - rep_prs(is,4)
+         stressp_1(is) = zetax2(is,1)*divune - rep_prs(is,1)
+         stressp_2(is) = zetax2(is,2)*divunw - rep_prs(is,2)
+         stressp_3(is) = zetax2(is,3)*divusw - rep_prs(is,3)
+         stressp_4(is) = zetax2(is,4)*divuse - rep_prs(is,4)
 
-         stressm_1(ijb) = etax2(is,1)*tensionne
-         stressm_2(ijb) = etax2(is,2)*tensionnw
-         stressm_3(ijb) = etax2(is,3)*tensionsw
-         stressm_4(ijb) = etax2(is,4)*tensionse
+         stressm_1(is) = etax2(is,1)*tensionne
+         stressm_2(is) = etax2(is,2)*tensionnw
+         stressm_3(is) = etax2(is,3)*tensionsw
+         stressm_4(is) = etax2(is,4)*tensionse
 
-         stress12_1(ijb) = etax2(is,1)*shearne*p5
-         stress12_2(ijb) = etax2(is,2)*shearnw*p5
-         stress12_3(ijb) = etax2(is,3)*shearsw*p5
-         stress12_4(ijb) = etax2(is,4)*shearse*p5
+         stress12_1(is) = etax2(is,1)*shearne*p5
+         stress12_2(is) = etax2(is,2)*shearnw*p5
+         stress12_3(is) = etax2(is,3)*shearsw*p5
+         stress12_4(is) = etax2(is,4)*shearse*p5
 
       enddo                     ! is
 

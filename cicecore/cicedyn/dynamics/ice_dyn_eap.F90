@@ -378,7 +378,7 @@
                          stress12_3(:,iblk), stress12_4(:,iblk), &
                          uvel_init (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),   vvel_init (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),   &
                          uvel(:,iblk), vvel(:,iblk), &
-                        dynMap(:,iblk), skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
+                        dynMap(:,iblk), dynOff(iblk), skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
                         skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
                          TbU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
 
@@ -508,21 +508,11 @@
          call pack_to_slots(vocnU(:,:,iblk), dynMap(:,iblk), vocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
          call pack_to_slots(Cdn_ocnU(:,:,iblk), dynMap(:,iblk), cdn_ocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
 
-         ! State the subcycle carries between stress_eap and stepa.  Packed
-         ! here and unpacked after the loop; the block arrays are what restart
-         ! and history read, so they stay authoritative outside the subcycle.
-         call pack_to_slots(stressp_1(:,iblk), dynMap(:,iblk), stressp_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(stressp_2(:,iblk), dynMap(:,iblk), stressp_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(stressp_3(:,iblk), dynMap(:,iblk), stressp_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(stressp_4(:,iblk), dynMap(:,iblk), stressp_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(stressm_1(:,iblk), dynMap(:,iblk), stressm_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(stressm_2(:,iblk), dynMap(:,iblk), stressm_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(stressm_3(:,iblk), dynMap(:,iblk), stressm_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(stressm_4(:,iblk), dynMap(:,iblk), stressm_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(stress12_1(:,iblk), dynMap(:,iblk), stress12_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(stress12_2(:,iblk), dynMap(:,iblk), stress12_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(stress12_3(:,iblk), dynMap(:,iblk), stress12_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(stress12_4(:,iblk), dynMap(:,iblk), stress12_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         ! ⚠ The stresses are NOT packed any more.  The slot copies are the
+         ! live state, exactly as in evp: they persist between timesteps,
+         ! dyn_prep2 applies the no-ice reset to them directly, and the
+         ! restart read seeds them.  a11/a12 below still pack -- they are EAP
+         ! structure-tensor state with their own block halo, untouched here.
          call pack_to_slots(a11_1(:,:,iblk), dynMap(:,iblk), a11_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
          call pack_to_slots(a11_2(:,:,iblk), dynMap(:,iblk), a11_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
          call pack_to_slots(a11_3(:,:,iblk), dynMap(:,iblk), a11_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
@@ -709,20 +699,9 @@
             call unpack_from_slots(taubyU_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), taubyU  (:,iblk))
          endif
 
-         ! hand the subcycle state back to the block layout for restart,
-         ! history and the diagnostics below
-         call unpack_from_slots(stressp_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), stressp_1(:,iblk))
-         call unpack_from_slots(stressp_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), stressp_2(:,iblk))
-         call unpack_from_slots(stressp_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), stressp_3(:,iblk))
-         call unpack_from_slots(stressp_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), stressp_4(:,iblk))
-         call unpack_from_slots(stressm_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), stressm_1(:,iblk))
-         call unpack_from_slots(stressm_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), stressm_2(:,iblk))
-         call unpack_from_slots(stressm_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), stressm_3(:,iblk))
-         call unpack_from_slots(stressm_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), stressm_4(:,iblk))
-         call unpack_from_slots(stress12_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), stress12_1(:,iblk))
-         call unpack_from_slots(stress12_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), stress12_2(:,iblk))
-         call unpack_from_slots(stress12_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), stress12_3(:,iblk))
-         call unpack_from_slots(stress12_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), stress12_4(:,iblk))
+         ! ⚠ and no unpack.  The block stress arrays are read only by the
+         ! restart writer and the history, and both take the slot copies now
+         ! or convert at their own boundary.
          call unpack_from_slots(a11_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), a11_1(:,:,iblk))
          call unpack_from_slots(a11_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), a11_2(:,:,iblk))
          call unpack_from_slots(a11_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), a11_3(:,:,iblk))

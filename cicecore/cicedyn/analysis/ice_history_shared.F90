@@ -36,7 +36,8 @@
       private
       public :: define_hist_field, accum_hist_field, icefields_nml, construct_filename, ice_brine_density
       public :: hist_field_needed
-      public :: expand_a2D, compress_a2D
+      public :: expand_a2D, compress_a2D, expand_a3Dc, compress_a3Dc, &
+                expand_hist_plane, compress_hist_plane
 
       integer (kind=int_kind), public :: history_precision
 
@@ -156,12 +157,16 @@
                               ! only, so the I/O interface is unchanged.
          a3Dz(:,:,:,:,:)  , & ! field accumulations/averages, 3D vertical
          a3Db(:,:,:,:,:)  , & ! field accumulations/averages, 3D vertical biology
-         a3Dc(:,:,:,:,:)  , & ! field accumulations/averages, 3D thickness categories
+         a3Dc(:,:,:)      , & ! 3D thickness categories, COMPRESSED:
+                              ! (slot, category, field), same convention as
+                              ! a2D -- expanded to (x,y) at the writer only
          a3Da(:,:,:,:,:)  , & ! field accumulations/averages, 3D snow+bio
-         a3Df(:,:,:,:,:)  , & ! field accumulations/averages, 3D floe size categories
-         a4Di(:,:,:,:,:,:), & ! field accumulations/averages, 4D categories,vertical, ice
-         a4Ds(:,:,:,:,:,:), & ! field accumulations/averages, 4D categories,vertical, snow
-         a4Df(:,:,:,:,:,:)    ! field accumulations/averages, 4D floe size, thickness categories
+         a3Df(:,:,:)      , & ! 3D floe size categories, COMPRESSED:
+                              ! (slot, floe size, field)
+         a4Di(:,:,:,:)    , & ! 4D categories/vertical ice, COMPRESSED:
+                              ! (slot, layer, category, field)
+         a4Ds(:,:,:,:)    , & ! 4D categories/vertical snow, COMPRESSED
+         a4Df(:,:,:,:)        ! 4D floe size/thickness categories, COMPRESSED
 
       real (kind=dbl_kind), allocatable, public :: &
          Tinz4d (:,:,:,:)    , & ! array for Tin
@@ -775,7 +780,9 @@
                             accum_hist_field_2D_flat, &
                             accum_hist_field_2D_compressed, &
                             accum_hist_field_3D, &
-                            accum_hist_field_4D
+                            accum_hist_field_3D_compressed, &
+                            accum_hist_field_4D, &
+                            accum_hist_field_4D_compressed
       end interface
 
 !=======================================================================
@@ -1375,6 +1382,79 @@
       end subroutine accum_hist_field_3D
 
 !=======================================================================
+! As accum_hist_field_3D, writing into the COMPRESSED a3Dc.
+!
+! The source stays block-shaped -- it is model state such as aicen, which
+! the compressed layout does not reach -- so only the destination changes.
+! The generic interface picks this arm on the rank of `field`: rank 3 here,
+! rank 5 for the block form, so no call site needs to change.
+
+      subroutine accum_hist_field_3D_compressed(id, iblk, ndim, field_accum, field)
+
+      use ice_blocks, only: block, get_block, nx_block
+      use ice_calendar, only: nstreams
+      use ice_domain, only: blocks_ice
+      use ice_grid, only: tmask, dynMap, dynOff
+
+      integer (int_kind), dimension(:), intent(in) :: &  ! max_nstrm
+         id                ! location in avail_fields array for use in
+                           ! later routines
+
+      integer (kind=int_kind), intent(in) :: iblk
+
+      integer (kind=int_kind), intent(in) :: &
+         ndim              ! third dimension size
+
+      real (kind=dbl_kind), intent(in) :: &
+         field_accum(:,:,:)   ! block shaped: model state
+
+      ! (slot, category, field)
+      real (kind=dbl_kind), intent(inout) :: &
+         field(:,:,:)
+
+      type (block) :: &
+         this_block           ! block information for current block
+
+      integer (kind=int_kind) :: i,j,k, ij, m, ilo, ihi, jlo, jhi, ns, idns
+
+      character(len=*), parameter :: subname = '(accum_hist_field_3D_compressed)'
+
+      !---------------------------------------------------------------
+      ! increment field
+      !---------------------------------------------------------------
+
+       do ns = 1, nstreams
+       idns = id(ns)
+       if (idns > 0) then
+
+       this_block = get_block(blocks_ice(iblk),iblk)
+       ilo = this_block%ilo
+       ihi = this_block%ihi
+       jlo = this_block%jlo
+       jhi = this_block%jhi
+
+       do k = 1, ndim
+       do j = jlo, jhi
+       do i = ilo, ihi
+          ij = (j-1)*nx_block + i
+          if (tmask(ij,iblk)) then
+             m = dynMap(ij,iblk)
+             ! every tmask cell has a slot -- mask_any includes tmask -- so
+             ! this guard is hygiene, not a filter
+             if (m > 0) &
+                field(dynOff(iblk)+m,k,idns) = field(dynOff(iblk)+m,k,idns) &
+                                             + field_accum(i,j,k)
+          endif
+       enddo
+       enddo
+       enddo
+
+       endif
+       enddo
+
+      end subroutine accum_hist_field_3D_compressed
+
+!=======================================================================
 
 !     Accumulates a history field
 !
@@ -1441,6 +1521,75 @@
        enddo
 
       end subroutine accum_hist_field_4D
+
+!=======================================================================
+! As accum_hist_field_4D, writing into a COMPRESSED accumulator.
+!
+! Picked by the generic interface on the rank of `field`: 4 here, 6 for the
+! block form, so no call site changes.  The source stays block-shaped -- it
+! is a work array the caller just filled at (i,j) -- so only the
+! destination moves.
+
+      subroutine accum_hist_field_4D_compressed(id, iblk, ndim3, ndim4, field_accum, field)
+
+      use ice_blocks, only: block, get_block, nx_block
+      use ice_calendar, only: nstreams
+      use ice_domain, only: blocks_ice
+      use ice_grid, only: tmask, dynMap, dynOff
+
+      integer (int_kind), dimension(:), intent(in) :: &  ! max_nstrm
+         id                ! location in avail_fields array
+
+      integer (kind=int_kind), intent(in) :: iblk
+
+      integer (kind=int_kind), intent(in) :: &
+         ndim3  , &        ! third dimension size
+         ndim4             ! fourth dimension size
+
+      real (kind=dbl_kind), intent(in) :: &
+         field_accum(:,:,:,:)   ! block shaped
+
+      ! (slot, layer, category, field)
+      real (kind=dbl_kind), intent(inout) :: &
+         field(:,:,:,:)
+
+      type (block) :: &
+         this_block
+
+      integer (kind=int_kind) :: i,j,k,n, ij, m, ilo, ihi, jlo, jhi, ns, idns
+
+      character(len=*), parameter :: subname = '(accum_hist_field_4D_compressed)'
+
+       do ns = 1, nstreams
+       idns = id(ns)
+       if (idns > 0) then
+
+       this_block = get_block(blocks_ice(iblk),iblk)
+       ilo = this_block%ilo
+       ihi = this_block%ihi
+       jlo = this_block%jlo
+       jhi = this_block%jhi
+
+       do k = 1, ndim4
+       do n = 1, ndim3
+       do j = jlo, jhi
+       do i = ilo, ihi
+          ij = (j-1)*nx_block + i
+          if (tmask(ij,iblk)) then
+             m = dynMap(ij,iblk)
+             if (m > 0) &
+                field(dynOff(iblk)+m,n,k,idns) = field(dynOff(iblk)+m,n,k,idns) &
+                                               + field_accum(i,j,n,k)
+          endif
+       enddo
+       enddo
+       enddo
+       enddo
+
+       endif
+       enddo
+
+      end subroutine accum_hist_field_4D_compressed
 
 !=======================================================================
 
@@ -1557,6 +1706,122 @@
       enddo
 
       end subroutine compress_a2D
+
+!=======================================================================
+! Expand one (field, category) plane of the COMPRESSED a3Dc into the block
+! layout the writers take.  Same contract as expand_a2D, including the
+! spval_dbl fill for land that has no slot.
+
+      subroutine expand_a3Dc(n, k, work)
+
+      use ice_constants, only: spval_dbl
+      use ice_domain, only: nblocks
+      use ice_grid, only: dynMap, dynOff, dynCnt, unpack_from_slots
+
+      integer (kind=int_kind), intent(in) :: &
+         n                 ! which 3Dc field
+      integer (kind=int_kind), intent(in) :: &
+         k                 ! which thickness category
+
+      ! (ij, block), i and j flattened -- the shape the writers pass on
+      real (kind=dbl_kind), dimension(:,:), intent(out) :: &
+         work
+
+      integer (kind=int_kind) :: iblk
+
+      character(len=*), parameter :: subname = '(expand_a3Dc)'
+
+      work(:,:) = spval_dbl
+      do iblk = 1, nblocks
+         call unpack_from_slots(a3Dc(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,k,n), &
+                                dynMap(:,iblk), work(:,iblk))
+      enddo
+
+      end subroutine expand_a3Dc
+
+!=======================================================================
+! Inverse of expand_a3Dc, for the restart-read path in the netCDF and PIO
+! writers.
+
+      subroutine compress_a3Dc(n, k, work)
+
+      use ice_domain, only: nblocks
+      use ice_grid, only: dynMap, dynOff, dynCnt, pack_to_slots
+
+      integer (kind=int_kind), intent(in) :: &
+         n                 ! which 3Dc field
+      integer (kind=int_kind), intent(in) :: &
+         k                 ! which thickness category
+
+      real (kind=dbl_kind), dimension(:,:), intent(in) :: &
+         work
+
+      integer (kind=int_kind) :: iblk
+
+      character(len=*), parameter :: subname = '(compress_a3Dc)'
+
+      do iblk = 1, nblocks
+         call pack_to_slots(work(:,iblk), dynMap(:,iblk), &
+                            a3Dc(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,k,n))
+      enddo
+
+      end subroutine compress_a3Dc
+
+!=======================================================================
+! Expand ONE plane of any compressed history accumulator into the block
+! layout, and its inverse.  The caller slices the plane it wants --
+! a4Di(:,k,ic,n) and so on -- so one pair serves every rank.
+!
+! Same contract as expand_a2D, spval_dbl fill included.
+
+      subroutine expand_hist_plane(comp, work)
+
+      use ice_constants, only: spval_dbl
+      use ice_domain, only: nblocks
+      use ice_grid, only: dynMap, dynOff, dynCnt, unpack_from_slots
+
+      real (kind=dbl_kind), dimension(:), intent(in) :: &
+         comp              ! one plane, all local blocks
+
+      ! (ij, block), i and j flattened -- the shape the writers pass on
+      real (kind=dbl_kind), dimension(:,:), intent(out) :: &
+         work
+
+      integer (kind=int_kind) :: iblk
+
+      character(len=*), parameter :: subname = '(expand_hist_plane)'
+
+      work(:,:) = spval_dbl
+      do iblk = 1, nblocks
+         call unpack_from_slots(comp(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                                dynMap(:,iblk), work(:,iblk))
+      enddo
+
+      end subroutine expand_hist_plane
+
+!=======================================================================
+
+      subroutine compress_hist_plane(work, comp)
+
+      use ice_domain, only: nblocks
+      use ice_grid, only: dynMap, dynOff, dynCnt, pack_to_slots
+
+      real (kind=dbl_kind), dimension(:,:), intent(in) :: &
+         work
+
+      real (kind=dbl_kind), dimension(:), intent(inout) :: &
+         comp
+
+      integer (kind=int_kind) :: iblk
+
+      character(len=*), parameter :: subname = '(compress_hist_plane)'
+
+      do iblk = 1, nblocks
+         call pack_to_slots(work(:,iblk), dynMap(:,iblk), &
+                            comp(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+      enddo
+
+      end subroutine compress_hist_plane
 
 !=======================================================================
 

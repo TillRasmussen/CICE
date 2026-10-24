@@ -357,7 +357,8 @@
       use ice_arrays_column, only: Cdn_ocn
       use ice_boundary, only: ice_halo, ice_HaloMask, ice_HaloUpdate, &
           ice_HaloUpdate2DR8_compressed, ice_HaloUpdate3DR8_compressed, &
-          ice_HaloDestroy, ice_HaloUpdate_stress
+          ice_HaloDestroy, ice_HaloUpdate_stress, &
+          ice_HaloUpdate_stress_compressed
       use ice_blocks, only: block, get_block, nx_block, ny_block, ns_boundary_type
       use ice_domain, only: nblocks, blocks_ice, halo_info, maskhalo_dyn
       use ice_domain_size, only: max_blocks
@@ -677,7 +678,7 @@
                             stress12_3(:,iblk), stress12_4(:,iblk), &
                             uvel_init (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),   vvel_init (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),   &
                             uvel(:,iblk), vvel(:,iblk), &
-                           dynMap(:,iblk), skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
+                           dynMap(:,iblk), dynOff(iblk), skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
                            skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
                             TbU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), rheofactU (:,:,iblk), &
                             rheofactU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -742,7 +743,7 @@
                             stress12_3(:,iblk), stress12_4(:,iblk), &
                             uvel_init (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),   vvel_init (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),   &
                             uvel(:,iblk), vvel(:,iblk), &
-                           dynMap(:,iblk), skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
+                           dynMap(:,iblk), dynOff(iblk), skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
                            skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
                             TbU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
 
@@ -794,7 +795,7 @@
                             stress12_3(:,iblk), stress12_4(:,iblk), &
                             uvelN_init(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),   vvelN_init(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),   &
                             uvelN     (:,:,iblk), vvelN     (:,:,iblk), &
-                           dynMap(:,iblk), skipN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
+                           dynMap(:,iblk), dynOff(iblk), skipN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
                            skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
                             TbN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), rheofactN (:,:,iblk), &
                             rheofactN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
@@ -830,7 +831,7 @@
                             stress12_3(:,iblk), stress12_4(:,iblk), &
                             uvelE_init(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),   vvelE_init(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),   &
                             uvelE     (:,:,iblk), vvelE     (:,:,iblk), &
-                           dynMap(:,iblk), skipE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
+                           dynMap(:,iblk), dynOff(iblk), skipE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
                            skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
                             TbE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), rheofactE (:,:,iblk), &
                             rheofactE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
@@ -1055,18 +1056,11 @@
                ! written every pass and unpacked once at the end for the
                ! restart.
                call pack_to_slots(strength(:,:,iblk), dynMap(:,iblk), strength_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-               call pack_to_slots(stressp_1  (:,iblk), dynMap(:,iblk), stressp_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-               call pack_to_slots(stressp_2  (:,iblk), dynMap(:,iblk), stressp_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-               call pack_to_slots(stressp_3  (:,iblk), dynMap(:,iblk), stressp_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-               call pack_to_slots(stressp_4  (:,iblk), dynMap(:,iblk), stressp_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-               call pack_to_slots(stressm_1  (:,iblk), dynMap(:,iblk), stressm_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-               call pack_to_slots(stressm_2  (:,iblk), dynMap(:,iblk), stressm_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-               call pack_to_slots(stressm_3  (:,iblk), dynMap(:,iblk), stressm_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-               call pack_to_slots(stressm_4  (:,iblk), dynMap(:,iblk), stressm_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-               call pack_to_slots(stress12_1 (:,iblk), dynMap(:,iblk), stress12_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-               call pack_to_slots(stress12_2 (:,iblk), dynMap(:,iblk), stress12_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-               call pack_to_slots(stress12_3 (:,iblk), dynMap(:,iblk), stress12_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-               call pack_to_slots(stress12_4 (:,iblk), dynMap(:,iblk), stress12_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+               ! ⚠ The stresses are NOT packed from the block arrays any more.  The
+               ! slot copies are the live state: they persist between timesteps,
+               ! dyn_prep2 applies the no-ice reset to them directly, and the
+               ! restart read seeds them through stresses_to_slots.  Packing here
+               ! would overwrite all of that with block values nothing maintains.
             enddo
             !$OMP END PARALLEL DO
 
@@ -1150,18 +1144,6 @@
             !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
             do iblk = 1, nblocks
                call unpack_from_slots(uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), uvel(:,iblk))
-               call unpack_from_slots(stressp_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), stressp_1  (:,iblk))
-               call unpack_from_slots(stressp_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), stressp_2  (:,iblk))
-               call unpack_from_slots(stressp_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), stressp_3  (:,iblk))
-               call unpack_from_slots(stressp_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), stressp_4  (:,iblk))
-               call unpack_from_slots(stressm_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), stressm_1  (:,iblk))
-               call unpack_from_slots(stressm_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), stressm_2  (:,iblk))
-               call unpack_from_slots(stressm_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), stressm_3  (:,iblk))
-               call unpack_from_slots(stressm_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), stressm_4  (:,iblk))
-               call unpack_from_slots(stress12_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), stress12_1 (:,iblk))
-               call unpack_from_slots(stress12_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), stress12_2 (:,iblk))
-               call unpack_from_slots(stress12_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), stress12_3 (:,iblk))
-               call unpack_from_slots(stress12_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), stress12_4 (:,iblk))
                call unpack_from_slots(vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), vvel(:,iblk))
                ! Both diagnostics are built here, once, rather than on
                ! every one of the ndte passes: str1..str8 still hold what
@@ -1955,63 +1937,91 @@
          halomask = 0
          call ice_HaloMask(halo_info_mask, halo_info, halomask)
 
-         call ice_HaloUpdate_stress(stressp_1 , stressp_3 , halo_info_mask, &
-                                    field_loc_center,  field_type_scalar)
-         call ice_HaloUpdate_stress(stressp_3 , stressp_1 , halo_info_mask, &
-                                    field_loc_center,  field_type_scalar)
-         call ice_HaloUpdate_stress(stressp_2 , stressp_4 , halo_info_mask, &
-                                    field_loc_center,  field_type_scalar)
-         call ice_HaloUpdate_stress(stressp_4 , stressp_2 , halo_info_mask, &
-                                    field_loc_center,  field_type_scalar)
+         call ice_HaloUpdate_stress_compressed(stressp_1_slot, stressp_3_slot, halo_info_mask, &
+                                     field_loc_center,  field_type_scalar, &
+                                     dynMap, dynOff)
+         call ice_HaloUpdate_stress_compressed(stressp_3_slot, stressp_1_slot, halo_info_mask, &
+                                     field_loc_center,  field_type_scalar, &
+                                     dynMap, dynOff)
+         call ice_HaloUpdate_stress_compressed(stressp_2_slot, stressp_4_slot, halo_info_mask, &
+                                     field_loc_center,  field_type_scalar, &
+                                     dynMap, dynOff)
+         call ice_HaloUpdate_stress_compressed(stressp_4_slot, stressp_2_slot, halo_info_mask, &
+                                     field_loc_center,  field_type_scalar, &
+                                     dynMap, dynOff)
 
-         call ice_HaloUpdate_stress(stressm_1 , stressm_3 , halo_info_mask, &
-                                    field_loc_center,  field_type_scalar)
-         call ice_HaloUpdate_stress(stressm_3 , stressm_1 , halo_info_mask, &
-                                    field_loc_center,  field_type_scalar)
-         call ice_HaloUpdate_stress(stressm_2 , stressm_4 , halo_info_mask, &
-                                    field_loc_center,  field_type_scalar)
-         call ice_HaloUpdate_stress(stressm_4 , stressm_2 , halo_info_mask, &
-                                    field_loc_center,  field_type_scalar)
+         call ice_HaloUpdate_stress_compressed(stressm_1_slot, stressm_3_slot, halo_info_mask, &
+                                     field_loc_center,  field_type_scalar, &
+                                     dynMap, dynOff)
+         call ice_HaloUpdate_stress_compressed(stressm_3_slot, stressm_1_slot, halo_info_mask, &
+                                     field_loc_center,  field_type_scalar, &
+                                     dynMap, dynOff)
+         call ice_HaloUpdate_stress_compressed(stressm_2_slot, stressm_4_slot, halo_info_mask, &
+                                     field_loc_center,  field_type_scalar, &
+                                     dynMap, dynOff)
+         call ice_HaloUpdate_stress_compressed(stressm_4_slot, stressm_2_slot, halo_info_mask, &
+                                     field_loc_center,  field_type_scalar, &
+                                     dynMap, dynOff)
 
-         call ice_HaloUpdate_stress(stress12_1, stress12_3, halo_info_mask, &
-                                    field_loc_center,  field_type_scalar)
-         call ice_HaloUpdate_stress(stress12_3, stress12_1, halo_info_mask, &
-                                    field_loc_center,  field_type_scalar)
-         call ice_HaloUpdate_stress(stress12_2, stress12_4, halo_info_mask, &
-                                    field_loc_center,  field_type_scalar)
-         call ice_HaloUpdate_stress(stress12_4, stress12_2, halo_info_mask, &
-                                    field_loc_center,  field_type_scalar)
+         call ice_HaloUpdate_stress_compressed(stress12_1_slot, stress12_3_slot, halo_info_mask, &
+                                     field_loc_center,  field_type_scalar, &
+                                     dynMap, dynOff)
+         call ice_HaloUpdate_stress_compressed(stress12_3_slot, stress12_1_slot, halo_info_mask, &
+                                     field_loc_center,  field_type_scalar, &
+                                     dynMap, dynOff)
+         call ice_HaloUpdate_stress_compressed(stress12_2_slot, stress12_4_slot, halo_info_mask, &
+                                     field_loc_center,  field_type_scalar, &
+                                     dynMap, dynOff)
+         call ice_HaloUpdate_stress_compressed(stress12_4_slot, stress12_2_slot, halo_info_mask, &
+                                     field_loc_center,  field_type_scalar, &
+                                     dynMap, dynOff)
 
          call ice_HaloDestroy(halo_info_mask)
       else
-         call ice_HaloUpdate_stress(stressp_1 , stressp_3 , halo_info,  &
-                                    field_loc_center,  field_type_scalar)
-         call ice_HaloUpdate_stress(stressp_3 , stressp_1 , halo_info,  &
-                                    field_loc_center,  field_type_scalar)
-         call ice_HaloUpdate_stress(stressp_2 , stressp_4 , halo_info,  &
-                                    field_loc_center,  field_type_scalar)
-         call ice_HaloUpdate_stress(stressp_4 , stressp_2 , halo_info,  &
-                                    field_loc_center,  field_type_scalar)
+         call ice_HaloUpdate_stress_compressed(stressp_1_slot, stressp_3_slot, halo_info, &
+                                     field_loc_center,  field_type_scalar, &
+                                     dynMap, dynOff)
+         call ice_HaloUpdate_stress_compressed(stressp_3_slot, stressp_1_slot, halo_info, &
+                                     field_loc_center,  field_type_scalar, &
+                                     dynMap, dynOff)
+         call ice_HaloUpdate_stress_compressed(stressp_2_slot, stressp_4_slot, halo_info, &
+                                     field_loc_center,  field_type_scalar, &
+                                     dynMap, dynOff)
+         call ice_HaloUpdate_stress_compressed(stressp_4_slot, stressp_2_slot, halo_info, &
+                                     field_loc_center,  field_type_scalar, &
+                                     dynMap, dynOff)
 
-         call ice_HaloUpdate_stress(stressm_1 , stressm_3 , halo_info,  &
-                                    field_loc_center,  field_type_scalar)
-         call ice_HaloUpdate_stress(stressm_3 , stressm_1 , halo_info,  &
-                                    field_loc_center,  field_type_scalar)
-         call ice_HaloUpdate_stress(stressm_2 , stressm_4 , halo_info,  &
-                                    field_loc_center,  field_type_scalar)
-         call ice_HaloUpdate_stress(stressm_4 , stressm_2 , halo_info,  &
-                                    field_loc_center,  field_type_scalar)
+         call ice_HaloUpdate_stress_compressed(stressm_1_slot, stressm_3_slot, halo_info, &
+                                     field_loc_center,  field_type_scalar, &
+                                     dynMap, dynOff)
+         call ice_HaloUpdate_stress_compressed(stressm_3_slot, stressm_1_slot, halo_info, &
+                                     field_loc_center,  field_type_scalar, &
+                                     dynMap, dynOff)
+         call ice_HaloUpdate_stress_compressed(stressm_2_slot, stressm_4_slot, halo_info, &
+                                     field_loc_center,  field_type_scalar, &
+                                     dynMap, dynOff)
+         call ice_HaloUpdate_stress_compressed(stressm_4_slot, stressm_2_slot, halo_info, &
+                                     field_loc_center,  field_type_scalar, &
+                                     dynMap, dynOff)
 
-         call ice_HaloUpdate_stress(stress12_1, stress12_3, halo_info,  &
-                                    field_loc_center,  field_type_scalar)
-         call ice_HaloUpdate_stress(stress12_3, stress12_1, halo_info,  &
-                                    field_loc_center,  field_type_scalar)
-         call ice_HaloUpdate_stress(stress12_2, stress12_4, halo_info,  &
-                                    field_loc_center,  field_type_scalar)
-         call ice_HaloUpdate_stress(stress12_4, stress12_2, halo_info,  &
-                                    field_loc_center,  field_type_scalar)
+         call ice_HaloUpdate_stress_compressed(stress12_1_slot, stress12_3_slot, halo_info, &
+                                     field_loc_center,  field_type_scalar, &
+                                     dynMap, dynOff)
+         call ice_HaloUpdate_stress_compressed(stress12_3_slot, stress12_1_slot, halo_info, &
+                                     field_loc_center,  field_type_scalar, &
+                                     dynMap, dynOff)
+         call ice_HaloUpdate_stress_compressed(stress12_2_slot, stress12_4_slot, halo_info, &
+                                     field_loc_center,  field_type_scalar, &
+                                     dynMap, dynOff)
+         call ice_HaloUpdate_stress_compressed(stress12_4_slot, stress12_2_slot, halo_info, &
+                                     field_loc_center,  field_type_scalar, &
+                                     dynMap, dynOff)
       endif   ! maskhalo
       endif   ! tripole
+
+      ! ⚠ No unpack here either.  The block stress arrays exist only for
+      ! the restart writer, the history and evp1d's gather, and each of
+      ! those now takes the slot copies or converts at its own boundary.
 
       !-----------------------------------------------------------------
       ! ice-ocean stress

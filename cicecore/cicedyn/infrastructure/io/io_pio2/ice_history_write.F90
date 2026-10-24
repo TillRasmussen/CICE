@@ -1053,7 +1053,6 @@
                                file=__FILE__,line=__LINE__)
          endif
       enddo ! num_avail_hist_fields_2D
-      deallocate(worka2D)
 
       deallocate(workd2)
       deallocate(workr2)
@@ -1066,10 +1065,13 @@
          if (avail_hist_fields(n)%vhistfreq == histfreq(ns) .or. write_ic) then
             call ice_pio_check(pio_inq_varid(File,avail_hist_fields(n)%vname,varid), &
                  subname//' ERROR: getting varid for '//avail_hist_fields(n)%vname,file=__FILE__,line=__LINE__)
-            do j = 1, nblocks
+            ! a3Dc is compressed; expand_a3Dc is the only place it becomes
+            ! two-dimensional, so workd3 keeps its block shape.
             do i = 1, ncat_hist
-               workd3(:,:,j,i) = a3Dc(:,:,i,nn,j)
-            enddo
+               call expand_a3Dc(nn, i, worka2D)
+               do j = 1, nblocks
+                  workd3(:,:,j,i) = reshape(worka2D(:,j), (/nx_block,ny_block/))
+               enddo
             enddo
             call pio_seterrorhandling(File, PIO_INTERNAL_ERROR)
 #ifdef CESM1_PIO
@@ -1210,10 +1212,13 @@
          if (avail_hist_fields(n)%vhistfreq == histfreq(ns) .or. write_ic) then
             call ice_pio_check(pio_inq_varid(File,avail_hist_fields(n)%vname,varid), &
                  subname//' ERROR: getting varid for '//avail_hist_fields(n)%vname,file=__FILE__,line=__LINE__)
-            do j = 1, nblocks
+            ! a3Df is compressed; expand_hist_plane is the only place it
+            ! becomes two-dimensional, so workd3 keeps its block shape.
             do i = 1, nfsd_hist
-               workd3(:,:,j,i) = a3Df(:,:,i,nn,j)
-            enddo
+               call expand_hist_plane(a3Df(:,i,nn), worka2D)
+               do j = 1, nblocks
+                  workd3(:,:,j,i) = reshape(worka2D(:,j), (/nx_block,ny_block/))
+               enddo
             enddo
             call pio_seterrorhandling(File, PIO_INTERNAL_ERROR)
 #ifdef CESM1_PIO
@@ -1246,13 +1251,16 @@
          if (avail_hist_fields(n)%vhistfreq == histfreq(ns) .or. write_ic) then
             call ice_pio_check(pio_inq_varid(File,avail_hist_fields(n)%vname,varid), &
                  subname//' ERROR: getting varid for '//avail_hist_fields(n)%vname,file=__FILE__,line=__LINE__)
-            do j = 1, nblocks
+            ! a4Di is compressed; expand_hist_plane is the only place it
+            ! becomes two-dimensional, so workd4 keeps its block shape.
             do i = 1, ncat_hist
             do k = 1, nzilyr
-               workd4(:,:,j,k,i) = a4Di(:,:,k,i,nn,j)
-            enddo ! k
-            enddo ! i
-            enddo ! j
+               call expand_hist_plane(a4Di(:,k,i,nn), worka2D)
+               do j = 1, nblocks
+                  workd4(:,:,j,k,i) = reshape(worka2D(:,j), (/nx_block,ny_block/))
+               enddo
+            enddo
+            enddo
             call pio_seterrorhandling(File, PIO_INTERNAL_ERROR)
 #ifdef CESM1_PIO
             call pio_setframe(varid, int(1,kind=PIO_OFFSET))
@@ -1283,13 +1291,16 @@
          if (avail_hist_fields(n)%vhistfreq == histfreq(ns) .or. write_ic) then
             call ice_pio_check(pio_inq_varid(File,avail_hist_fields(n)%vname,varid), &
                  subname//' ERROR: getting varid for '//avail_hist_fields(n)%vname,file=__FILE__,line=__LINE__)
-            do j = 1, nblocks
+            ! a4Ds is compressed; expand_hist_plane is the only place it
+            ! becomes two-dimensional, so workd4 keeps its block shape.
             do i = 1, ncat_hist
             do k = 1, nzslyr
-               workd4(:,:,j,k,i) = a4Ds(:,:,k,i,nn,j)
-            enddo ! k
-            enddo ! i
-            enddo ! j
+               call expand_hist_plane(a4Ds(:,k,i,nn), worka2D)
+               do j = 1, nblocks
+                  workd4(:,:,j,k,i) = reshape(worka2D(:,j), (/nx_block,ny_block/))
+               enddo
+            enddo
+            enddo
             call pio_seterrorhandling(File, PIO_INTERNAL_ERROR)
 #ifdef CESM1_PIO
             call pio_setframe(varid, int(1,kind=PIO_OFFSET))
@@ -1321,13 +1332,15 @@
          if (avail_hist_fields(n)%vhistfreq == histfreq(ns) .or. write_ic) then
             call ice_pio_check(pio_inq_varid(File,avail_hist_fields(n)%vname,varid), &
                  subname//' ERROR: getting varid for '//avail_hist_fields(n)%vname,file=__FILE__,line=__LINE__)
-            do j = 1, nblocks
+            ! a4Df is compressed; same contract as a4Di/a4Ds above.
             do i = 1, ncat_hist
             do k = 1, nfsd_hist
-               workd4(:,:,j,k,i) = a4Df(:,:,k,i,nn,j)
-            enddo ! k
-            enddo ! i
-            enddo ! j
+               call expand_hist_plane(a4Df(:,k,i,nn), worka2D)
+               do j = 1, nblocks
+                  workd4(:,:,j,k,i) = reshape(worka2D(:,j), (/nx_block,ny_block/))
+               enddo
+            enddo
+            enddo
             call pio_seterrorhandling(File, PIO_INTERNAL_ERROR)
 #ifdef CESM1_PIO
             call pio_setframe(varid, int(1,kind=PIO_OFFSET))
@@ -1347,6 +1360,7 @@
                                file=__FILE__,line=__LINE__)
          endif
       enddo ! num_avail_hist_fields_4Df
+      deallocate(worka2D)
       deallocate(workd4)
       deallocate(workr4)
 
@@ -1539,7 +1553,6 @@
                endif
             enddo
 
-            deallocate(worka2D)
             deallocate(work2)
             allocate(work3(nx_block,ny_block,max_blocks,ncat_hist))
 
@@ -1553,10 +1566,12 @@
                   if (status == PIO_NOERR) call pio_read_darray(File, varid, iodesc3dc, work3, status)
                   if (status == PIO_NOERR) then
                      readstr = readstrT
-                     do j = 1, nblocks
+                     ! the read lands in the block layout; compress_a3Dc puts it back
                      do i = 1, ncat_hist
-                        a3Dc(:,:,i,nn,j) = work3(:,:,j,i)
-                     enddo
+                        do j = 1, nblocks
+                           worka2D(:,j) = reshape(work3(:,:,j,i), (/nx_block*ny_block/))
+                        enddo
+                        call compress_a3Dc(nn, i, worka2D)
                      enddo
                   endif
                   if (my_task == master_task) then
@@ -1653,10 +1668,13 @@
                   if (status == PIO_NOERR) call pio_read_darray(File, varid, iodesc3df, work3, status)
                   if (status == PIO_NOERR) then
                      readstr = readstrT
-                     do j = 1, nblocks
+                     ! the read lands in the block layout; compress_hist_plane puts
+                     ! a3Df back into the slots
                      do i = 1, nfsd_hist
-                        a3Df(:,:,i,nn,j) = work3(:,:,j,i)
-                     enddo
+                        do j = 1, nblocks
+                           worka2D(:,j) = reshape(work3(:,:,j,i), (/nx_block*ny_block/))
+                        enddo
+                        call compress_hist_plane(worka2D, a3Df(:,i,nn))
                      enddo
                   endif
                   if (my_task == master_task) then
@@ -1678,11 +1696,14 @@
                   if (status == PIO_NOERR) call pio_read_darray(File, varid, iodesc4di, work4, status)
                   if (status == PIO_NOERR) then
                      readstr = readstrT
-                     do j = 1, nblocks
+                     ! the read lands in the block layout; compress_hist_plane
+                     ! puts a4Di back into the slots
                      do i = 1, ncat_hist
                      do k = 1, nzilyr
-                        a4Di(:,:,k,i,nn,j) = work4(:,:,j,k,i)
-                     enddo
+                        do j = 1, nblocks
+                           worka2D(:,j) = reshape(work4(:,:,j,k,i), (/nx_block*ny_block/))
+                        enddo
+                        call compress_hist_plane(worka2D, a4Di(:,k,i,nn))
                      enddo
                      enddo
                   endif
@@ -1705,11 +1726,14 @@
                   if (status == PIO_NOERR) call pio_read_darray(File, varid, iodesc4ds, work4, status)
                   if (status == PIO_NOERR) then
                      readstr = readstrT
-                     do j = 1, nblocks
+                     ! the read lands in the block layout; compress_hist_plane
+                     ! puts a4Ds back into the slots
                      do i = 1, ncat_hist
                      do k = 1, nzslyr
-                        a4Ds(:,:,k,i,nn,j) = work4(:,:,j,k,i)
-                     enddo
+                        do j = 1, nblocks
+                           worka2D(:,j) = reshape(work4(:,:,j,k,i), (/nx_block*ny_block/))
+                        enddo
+                        call compress_hist_plane(worka2D, a4Ds(:,k,i,nn))
                      enddo
                      enddo
                   endif
@@ -1732,13 +1756,16 @@
                   if (status == PIO_NOERR) call pio_read_darray(File, varid, iodesc4df, work4, status)
                   if (status == PIO_NOERR) then
                      readstr = readstrT
-                     do j = 1, nblocks
+                     ! same for a4Df
                      do i = 1, ncat_hist
                      do k = 1, nfsd_hist
-                        a4Df(:,:,k,i,nn,j) = work4(:,:,j,k,i)
+                        do j = 1, nblocks
+                           worka2D(:,j) = reshape(work4(:,:,j,k,i), (/nx_block*ny_block/))
+                        enddo
+                        call compress_hist_plane(worka2D, a4Df(:,k,i,nn))
                      enddo
                      enddo
-                     enddo
+            deallocate(worka2D)
                   endif
                   if (my_task == master_task) then
                      write(nu_diag,*) subname,trim(readstr),trim(avail_hist_fields(n)%vname)

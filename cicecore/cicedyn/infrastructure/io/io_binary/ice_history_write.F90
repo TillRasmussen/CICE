@@ -198,7 +198,6 @@
 
         endif
       enddo ! num_avail_hist_fields_2D
-      deallocate(worka2D)
 
       do n = n2D + 1, n3Dccum
           if (avail_hist_fields(n)%vhistfreq == histfreq(ns)) then
@@ -218,7 +217,10 @@
             endif
           endif
 
-          call ice_write(nu_history, nrec, a3Dc(:,:,nn,n-n2D,:), atype, diag)
+          ! a3Dc is compressed; expand_a3Dc is the only place it becomes
+          ! two-dimensional, so ice_write still takes the block layout.
+          call expand_a3Dc(n-n2D, nn, worka2D)
+          call ice_write(nu_history, nrec, worka2D, atype, diag)
           enddo ! ncat
 
         endif
@@ -314,7 +316,8 @@
             endif
           endif
 
-          call ice_write(nu_history, nrec, a3Df(:,:,k,n-n3Dacum,:), atype, diag)
+          call expand_hist_plane(a3Df(:,k,n-n3Dacum), worka2D)
+          call ice_write(nu_history, nrec, worka2D, atype, diag)
           enddo ! nfsd_hist
 
         endif
@@ -339,7 +342,8 @@
             endif
           endif
 
-          call ice_write(nu_history, nrec, a4Di(:,:,k,nn,n-n3Dfcum,:), atype, diag)
+          call expand_hist_plane(a4Di(:,k,nn,n-n3Dfcum), worka2D)
+          call ice_write(nu_history, nrec, worka2D, atype, diag)
           enddo ! nzilyr
           enddo ! ncat_hist
 
@@ -365,7 +369,8 @@
             endif
           endif
 
-          call ice_write(nu_history, nrec, a4Ds(:,:,k,nn,n-n4Dicum,:), atype, diag)
+          call expand_hist_plane(a4Ds(:,k,nn,n-n4Dicum), worka2D)
+          call ice_write(nu_history, nrec, worka2D, atype, diag)
           enddo ! nzslyr
           enddo ! ncat_hist
 
@@ -391,12 +396,14 @@
             endif
           endif
 
-          call ice_write(nu_history, nrec, a4Df(:,:,k,nn,n-n4Dscum,:), atype, diag)
+          call expand_hist_plane(a4Df(:,k,nn,n-n4Dscum), worka2D)
+          call ice_write(nu_history, nrec, worka2D, atype, diag)
           enddo ! nfsd_hist
           enddo ! ncat_hist
 
         endif
       enddo ! num_avail_hist_fields_4Df
+      deallocate(worka2D)
 
 995     format(i3,2x,a,' comment: ',a)
 996     format(i3,2x,a,': ',a,',',2x,a)

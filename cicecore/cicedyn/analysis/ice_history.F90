@@ -2139,7 +2139,7 @@
 
       if (allocated(a3Dc)) deallocate(a3Dc)
       if (num_avail_hist_fields_3Dc > 0) &
-      allocate(a3Dc(nx_block,ny_block,ncat_hist,num_avail_hist_fields_3Dc,max_blocks))
+      allocate(a3Dc(dynTot,ncat_hist,num_avail_hist_fields_3Dc))
 
       if (allocated(a3Dz)) deallocate(a3Dz)
       if (num_avail_hist_fields_3Dz > 0) &
@@ -2155,29 +2155,29 @@
 
       if (allocated(a3Df)) deallocate(a3Df)
       if (num_avail_hist_fields_3Df > 0) &
-      allocate(a3Df(nx_block,ny_block,nfsd_hist,num_avail_hist_fields_3Df,max_blocks))
+      allocate(a3Df(dynTot,nfsd_hist,num_avail_hist_fields_3Df))
 
       if (allocated(a4Di)) deallocate(a4Di)
       if (num_avail_hist_fields_4Di > 0) &
-      allocate(a4Di(nx_block,ny_block,nzilyr,ncat_hist,num_avail_hist_fields_4Di,max_blocks))
+      allocate(a4Di(dynTot,nzilyr,ncat_hist,num_avail_hist_fields_4Di))
 
       if (allocated(a4Ds)) deallocate(a4Ds)
       if (num_avail_hist_fields_4Ds > 0) &
-      allocate(a4Ds(nx_block,ny_block,nzslyr,ncat_hist,num_avail_hist_fields_4Ds,max_blocks))
+      allocate(a4Ds(dynTot,nzslyr,ncat_hist,num_avail_hist_fields_4Ds))
 
       if (allocated(a4Df)) deallocate(a4Df)
       if (num_avail_hist_fields_4Df > 0) &
-      allocate(a4Df(nx_block,ny_block,nfsd_hist,ncat_hist,num_avail_hist_fields_4Df,max_blocks))
+      allocate(a4Df(dynTot,nfsd_hist,ncat_hist,num_avail_hist_fields_4Df))
 
       if (allocated(a2D))  a2D (:,:)         = c0
-      if (allocated(a3Dc)) a3Dc(:,:,:,:,:)   = c0
+      if (allocated(a3Dc)) a3Dc(:,:,:)       = c0
       if (allocated(a3Dz)) a3Dz(:,:,:,:,:)   = c0
       if (allocated(a3Db)) a3Db(:,:,:,:,:)   = c0
       if (allocated(a3Da)) a3Da(:,:,:,:,:)   = c0
-      if (allocated(a3Df)) a3Df(:,:,:,:,:)   = c0
-      if (allocated(a4Di)) a4Di(:,:,:,:,:,:) = c0
-      if (allocated(a4Ds)) a4Ds(:,:,:,:,:,:) = c0
-      if (allocated(a4Df)) a4Df(:,:,:,:,:,:) = c0
+      if (allocated(a3Df)) a3Df(:,:,:)       = c0
+      if (allocated(a4Di)) a4Di(:,:,:,:) = c0
+      if (allocated(a4Ds)) a4Ds(:,:,:,:) = c0
+      if (allocated(a4Df)) a4Df(:,:,:,:) = c0
       avgct(:) = c0
       albcnt(:,:,:,:) = c0
       snwcnt(:,:,:,:) = c0
@@ -2205,7 +2205,8 @@
       use ice_domain, only: blocks_ice, nblocks
       use ice_domain_size, only: nfsd
       use ice_grid, only: tmask, lmask_n, lmask_s, dxU, dyU, grid_ice, &
-                          dynMap, dynOff, dynCnt, pack_to_slots
+                          dynMap, dynOff, dynCnt, pack_to_slots, &
+                          unpack_from_slots
       use ice_calendar, only: new_year, write_history, write_restart, &
                               write_ic, timesecs, histfreq, nstreams, mmonth, &
                               new_month, write_histrest
@@ -2219,6 +2220,8 @@
       ! aice, so ice_history reads both layouts.
       use ice_dyn_shared, only: kdyn, principal_stress, &
           strintxU_slot, strintyU_slot, taubxU_slot, taubyU_slot, &
+          stressp_1_slot, stressp_2_slot, stressp_3_slot, stressp_4_slot, &
+          stressm_1_slot, stress12_1_slot, &
           dynMap, dynOff, dynCnt
       use ice_flux, only: fsw, flw, fsnow, frain, sst, sss, uocn, vocn, &
           frzmlt_init, scale_factor, fswabs, fswup, fswthru, alvdr, alvdf, alidr, alidf, &
@@ -2259,6 +2262,11 @@
          dt      ! time step
 
       ! local variables
+
+      ! ⚠ PRIVATE in the block loop below: one block's expansion of the
+      ! three B-grid stresses, for principal_stress.
+      real (kind=dbl_kind), dimension (nx_block,ny_block) :: &
+           worksig1, worksig2, worksig3
 
       integer (kind=int_kind) :: &
            i,j,k,ic,n,ns,nn, &
@@ -2335,7 +2343,7 @@
            do n = n2D + 1, n3Dccum
               nn = n - n2D
               if (avail_hist_fields(n)%vhistfreq == histfreq(ns)) &
-                  a3Dc(:,:,:,nn,:) = c0
+                  a3Dc(:,:,nn) = c0
            enddo
            do n = n3Dccum + 1, n3Dzcum
               nn = n - n3Dccum
@@ -2355,22 +2363,22 @@
            do n = n3Dacum + 1, n3Dfcum
               nn = n - n3Dacum
               if (avail_hist_fields(n)%vhistfreq == histfreq(ns)) &
-                  a3Df(:,:,:,nn,:) = c0
+                  a3Df(:,:,nn) = c0
            enddo
            do n = n3Dfcum + 1, n4Dicum
               nn = n - n3Dfcum
               if (avail_hist_fields(n)%vhistfreq == histfreq(ns)) &
-                  a4Di(:,:,:,:,nn,:) = c0
+                  a4Di(:,:,:,nn) = c0
            enddo
            do n = n4Dicum + 1, n4Dscum
               nn = n - n4Dicum
               if (avail_hist_fields(n)%vhistfreq == histfreq(ns)) &
-                  a4Ds(:,:,:,:,nn,:) = c0
+                  a4Ds(:,:,:,nn) = c0
            enddo
            do n = n4Dscum + 1, n4Dfcum
               nn = n - n4Dscum
               if (avail_hist_fields(n)%vhistfreq == histfreq(ns)) &
-                  a4Df(:,:,:,:,nn,:) = c0
+                  a4Df(:,:,:,nn) = c0
            enddo
            avgct(ns) = c1
          else                      ! write averages over time histfreq
@@ -3334,8 +3342,9 @@
                do j = jlo, jhi
                do i = ilo, ihi
                 if (tmask((j-1)*nx_block+i,iblk)) then
+                  ms = dynOff(iblk) + dynMap((j-1)*nx_block+i,iblk)
                   do n=1,ncat_hist
-                     worka(i,j)  = worka(i,j) + a3Dc(i,j,n,n_fmelttn_ai(ns)-n2D,iblk)
+                     worka(i,j)  = worka(i,j) + a3Dc(ms,n,n_fmelttn_ai(ns)-n2D)
                   enddo            ! n
                 endif              ! tmask
                enddo                ! i
@@ -3397,7 +3406,7 @@
         ! it is per-iteration state; left shared it races and a thread reads
         ! another's value -- or 0 before any thread has set one, which is what
         ! aborted the gx3 history write with "Subscript #1 of A2D has value 0".
-        !$OMP PARALLEL DO PRIVATE(iblk,i,j,ms,ilo,ihi,jlo,jhi,this_block, &
+        !$OMP PARALLEL DO PRIVATE(iblk,i,j,ms,worksig1,worksig2,worksig3,ilo,ihi,jlo,jhi,this_block, &
         !$OMP                     n,nn,ravgctz,ravgip,ravgip_init,ravgip_pond, &
         !$OMP                     ravgip_ridge,ravgipn)
         do iblk = 1, nblocks
@@ -3490,8 +3499,16 @@
               do k=1,ncat_hist
               do j = jlo, jhi
               do i = ilo, ihi
-                 if (a3Dc(i,j,k,n_aicen(ns)-n2D,iblk) > puny) then
-                    ravgipn(i,j,k) = c1/(a3Dc(i,j,k,n_aicen(ns)-n2D,iblk))
+                 ms = dynMap((j-1)*nx_block+i,iblk)
+                 if (ms > 0) ms = dynOff(iblk) + ms
+                 ! a cell with no slot never accumulated: the block form
+                 ! read c0 here and took the else branch
+                 if (ms > 0) then
+                    if (a3Dc(ms,k,n_aicen(ns)-n2D) > puny) then
+                       ravgipn(i,j,k) = c1/(a3Dc(ms,k,n_aicen(ns)-n2D))
+                    else
+                       ravgipn(i,j,k) = c0
+                    endif
                  else
                     ravgipn(i,j,k) = c0
                  endif
@@ -3725,10 +3742,13 @@
                     do k = 1, ncat_hist
                     do j = jlo, jhi
                     do i = ilo, ihi
+                       ms = dynMap((j-1)*nx_block+i,iblk)
+                       if (ms < 1) cycle   ! no slot: expand_a3Dc fills spval
+                       ms = dynOff(iblk) + ms
                        if (.not. tmask((j-1)*nx_block+i,iblk)) then ! mask out land points
-                          a3Dc(i,j,k,n,iblk) = spval_dbl
+                          a3Dc(ms,k,n) = spval_dbl
                        else                            ! convert units
-                          a3Dc(i,j,k,n,iblk) = avail_hist_fields(nn)%cona*a3Dc(i,j,k,n,iblk) &
+                          a3Dc(ms,k,n) = avail_hist_fields(nn)%cona*a3Dc(ms,k,n) &
                                          * ravgipn(i,j,k) + avail_hist_fields(nn)%conb
                        endif
                     enddo             ! i
@@ -3738,10 +3758,13 @@
                     do k = 1, ncat_hist
                     do j = jlo, jhi
                     do i = ilo, ihi
+                       ms = dynMap((j-1)*nx_block+i,iblk)
+                       if (ms < 1) cycle   ! no slot: expand_a3Dc fills spval
+                       ms = dynOff(iblk) + ms
                        if (.not. tmask((j-1)*nx_block+i,iblk)) then ! mask out land points
-                          a3Dc(i,j,k,n,iblk) = spval_dbl
+                          a3Dc(ms,k,n) = spval_dbl
                        else                            ! convert units
-                          a3Dc(i,j,k,n,iblk) = avail_hist_fields(nn)%cona*a3Dc(i,j,k,n,iblk) &
+                          a3Dc(ms,k,n) = avail_hist_fields(nn)%cona*a3Dc(ms,k,n) &
                                          * ravgct + avail_hist_fields(nn)%conb
                        endif
                     enddo             ! i
@@ -3814,10 +3837,13 @@
               do k = 1, nfsd
               do j = jlo, jhi
               do i = ilo, ihi
+                 ms = dynMap((j-1)*nx_block+i,iblk)
+                 if (ms < 1) cycle   ! no slot: the expansion fills spval
+                 ms = dynOff(iblk) + ms
                  if (.not. tmask((j-1)*nx_block+i,iblk)) then ! mask out land points
-                    a3Df(i,j,k,n,iblk) = spval_dbl
+                    a3Df(ms,k,n) = spval_dbl
                  else                            ! convert units
-                    a3Df(i,j,k,n,iblk) = avail_hist_fields(nn)%cona*a3Df(i,j,k,n,iblk) &
+                    a3Df(ms,k,n) = avail_hist_fields(nn)%cona*a3Df(ms,k,n) &
                                    * ravgct + avail_hist_fields(nn)%conb
                  endif
               enddo             ! i
@@ -3833,10 +3859,13 @@
               do ic = 1, ncat_hist
               do j = jlo, jhi
               do i = ilo, ihi
+                 ms = dynMap((j-1)*nx_block+i,iblk)
+                 if (ms < 1) cycle   ! no slot: the expansion fills spval
+                 ms = dynOff(iblk) + ms
                  if (.not. tmask((j-1)*nx_block+i,iblk)) then ! mask out land points
-                    a4Di(i,j,k,ic,n,iblk) = spval_dbl
+                    a4Di(ms,k,ic,n) = spval_dbl
                  else                            ! convert units
-                    a4Di(i,j,k,ic,n,iblk) = avail_hist_fields(nn)%cona*a4Di(i,j,k,ic,n,iblk) &
+                    a4Di(ms,k,ic,n) = avail_hist_fields(nn)%cona*a4Di(ms,k,ic,n) &
                                    * ravgct + avail_hist_fields(nn)%conb
                  endif
               enddo             ! i
@@ -3853,10 +3882,13 @@
               do ic = 1, ncat_hist
               do j = jlo, jhi
               do i = ilo, ihi
+                 ms = dynMap((j-1)*nx_block+i,iblk)
+                 if (ms < 1) cycle   ! no slot: the expansion fills spval
+                 ms = dynOff(iblk) + ms
                  if (.not. tmask((j-1)*nx_block+i,iblk)) then ! mask out land points
-                    a4Ds(i,j,k,ic,n,iblk) = spval_dbl
+                    a4Ds(ms,k,ic,n) = spval_dbl
                  else                            ! convert units
-                    a4Ds(i,j,k,ic,n,iblk) = avail_hist_fields(nn)%cona*a4Ds(i,j,k,ic,n,iblk) &
+                    a4Ds(ms,k,ic,n) = avail_hist_fields(nn)%cona*a4Ds(ms,k,ic,n) &
                                    * ravgct + avail_hist_fields(nn)%conb
                  endif
               enddo             ! i
@@ -3873,10 +3905,13 @@
               do ic = 1, ncat_hist
               do j = jlo, jhi
               do i = ilo, ihi
+                 ms = dynMap((j-1)*nx_block+i,iblk)
+                 if (ms < 1) cycle   ! no slot: the expansion fills spval
+                 ms = dynOff(iblk) + ms
                  if (.not. tmask((j-1)*nx_block+i,iblk)) then ! mask out land points
-                    a4Df(i,j,k,ic,n,iblk) = spval_dbl
+                    a4Df(ms,k,ic,n) = spval_dbl
                  else                            ! convert units
-                    a4Df(i,j,k,ic,n,iblk) = avail_hist_fields(nn)%cona*a4Df(i,j,k,ic,n,iblk) &
+                    a4Df(ms,k,ic,n) = avail_hist_fields(nn)%cona*a4Df(ms,k,ic,n) &
                                    * ravgct + avail_hist_fields(nn)%conb
                  endif
               enddo             ! i
@@ -3893,10 +3928,31 @@
             ! compute sig1 and sig2
             select case (grid_ice)
             case('B')
+               ! ⚠ The stresses are compressed now.  principal_stress is shared with
+               ! the C/CD arm below, which passes stresspT/stressmT/stress12T, so it
+               ! keeps its block interface and the three B fields are expanded here
+               ! instead.  History is an I/O boundary, so this is the same contract
+               ! expand_a2D uses -- and it runs only on a history step.
+               ! ⚠ kdyn <= 0 means no dynamics, so init_dyn_shared never ran and the
+               ! slot stresses were never allocated.  The block arrays this used to
+               ! read are allocated and zeroed by alloc_flux whatever kdyn is, so
+               ! zero here reproduces exactly what it produced before.
+               if (allocated(stressp_1_slot)) then
+                  call unpack_from_slots(stressp_1_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                                         dynMap(:,iblk), worksig1)
+                  call unpack_from_slots(stressm_1_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                                         dynMap(:,iblk), worksig2)
+                  call unpack_from_slots(stress12_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                                         dynMap(:,iblk), worksig3)
+               else
+                  worksig1(:,:) = c0
+                  worksig2(:,:) = c0
+                  worksig3(:,:) = c0
+               endif
                call principal_stress (nx_block,  ny_block,  &
-                                      stressp_1 (:,iblk), &
-                                      stressm_1 (:,iblk), &
-                                      stress12_1(:,iblk), &
+                                      worksig1          , &
+                                      worksig2          , &
+                                      worksig3          , &
                                       strength  (:,:,iblk), &
                                       sig1      (:,:,iblk), &
                                       sig2      (:,:,iblk), &
@@ -3984,11 +4040,18 @@
                     if (n_trsig    (ns) /= 0) a2D(ms,n_trsig(ns)) = &
                                         strength(i,j,iblk)
                  else
-                    if (n_trsig    (ns) /= 0) a2D(ms,n_trsig(ns)) = &
-                                       p25*(stressp_1((j-1)*nx_block+i,iblk) &
-                                          + stressp_2((j-1)*nx_block+i,iblk) &
-                                          + stressp_3((j-1)*nx_block+i,iblk) &
-                                          + stressp_4((j-1)*nx_block+i,iblk))
+                    if (n_trsig(ns) /= 0) then
+                       ! see the note at principal_stress: no dynamics, no slot stresses,
+                       ! and the block arrays this replaced were zero in that case
+                       if (allocated(stressp_1_slot)) then
+                          a2D(ms,n_trsig(ns)) = p25*(stressp_1_slot(ms) &
+                                                   + stressp_2_slot(ms) &
+                                                   + stressp_3_slot(ms) &
+                                                   + stressp_4_slot(ms))
+                       else
+                          a2D(ms,n_trsig(ns)) = c0
+                       endif
+                    endif
                  endif
 
                  if (n_iage     (ns) /= 0) a2D(ms,n_iage(ns))  = &
@@ -4041,14 +4104,14 @@
       !------------------------------------------------------------
         if (write_ic) then
            if (allocated(a2D))  a2D (:,:)         = c0
-           if (allocated(a3Dc)) a3Dc(:,:,:,:,:)   = c0
+           if (allocated(a3Dc)) a3Dc(:,:,:)       = c0
            if (allocated(a3Dz)) a3Dz(:,:,:,:,:)   = c0
            if (allocated(a3Db)) a3Db(:,:,:,:,:)   = c0
            if (allocated(a3Da)) a3Da(:,:,:,:,:)   = c0
-           if (allocated(a3Df)) a3Df(:,:,:,:,:)   = c0
-           if (allocated(a4Di)) a4Di(:,:,:,:,:,:) = c0
-           if (allocated(a4Ds)) a4Ds(:,:,:,:,:,:) = c0
-           if (allocated(a4Df)) a4Df(:,:,:,:,:,:) = c0
+           if (allocated(a3Df)) a3Df(:,:,:)       = c0
+           if (allocated(a4Di)) a4Di(:,:,:,:) = c0
+           if (allocated(a4Ds)) a4Ds(:,:,:,:) = c0
+           if (allocated(a4Df)) a4Df(:,:,:,:) = c0
            avgct(:) = c0
            albcnt(:,:,:,:) = c0
            snwcnt(:,:,:,:) = c0
@@ -4065,7 +4128,7 @@
         enddo
         do n = n2D + 1, n3Dccum
            nn = n - n2D
-           if (avail_hist_fields(n)%vhistfreq == histfreq(ns)) a3Dc(:,:,:,nn,:) = c0
+           if (avail_hist_fields(n)%vhistfreq == histfreq(ns)) a3Dc(:,:,nn) = c0
         enddo
         do n = n3Dccum + 1, n3Dzcum
            nn = n - n3Dccum
@@ -4081,19 +4144,19 @@
         enddo
         do n = n3Dacum + 1, n3Dfcum
            nn = n - n3Dacum
-           if (avail_hist_fields(n)%vhistfreq == histfreq(ns)) a3Df(:,:,:,nn,:) = c0
+           if (avail_hist_fields(n)%vhistfreq == histfreq(ns)) a3Df(:,:,nn) = c0
         enddo
         do n = n3Dfcum + 1, n4Dicum
            nn = n - n3Dfcum
-           if (avail_hist_fields(n)%vhistfreq == histfreq(ns)) a4Di(:,:,:,:,nn,:) = c0
+           if (avail_hist_fields(n)%vhistfreq == histfreq(ns)) a4Di(:,:,:,nn) = c0
         enddo
         do n = n4Dicum + 1, n4Dscum
            nn = n - n4Dicum
-           if (avail_hist_fields(n)%vhistfreq == histfreq(ns)) a4Ds(:,:,:,:,nn,:) = c0
+           if (avail_hist_fields(n)%vhistfreq == histfreq(ns)) a4Ds(:,:,:,nn) = c0
         enddo
         do n = n4Dscum + 1, n4Dfcum
            nn = n - n4Dscum
-           if (avail_hist_fields(n)%vhistfreq == histfreq(ns)) a4Df(:,:,:,:,nn,:) = c0
+           if (avail_hist_fields(n)%vhistfreq == histfreq(ns)) a4Df(:,:,:,nn) = c0
         enddo
 
       endif  ! write_history or write_ic

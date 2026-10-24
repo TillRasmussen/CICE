@@ -157,8 +157,12 @@ module ice_dyn_evp1d
                            L_vvel      , L_icetmask  , L_iceUmask)
 
     use ice_calendar, only : write_history, write_restart, write_ic
-    use ice_dyn_shared, only : ndte, strintxU_slot, strintyU_slot
-    use ice_grid      , only : dynMap, dynOff, dynCnt, unpack_from_slots
+    use ice_dyn_shared, only : ndte, strintxU_slot, strintyU_slot, &
+           stressp_1_slot, stressp_2_slot, stressp_3_slot, stressp_4_slot, &
+           stressm_1_slot, stressm_2_slot, stressm_3_slot, stressm_4_slot, &
+           stress12_1_slot, stress12_2_slot, stress12_3_slot, stress12_4_slot
+    use ice_grid      , only : dynMap, dynOff, dynCnt, unpack_from_slots, &
+           pack_to_slots
     use ice_domain    , only : nblocks
     ! renamed: this module's own strintxU is the 1-D GATHERED array
     use ice_flux      , only : strintxU, strintyU
@@ -423,6 +427,39 @@ module ice_dyn_evp1d
                              G_stressp_1 , G_stressp_2 , G_stressp_3 , G_stressp_4 , &
                              G_stressm_1 , G_stressm_2 , G_stressm_3 , G_stressm_4 , &
                              G_stress12_1, G_stress12_2, G_stress12_3, G_stress12_4)
+
+       ! ⚠ The restart and the history read the SLOT copies now, so the
+       ! scatter above is only half the job on this path: the block arrays
+       ! it just wrote have to reach the slots too.  Same I/O gate as the
+       ! scatter, so this costs nothing on an ordinary timestep.
+       !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
+       do iblk = 1, nblocks
+          call pack_to_slots(L_stressp_1(:,iblk), dynMap(:,iblk), &
+                             stressp_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+          call pack_to_slots(L_stressp_2(:,iblk), dynMap(:,iblk), &
+                             stressp_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+          call pack_to_slots(L_stressp_3(:,iblk), dynMap(:,iblk), &
+                             stressp_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+          call pack_to_slots(L_stressp_4(:,iblk), dynMap(:,iblk), &
+                             stressp_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+          call pack_to_slots(L_stressm_1(:,iblk), dynMap(:,iblk), &
+                             stressm_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+          call pack_to_slots(L_stressm_2(:,iblk), dynMap(:,iblk), &
+                             stressm_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+          call pack_to_slots(L_stressm_3(:,iblk), dynMap(:,iblk), &
+                             stressm_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+          call pack_to_slots(L_stressm_4(:,iblk), dynMap(:,iblk), &
+                             stressm_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+          call pack_to_slots(L_stress12_1(:,iblk), dynMap(:,iblk), &
+                             stress12_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+          call pack_to_slots(L_stress12_2(:,iblk), dynMap(:,iblk), &
+                             stress12_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+          call pack_to_slots(L_stress12_3(:,iblk), dynMap(:,iblk), &
+                             stress12_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+          call pack_to_slots(L_stress12_4(:,iblk), dynMap(:,iblk), &
+                             stress12_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+       enddo
+       !$OMP END PARALLEL DO
     endif
     ! calculate number of active points. allocate if initial or if array size should increase
     ! call calc_nActiveTU(iceTmask_log,nActive, iceUmask)

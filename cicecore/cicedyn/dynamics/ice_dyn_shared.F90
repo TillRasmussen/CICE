@@ -1402,7 +1402,8 @@
                             stress12_3, stress12_4, &
                             uvel_init,  vvel_init,  &
                             uvel,       vvel,       &
-                            Xmap,       skipX,      &
+                            Xmap,       Xoff,       &
+                            skipX,      &
                             skipTc,                 &
                             TbU,        rheofactX,  &
                             rheofactX_s,            &
@@ -1468,6 +1469,11 @@
       ! compressed slot, or 0 if the cell is not in the static mask
       integer (kind=int_kind), dimension (:), intent(in) :: &
          Xmap        ! static compressed slot of each cell
+
+      ! Xoff is this block's dynOff: the slot arrays below are module state,
+      ! so the zeroing needs the offset to address this block's slice.
+      integer (kind=int_kind), intent(in) :: &
+         Xoff        ! dynOff(iblk)
 
       ! skipTc is skipX's counterpart for the T cells: .true. where the slot
       ! carries no ice this step.  It is set over the SAME range as icellT,
@@ -1550,6 +1556,7 @@
       ! local variables
 
       integer (kind=int_kind) :: &
+         mslotz        , & ! slot of a cell, for the stress reset
          i, j, ij       , & ! ij is the compressed cell counter
          ijb                ! 1D index of (i,j) in the block
 
@@ -1608,6 +1615,31 @@
          tauby    (ijb) = c0
 
          if (.not.iceTmask(ijb)) then
+            ! ⚠ This reset is PHYSICS, not bookkeeping: once a cell carries no
+            ! ice -- or less than the threshold iceTmask/iceUmask encode -- its
+            ! stress must be zero.  It is upstream's rule and has to stay.
+            !
+            ! Both layouts are reset because the solvers no longer agree on which
+            ! one is live.  evp and eap run on the SLOT copies and never pack the
+            ! block arrays in, so for them the slot reset is the load-bearing one.
+            ! vp writes the block arrays directly and packs to slots at the end of
+            ! its solve, so for vp it is the block reset that matters and the slot
+            ! one is overwritten.  Neither is redundant across all three.
+            mslotz = Xmap(ijb)
+            if (mslotz > 0) then
+               stressp_1_slot(Xoff+mslotz) = c0
+               stressp_2_slot(Xoff+mslotz) = c0
+               stressp_3_slot(Xoff+mslotz) = c0
+               stressp_4_slot(Xoff+mslotz) = c0
+               stressm_1_slot(Xoff+mslotz) = c0
+               stressm_2_slot(Xoff+mslotz) = c0
+               stressm_3_slot(Xoff+mslotz) = c0
+               stressm_4_slot(Xoff+mslotz) = c0
+               stress12_1_slot(Xoff+mslotz) = c0
+               stress12_2_slot(Xoff+mslotz) = c0
+               stress12_3_slot(Xoff+mslotz) = c0
+               stress12_4_slot(Xoff+mslotz) = c0
+            endif
             stressp_1 (i,j) = c0
             stressp_2 (i,j) = c0
             stressp_3 (i,j) = c0

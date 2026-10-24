@@ -133,6 +133,7 @@
              ice_HaloUpdate_stress, &
              ice_HaloExtrapolate, &
              ice_HaloExtrapolate2DR8_compressed, &
+             ice_HaloUpdate_stress_compressed, &
              ice_HaloDestroy
 
    interface ice_HaloUpdate  ! generic interface
@@ -10360,6 +10361,427 @@ contains
                                  fieldLoc, fieldKind, fillValue)
 
  end subroutine ice_HaloUpdate_stress_flat
+
+!***********************************************************************
+
+ subroutine ice_HaloUpdate_stress_compressed(array1, array2, halo, &
+                               fieldLoc, fieldKind,     &
+                               map, off, fillValue)
+
+!  As ice_HaloUpdate_stress, for arrays in the compressed layout.
+!
+!  ⚠ This routine is a TRIPOLE SEAM HANDLER and almost nothing else.
+!  The block version it is derived from receives every halo message but
+!  unpacks only the dstBlock < 0 (tripole) entries, and its local-copy
+!  branch does no ordinary neighbour copy at all -- see its own comment,
+!  "only a tripole update".  So on a non-tripole grid the only visible
+!  effect is the srcBlock == 0 fill.
+!
+!  array1's ghost cells are filled from array2's interior, which is how
+!  the caller pairs the diagonal stress corners: stressp_1 with
+!  stressp_3, then stressp_3 with stressp_1.
+
+   type (ice_halo), intent(in) :: &
+      halo                 ! precomputed halo structure containing all
+                           !  information needed for halo update
+
+   integer (int_kind), intent(in) :: &
+      fieldKind,          &! id for type of field (scalar, vector, angle)
+      fieldLoc             ! id for location on horizontal grid
+                           !  (center, NEcorner, Nface, Eface)
+
+    integer (int_kind), dimension(:,:), intent(in) :: &
+       map                  ! dynMap: cell -> block-local slot, 0 if none
+
+    integer (int_kind), dimension(:), intent(in) :: &
+       off                  ! dynOff: first slot of each block, minus one
+
+   real (dbl_kind), intent(in), optional :: &
+      fillValue            ! optional value to put in ghost cells
+                           !  where neighbor points are unknown
+                           !  (e.g. eliminated land blocks or
+                           !   closed boundaries)
+
+    real (dbl_kind), dimension(:), intent(inout) :: &
+      array1,             &! array containing field for which halo
+                           ! needs to be updated
+      array2               ! array containing field for which halo
+                           ! in array1 needs to be updated
+
+!  local variables
+
+   integer (int_kind) ::  &
+      n,nmsg,             &! dummy loop indices
+      istat,              &! allocate status flag
+      nxGlobal,           &! global domain size in x (tripole)
+      iSrc,jSrc,          &! source addresses for message
+      iDst,jDst,          &! dest   addresses for message
+      srcBlock,           &! local block number for source
+      dstBlock,           &! local block number for destination
+      ioffset, joffset,   &! address shifts for tripole
+       isign,              &! sign factor for tripole grids
+       mslot                ! slot of the cell being read or written
+
+   real (dbl_kind) :: &
+      fill                 ! value to use for unknown points
+
+   real (dbl_kind), dimension(:,:), allocatable :: &
+      bufTripole           ! tripole buffer
+
+#ifndef NO_MPI
+   integer (int_kind) ::           &
+      ierr,               &! error or status flag for MPI,alloc
+      len                  ! length of messages
+
+
+   integer (int_kind), dimension(:), allocatable :: &
+      sndRequest,         &! MPI request ids
+      rcvRequest           ! MPI request ids
+
+   integer (int_kind), dimension(:,:), allocatable :: &
+      sndStatus,          &! MPI status flags
+      rcvStatus            ! MPI status flags
+
+   real (dbl_kind), dimension(:,:), allocatable :: &
+      bufSend, bufRecv     ! 4d send,recv buffers
+#endif
+
+   character(len=*), parameter :: subname = '(ice_HaloUpdate_stress_compressed)'
+
+!-----------------------------------------------------------------------
+!
+!  abort or return on unknown or noupdate field_loc or field_type
+!
+!-----------------------------------------------------------------------
+
+   if (fieldLoc  == field_loc_unknown .or. &
+       fieldKind == field_type_unknown) then
+      call abort_ice(subname//'ERROR: use of field_loc/type_unknown not allowed')
+      return
+   endif
+
+   if (fieldLoc  == field_loc_noupdate .or. &
+       fieldKind == field_type_noupdate) then
+      return
+   endif
+
+!-----------------------------------------------------------------------
+!
+!  initialize error code and fill value
+!
+!-----------------------------------------------------------------------
+
+   if (present(fillValue)) then
+      fill = fillValue
+   else
+      fill = 0.0_dbl_kind
+   endif
+
+   nxGlobal = 0
+   if (nxGlobal_size > 0) then
+      nxGlobal = nxGlobal_size
+      allocate(bufTripole(nxGlobal,halo%tripoleRows), stat=istat)
+      if (istat > 0) then
+         call abort_ice(subname//'ERROR: allocating bufTripole arrays')
+         return
+      endif
+      bufTripole = fill
+   endif
+
+#ifndef NO_MPI
+!-----------------------------------------------------------------------
+!
+!  allocate request and status arrays for messages
+!
+!-----------------------------------------------------------------------
+
+   allocate(sndRequest(halo%numMsgSend), &
+            rcvRequest(halo%numMsgRecv), &
+            sndStatus(MPI_STATUS_SIZE,halo%numMsgSend), &
+            rcvStatus(MPI_STATUS_SIZE,halo%numMsgRecv), stat=istat)
+
+   if (istat > 0) then
+      call abort_ice(subname//'ERROR: allocating req,status arrays')
+      return
+   endif
+
+   allocate(bufSend(bufSizeSend, halo%numMsgSend), &
+            bufRecv(bufSizeRecv, halo%numMsgRecv), stat=istat)
+
+   if (istat > 0) then
+      call abort_ice(subname//'ERROR: allocating bufSend, bufRecv')
+      return
+   endif
+
+!-----------------------------------------------------------------------
+!
+!  post receives
+!
+!-----------------------------------------------------------------------
+
+   do nmsg=1,halo%numMsgRecv
+
+      len = halo%SizeRecv(nmsg)
+      call MPI_IRECV(bufRecv(1,nmsg), len, mpiR8, &
+                     halo%recvTask(nmsg),               &
+                     mpitagHalo + halo%recvTask(nmsg),  &
+                     halo%communicator, rcvRequest(nmsg), ierr)
+   end do
+
+!-----------------------------------------------------------------------
+!
+!  fill send buffer and post sends
+!
+!-----------------------------------------------------------------------
+
+   do nmsg=1,halo%numMsgSend
+
+      do n=1,halo%sizeSend(nmsg)
+         iSrc     = halo%sendAddr(1,n,nmsg)
+         jSrc     = halo%sendAddr(2,n,nmsg)
+         srcBlock = halo%sendAddr(3,n,nmsg)
+
+         mslot = map((jSrc-1)*nx_block + iSrc, srcBlock)
+         if (mslot > 0) then
+            bufSend(n,nmsg) = array2(off(srcBlock)+mslot)
+         else
+            bufSend(n,nmsg) = c0
+         endif
+      end do
+      do n=halo%sizeSend(nmsg)+1,bufSizeSend
+         bufSend(n,nmsg) = fill  ! fill remainder of buffer
+      end do
+
+      len = halo%SizeSend(nmsg)
+      call MPI_ISEND(bufSend(1,nmsg), len, mpiR8, &
+                     halo%sendTask(nmsg),               &
+                     mpitagHalo + my_task,              &
+                     halo%communicator, sndRequest(nmsg), ierr)
+   end do
+#endif
+
+!-----------------------------------------------------------------------
+!
+!  while messages are being communicated,
+!  do NOT zero the halo out, this halo update just updates
+!  the tripole zipper as needed for stresses.  if you zero
+!  it out, all halo values will be wiped out.
+!
+!-----------------------------------------------------------------------
+
+!-----------------------------------------------------------------------
+!
+!  do local copies while waiting for messages to complete
+!  if srcBlock is zero, that denotes an eliminated land block or a
+!    closed boundary where ghost cell values are undefined
+!  if srcBlock is less than zero, the message is a copy out of the
+!    tripole buffer and will be treated later
+!
+!-----------------------------------------------------------------------
+
+   do nmsg=1,halo%numLocalCopies
+      iSrc     = halo%srcLocalAddr(1,nmsg)
+      jSrc     = halo%srcLocalAddr(2,nmsg)
+      srcBlock = halo%srcLocalAddr(3,nmsg)
+      iDst     = halo%dstLocalAddr(1,nmsg)
+      jDst     = halo%dstLocalAddr(2,nmsg)
+      dstBlock = halo%dstLocalAddr(3,nmsg)
+
+      if (srcBlock > 0) then
+         if (dstBlock < 0) then ! tripole copy into buffer
+            mslot = map((jSrc-1)*nx_block + iSrc, srcBlock)
+            if (mslot > 0) then
+               bufTripole(iDst,jDst) = array2(off(srcBlock)+mslot)
+            else
+               bufTripole(iDst,jDst) = c0
+            endif
+         endif
+      else if (srcBlock == 0) then
+         mslot = map((jDst-1)*nx_block + iDst, dstBlock)
+         if (mslot > 0) array1(off(dstBlock)+mslot) = fill
+     endif
+   end do
+
+#ifndef NO_MPI
+!-----------------------------------------------------------------------
+!
+!  wait for receives to finish and then unpack the recv buffer into
+!  ghost cells
+!
+!-----------------------------------------------------------------------
+
+   call MPI_WAITALL(halo%numMsgRecv, rcvRequest, rcvStatus, ierr)
+
+   do nmsg=1,halo%numMsgRecv
+      do n=1,halo%sizeRecv(nmsg)
+         iDst     = halo%recvAddr(1,n,nmsg)
+         jDst     = halo%recvAddr(2,n,nmsg)
+         dstBlock = halo%recvAddr(3,n,nmsg)
+
+         if (dstBlock < 0) then !tripole
+            bufTripole(iDst,jDst) = bufRecv(n,nmsg)
+         endif
+      end do
+   end do
+#endif
+
+!-----------------------------------------------------------------------
+!
+!  No special code for zero_gradient or linear_extrap bcs, only a tripole update
+!
+!-----------------------------------------------------------------------
+
+!-----------------------------------------------------------------------
+!
+!  take care of northern boundary in tripole case
+!  bufTripole array contains the top haloWidth+1 rows of physical
+!    domain for entire (global) top row
+!
+!-----------------------------------------------------------------------
+
+   if (nxGlobal > 0) then
+
+      select case (fieldKind)
+      case (field_type_scalar)
+         isign =  1
+      case (field_type_vector)
+         isign = -1
+      case (field_type_angle)
+         isign = -1
+      case default
+         call abort_ice(subname//'ERROR: Unknown field kind')
+      end select
+
+      if (halo%tripoleTFlag) then
+
+        select case (fieldLoc)
+        case (field_loc_center)   ! cell center location
+
+           ioffset = -1
+           joffset = 0
+
+        case (field_loc_NEcorner)   ! cell corner location
+
+           ioffset = 0
+           joffset = 1
+
+        case (field_loc_Eface)   ! cell center location
+
+           ioffset = 0
+           joffset = 0
+
+        case (field_loc_Nface)   ! cell corner (velocity) location
+
+           ioffset = -1
+           joffset = 1
+
+        case default
+           call abort_ice(subname//'ERROR: Unknown field location')
+        end select
+
+      else ! tripole u-fold
+
+        select case (fieldLoc)
+        case (field_loc_center)   ! cell center location
+
+           ioffset = 0
+           joffset = 0
+
+        case (field_loc_NEcorner)   ! cell corner location
+
+           ioffset = 1
+           joffset = 1
+
+        case (field_loc_Eface)
+
+           ioffset = 1
+           joffset = 0
+
+        case (field_loc_Nface)
+
+           ioffset = 0
+           joffset = 1
+
+        case default
+           call abort_ice(subname//'ERROR: Unknown field location')
+        end select
+
+      endif
+
+      !*** copy out of global tripole buffer into local
+      !*** ghost cells
+
+      !*** look through local copies to find the copy out
+      !*** messages (srcBlock < 0)
+
+      do nmsg=1,halo%numLocalCopies
+         srcBlock = halo%srcLocalAddr(3,nmsg)
+
+         if (srcBlock < 0) then
+
+            iSrc     = halo%srcLocalAddr(1,nmsg) ! tripole buffer addr
+            jSrc     = halo%srcLocalAddr(2,nmsg)
+
+            iDst     = halo%dstLocalAddr(1,nmsg) ! local block addr
+            jDst     = halo%dstLocalAddr(2,nmsg)
+            dstBlock = halo%dstLocalAddr(3,nmsg)
+
+            !*** correct for offsets
+            iSrc = iSrc - ioffset
+            jSrc = jSrc - joffset
+            if (iSrc < 1       ) iSrc = iSrc + nxGlobal
+            if (iSrc > nxGlobal) iSrc = iSrc - nxGlobal
+
+            !*** for center and Eface, do not need to replace
+            !*** top row of physical domain, so jSrc should be
+            !*** out of range and skipped
+            !*** otherwise do the copy
+
+            if (jSrc <= halo%tripoleRows .and. jSrc>0 .and. jDst>0) then
+               mslot = map((jDst-1)*nx_block + iDst, dstBlock)
+               if (mslot > 0) array1(off(dstBlock)+mslot) = isign*bufTripole(iSrc,jSrc)
+            endif
+
+         endif
+      end do
+
+   endif
+
+!-----------------------------------------------------------------------
+!
+!  wait for sends to complete and deallocate arrays
+!
+!-----------------------------------------------------------------------
+
+#ifndef NO_MPI
+   call MPI_WAITALL(halo%numMsgSend, sndRequest, sndStatus, ierr)
+
+   deallocate(sndRequest, rcvRequest, sndStatus, rcvStatus, stat=istat)
+
+   if (istat > 0) then
+      call abort_ice(subname//'ERROR: deallocating req,status arrays')
+      return
+   endif
+
+   deallocate(bufSend, bufRecv, stat=istat)
+
+   if (istat > 0) then
+      call abort_ice(subname//'ERROR: deallocating bufSend, bufRecv')
+      return
+   endif
+#endif
+
+   if (allocated(bufTripole)) then
+      deallocate(bufTripole, stat=istat)
+      if (istat > 0) then
+         call abort_ice(subname//'ERROR: deallocating bufTripole')
+         return
+      endif
+   endif
+
+!-----------------------------------------------------------------------
+
+ end subroutine ice_HaloUpdate_stress_compressed
 
 !***********************************************************************
 
