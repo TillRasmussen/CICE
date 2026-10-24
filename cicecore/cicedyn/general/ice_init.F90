@@ -118,7 +118,7 @@
       use ice_dyn_shared, only: &
           ndte, kdyn, revised_evp, yield_curve, &
           evp_algorithm, visc_method,           &
-          free_drift_approx,                    &
+          free_drift_approx, evp1d_reorder,     &
           seabed_stress, seabed_stress_method,  &
           k1, k2, alphab, threshold_hw, Ktens,  &
           e_yieldcurve, e_plasticpot, coriolis, &
@@ -263,7 +263,8 @@
         k1, k2,         alphab,         threshold_hw,                   &
         deltaminEVP,    deltaminVP,     capping_method,                 &
         Cf,             Pstar,          Cstar,          Ktens,          &
-        dyn_area_min,   dyn_mass_min,   free_drift_approx
+        dyn_area_min,   dyn_mass_min,   free_drift_approx,              &
+         evp1d_reorder
 
       namelist /shortwave_nml/ &
         shortwave,      albedo_type,     snw_ssp_table,                 &
@@ -430,6 +431,7 @@
       dyn_area_min = 1.e-11_dbl_kind ! minimum ice area concentration to activate dynamics
       dyn_mass_min = 1.e-10_dbl_kind ! minimum ice mass to activate dynamics (kg/m^2)
       free_drift_approx = .true.     ! if true, set internal stress term to 0 for small areas
+      evp1d_reorder = .false.        ! if true, evp1d takes only the cells carrying ice
       krdg_partic = 1         ! 1 = new participation, 0 = Thorndike et al 75
       krdg_redist = 1         ! 1 = new redistribution, 0 = Hibler 80
       mu_rdg = 3              ! e-folding scale of ridged ice, krdg_partic=1 (m^0.5)
@@ -1071,6 +1073,7 @@
       call broadcast_scalar(dyn_area_min,         master_task)
       call broadcast_scalar(dyn_mass_min,         master_task)
       call broadcast_scalar(free_drift_approx,    master_task)
+      call broadcast_scalar(evp1d_reorder,        master_task)
       call broadcast_scalar(krdg_partic,          master_task)
       call broadcast_scalar(krdg_redist,          master_task)
       call broadcast_scalar(mu_rdg,               master_task)
@@ -1477,6 +1480,17 @@
       endif
 
       if ((kdyn == 2 .or. kdyn == 3) .and. free_drift_approx) then
+      ! evp1d_reorder only means anything to the 1-D solver: it changes which
+      ! cells that solver puts in its 1-D arrays.  Setting it anywhere else is
+      ! a silently ignored namelist entry, which is worse than an abort.
+      if (evp1d_reorder .and. .not. (kdyn == 1 .and. evp_algorithm == "shared_mem_1d")) then
+         if (my_task == master_task) then
+            write(nu_diag,*) subname//" ERROR: evp1d_reorder = T without evp_algorithm = shared_mem_1d"
+            write(nu_diag,*) subname//" ERROR:   evp1d_reorder applies to the 1-D EVP solver only"
+         endif
+         abort_list = trim(abort_list)//":139"
+      endif
+
          if (my_task == master_task) then
             write(nu_diag,*) subname//' ERROR: free_drift_approx = T with EAP or VP dynamics'
             write(nu_diag,*) subname//' ERROR:   free_drift_approx must be F'
@@ -2188,6 +2202,8 @@
                tmpstr2 = ' : free drift approximation is not used for small areas '
             endif
             write(nu_diag,1010) ' free_drift_approx = ', free_drift_approx,trim(tmpstr2)
+            write(nu_diag,1010) ' evp1d_reorder     = ', evp1d_reorder, &
+               ' : evp1d takes only the cells carrying ice'
             if (kdyn == 1 .or. kdyn == 2) then
                if (revised_evp) then
                   tmpstr2 = ' : revised EVP formulation used'

@@ -68,7 +68,7 @@ module ice_dyn_core1d
   contains
 
   ! arguments ------------------------------------------------------------------
-  subroutine stress_1d (ee, ne, se, lb, ub,                              &
+  subroutine stress_1d (nbrW, nbrSW, nbrS, lb, ub, aList,                       &
                         uvel, vvel, dxT, dyT, DminTarea,                 &
                         dxhy, dyhx, skipme, strength,                    &
                         hte, htn, htem1, htnm1,                          &
@@ -87,7 +87,14 @@ module ice_dyn_core1d
     implicit none
     ! arguments ------------------------------------------------------------------
     integer (kind=int_kind), intent(in)                           :: lb,ub
-    integer (kind=int_kind), dimension(:), intent(in), contiguous :: ee,ne,se
+    ! Slots to visit, aList(lb:ub).  With evp1d_reorder off this is the
+    ! identity and the loop is exactly the contiguous one it replaces; with it
+    ! on it holds only the slots carrying ice, so the kernel never streams the
+    ! ice-free ocean.  The skip tests stay either way -- aList is the union of
+    ! iceTmask and iceUmask, and stress needs the T half while stepu needs the
+    ! U half.
+    integer (kind=int_kind), intent(in)                           :: aList(:)
+    integer (kind=int_kind), dimension(:), intent(in), contiguous :: nbrW,nbrSW,nbrS
     logical (kind=log_kind), dimension(:), intent(in), contiguous :: skipme
     real    (kind=dbl_kind), dimension(:), intent(in), contiguous ::             &
       strength , & ! ice strength (N/m)
@@ -113,6 +120,7 @@ module ice_dyn_core1d
 
     ! local variables
     integer (kind=int_kind) :: iw
+    integer (kind=int_kind) :: n   ! position in aList
 
     real    (kind=dbl_kind) ::                          &
       divune, divunw, divuse, divusw            ,       & ! divergence
@@ -133,8 +141,8 @@ module ice_dyn_core1d
       strp_tmp, strm_tmp
 
     real    (kind=dbl_kind) ::                          &
-      tmp_uvel_ee, tmp_vvel_se, tmp_vvel_ee,            &
-      tmp_vvel_ne, tmp_uvel_ne, tmp_uvel_se,            &
+      tmp_uvel_W, tmp_vvel_S, tmp_vvel_W,            &
+      tmp_vvel_SW, tmp_uvel_SW, tmp_uvel_S,            &
       tmp_uvel_cc, tmp_vvel_cc, tmp_dxT, tmp_dyT,       &
       tmp_cxp, tmp_cyp, tmp_cxm, tmp_cym,               &
       tmp_strength, tmp_DminTarea,                      &
@@ -147,7 +155,7 @@ module ice_dyn_core1d
 #else
     !$omp parallel do schedule(runtime)                        &
     !$omp default(none)                                        &
-    !$omp private(iw, divune, divunw, divuse, divusw         , &
+    !$omp private(iw, n, divune, divunw, divuse, divusw         , &
     !$omp         tensionne, tensionnw, tensionse, tensionsw , &
     !$omp         shearne, shearnw, shearse, shearsw         , &
     !$omp         Deltane, Deltanw, Deltase, Deltasw         , &
@@ -163,8 +171,8 @@ module ice_dyn_core1d
     !$omp         csig12ne, csig12nw, csig12se, csig12sw     , &
     !$omp         str12ew, str12we, str12ns, str12sn         , &
     !$omp         strp_tmp, strm_tmp                         , &
-    !$omp         tmp_uvel_ee, tmp_vvel_se, tmp_vvel_ee      , &
-    !$omp         tmp_vvel_ne, tmp_uvel_ne, tmp_uvel_se      , &
+    !$omp         tmp_uvel_W, tmp_vvel_S, tmp_vvel_W      , &
+    !$omp         tmp_vvel_SW, tmp_uvel_SW, tmp_uvel_S      , &
     !$omp         tmp_uvel_cc, tmp_vvel_cc, tmp_dxT, tmp_dyT , &
     !$omp         tmp_cxp, tmp_cyp, tmp_cxm, tmp_cym         , &
     !$omp         tmp_strength, tmp_DminTarea                , &
@@ -177,20 +185,21 @@ module ice_dyn_core1d
     !$omp         stress12_1,stress12_2,stress12_3,stress12_4, &
     !$omp         arlx1i, denom1, e_factor                   , &
     !$omp         epp2i, capping,                              &
-    !$omp         skipme,strength,ee,se,ne,lb,ub,revp)
+    !$omp         skipme,strength,nbrW,nbrS,nbrSW,lb,ub,revp,aList)
 #endif
 
-    do iw = lb, ub
+    do n = lb, ub
+      iw = aList(n)
       if (skipme(iw)) cycle
       ! divergence  =  e_11 + e_22
       tmp_uvel_cc   = uvel(iw)
       tmp_vvel_cc   = vvel(iw)
-      tmp_uvel_ee   = uvel(ee(iw))
-      tmp_vvel_se   = vvel(se(iw))
-      tmp_vvel_ee   = vvel(ee(iw))
-      tmp_vvel_ne   = vvel(ne(iw))
-      tmp_uvel_ne   = uvel(ne(iw))
-      tmp_uvel_se   = uvel(se(iw))
+      tmp_uvel_W   = uvel(nbrW(iw))
+      tmp_vvel_S   = vvel(nbrS(iw))
+      tmp_vvel_W   = vvel(nbrW(iw))
+      tmp_vvel_SW   = vvel(nbrSW(iw))
+      tmp_uvel_SW   = uvel(nbrSW(iw))
+      tmp_uvel_S   = uvel(nbrS(iw))
       tmp_dxT       = dxT(iw)
       tmp_dyT       = dyT(iw)
       tmp_cxp       = c1p5 * htn(iw) - p5 * htnm1(iw)
@@ -215,12 +224,12 @@ module ice_dyn_core1d
       ! strain rates - NOTE these are actually strain rates * area  (m^2/s)
       !--------------------------------------------------------------------------
       ! strain_rates is shared with the 2d solver.  Its stencil slots are
-      ! named from the other origin -- 00/W/S/SW here is cc/ee/se/ne -- the
+      ! named from the other origin -- 00/W/S/SW here is cc/nbrW/nbrS/nbrSW -- the
       ! two index spaces sitting one cell apart; the arithmetic is the same.
-      call strain_rates    (tmp_uvel_cc, tmp_uvel_ee, &
-                            tmp_uvel_se, tmp_uvel_ne, &
-                            tmp_vvel_cc, tmp_vvel_ee, &
-                            tmp_vvel_se, tmp_vvel_ne, &
+      call strain_rates    (tmp_uvel_cc, tmp_uvel_W, &
+                            tmp_uvel_S, tmp_uvel_SW, &
+                            tmp_vvel_cc, tmp_vvel_W, &
+                            tmp_vvel_S, tmp_vvel_SW, &
                             tmp_dxT    , tmp_dyT    , &
                             tmp_cxp    , tmp_cyp    , &
                             tmp_cxm    , tmp_cym    , &
@@ -391,7 +400,7 @@ module ice_dyn_core1d
   ! Calculation of the surface stresses
   ! Integration of the momentum equation to find velocity (u,v)
   ! author: Elizabeth C. Hunke, LANL
-  subroutine stepu_1d (lb       , ub       , &
+  subroutine stepu_1d (lb       , ub       , aList, &
                        Cw       , aiX      , &
                        uocn     , vocn     , &
                        waterx   , watery   , &
@@ -404,8 +413,8 @@ module ice_dyn_core1d
                        str3     , str4     , &
                        str5     , str6     , &
                        str7     , str8     , &
-                       nw       , sw       , &
-                       sse      , skipme   , &
+                       nbrE       , nbrNE       , &
+                       nbrN      , skipme   , &
                        Tbu, Cb, rhow, rheofactU)
 
     use ice_kinds_mod
@@ -414,7 +423,9 @@ module ice_dyn_core1d
 
     ! arguments ------------------------------------------------------------------
     integer(kind=int_kind), intent(in)                           :: lb,ub
-    integer(kind=int_kind), intent(in), dimension(:), contiguous :: nw,sw,sse
+    ! see stress_1d
+    integer(kind=int_kind), intent(in)                           :: aList(:)
+    integer(kind=int_kind), intent(in), dimension(:), contiguous :: nbrE,nbrNE,nbrN
     logical(kind=log_kind), intent(in), dimension(:), contiguous :: skipme
     real   (kind=dbl_kind), intent(in), dimension(:), contiguous ::              &
        Tbu,      & ! coefficient for basal stress (N/m^2)
@@ -443,6 +454,7 @@ module ice_dyn_core1d
 
     ! local variables
     integer (kind=int_kind) :: iw
+    integer (kind=int_kind) :: n   ! position in aList
 
     real (kind=dbl_kind) ::&
        uold, vold        , & ! old-time uvel, vvel
@@ -451,8 +463,8 @@ module ice_dyn_core1d
        taux, tauy,         & ! part of ocean stress term
        strintx, strinty      ! internal strength, changed to scalar and calculated after
     real (kind=dbl_kind) ::                  &
-       tmp_str2_nw,tmp_str3_sse,tmp_str4_sw, &
-       tmp_str6_sse,tmp_str7_nw,tmp_str8_sw
+       tmp_str2_E,tmp_str3_N,tmp_str4_NE, &
+       tmp_str6_N,tmp_str7_E,tmp_str8_NE
 
     character(len=*), parameter :: subname = '(stepu_1d)'
 
@@ -464,17 +476,18 @@ module ice_dyn_core1d
 #else
     !$omp parallel do schedule(runtime)                                        &
     !$omp default(none)                                                        &
-    !$omp private(iw, tmp_str2_nw,tmp_str3_sse,tmp_str4_sw,                    &
-    !$omp         tmp_str6_sse,tmp_str7_nw,tmp_str8_sw,                        &
+    !$omp private(iw, n, tmp_str2_E,tmp_str3_N,tmp_str4_NE,                    &
+    !$omp         tmp_str6_N,tmp_str7_E,tmp_str8_NE,                        &
     !$omp         vrel, uold, vold, taux, tauy, cca, ccb, ab2,                 &
     !$omp         cc1, cc2,strintx, strinty)                                   &
     !$omp shared(uvel,vvel,str1,str2,str3,str4,str5,str6,str7,str8,            &
-    !$omp        Cb,nw,sw,sse,skipme,Tbu,uvel_init,vvel_init,                  &
+    !$omp        Cb,nbrE,nbrNE,nbrN,skipme,Tbu,uvel_init,vvel_init,                  &
     !$omp        aiX,waterx,watery,forcex,forcey,Umassdti,uocn,vocn,fm,uarear, &
     !$omp        rheofactU,                                                    &
-    !$omp           Cw,lb,ub,brlx, revp, rhow)
+    !$omp           Cw,lb,ub,brlx, revp, rhow,aList)
 #endif
-    do iw = lb, ub
+    do n = lb, ub
+      iw = aList(n)
       if (skipme(iw)) cycle
 
       uold = uvel(iw)
@@ -494,20 +507,20 @@ module ice_dyn_core1d
 
       ab2 = cca**2 + ccb**2
 
-      tmp_str2_nw = str2(nw(iw))
-      tmp_str3_sse = str3(sse(iw))
-      tmp_str4_sw = str4(sw(iw))
-      tmp_str6_sse = str6(sse(iw))
-      tmp_str7_nw = str7(nw(iw))
-      tmp_str8_sw = str8(sw(iw))
+      tmp_str2_E = str2(nbrE(iw))
+      tmp_str3_N = str3(nbrN(iw))
+      tmp_str4_NE = str4(nbrNE(iw))
+      tmp_str6_N = str6(nbrN(iw))
+      tmp_str7_E = str7(nbrE(iw))
+      tmp_str8_NE = str8(nbrNE(iw))
 
       ! divergence of the internal stress tensor
       ! rheofactU is 1, or 0 where the U cell carries less ice than
       ! rheo_area_min and free_drift_approx is on.  The 2-D stepu applies it
       ! here (#1133); #1133 did not reach this kernel, so the two solvers
       ! disagreed wherever a grid has marginal ice.
-      strintx = rheofactU(iw)*uarear(iw)*(str1(iw)+tmp_str2_nw+tmp_str3_sse+tmp_str4_sw)
-      strinty = rheofactU(iw)*uarear(iw)*(str5(iw)+tmp_str6_sse+tmp_str7_nw+tmp_str8_sw)
+      strintx = rheofactU(iw)*uarear(iw)*(str1(iw)+tmp_str2_E+tmp_str3_N+tmp_str4_NE)
+      strinty = rheofactU(iw)*uarear(iw)*(str5(iw)+tmp_str6_N+tmp_str7_E+tmp_str8_NE)
 
       ! finally, the velocity components
       cc1 = strintx + forcex(iw) + taux &
@@ -530,14 +543,14 @@ module ice_dyn_core1d
 
   !=============================================================================
   ! calculates strintx and strinty if needed
-  subroutine calc_diag_1d (lb     , ub     , &
+  subroutine calc_diag_1d (lb     , ub     , aList, &
                            uarear , skipme , &
                            str1   , str2   , &
                            str3   , str4   , &
                            str5   , str6   , &
                            str7   , str8   , &
-                           nw     , sw     , &
-                           sse    , rheofactU, &
+                           nbrE     , nbrNE     , &
+                           nbrN    , rheofactU, &
                            strintx, strinty)
 
     use ice_kinds_mod
@@ -548,15 +561,18 @@ module ice_dyn_core1d
        strintx, strinty
 
     integer(kind=int_kind), intent(in)                           :: lb,ub
-    integer(kind=int_kind), intent(in), dimension(:), contiguous :: nw,sw,sse
+    ! see stress_1d
+    integer(kind=int_kind), intent(in)                           :: aList(:)
+    integer(kind=int_kind), intent(in), dimension(:), contiguous :: nbrE,nbrNE,nbrN
     logical(kind=log_kind), intent(in), dimension(:), contiguous :: skipme
     real   (kind=dbl_kind), intent(in), dimension(:), contiguous :: uarear, rheofactU
 
   ! local variables
     integer (kind=int_kind) :: iw
+    integer (kind=int_kind) :: n   ! position in aList
     real (kind=dbl_kind) ::                 &
-      tmp_str2_nw,tmp_str3_sse,tmp_str4_sw, &
-      tmp_str6_sse,tmp_str7_nw,tmp_str8_sw
+      tmp_str2_E,tmp_str3_N,tmp_str4_NE, &
+      tmp_str6_N,tmp_str7_E,tmp_str8_NE
 
     character(len=*), parameter :: subname = '(calc_diag_1d)'
 
@@ -565,26 +581,27 @@ module ice_dyn_core1d
 #else
     !$omp parallel do schedule(runtime)                                   &
     !$omp default(none)                                                   &
-    !$omp private(iw, tmp_str2_nw,tmp_str3_sse,tmp_str4_sw,               &
-    !$omp         tmp_str6_sse,tmp_str7_nw,tmp_str8_sw)                   &
+    !$omp private(iw, n, tmp_str2_E,tmp_str3_N,tmp_str4_NE,               &
+    !$omp         tmp_str6_N,tmp_str7_E,tmp_str8_NE)                   &
     !$omp shared(strintx,strinty,str1,str2,str3,str4,str5,str6,str7,str8, &
     !$omp        rheofactU,                                               &
-    !$omp        nw,sw,sse,skipme, uarear, lb,ub)
+    !$omp        nbrE,nbrNE,nbrN,skipme, uarear, lb,ub,aList)
 #endif
 
-    do iw = lb, ub
+    do n = lb, ub
+      iw = aList(n)
       if (skipme(iw)) cycle
 
-      tmp_str2_nw = str2(nw(iw))
-      tmp_str3_sse = str3(sse(iw))
-      tmp_str4_sw = str4(sw(iw))
-      tmp_str6_sse = str6(sse(iw))
-      tmp_str7_nw = str7(nw(iw))
-      tmp_str8_sw = str8(sw(iw))
+      tmp_str2_E = str2(nbrE(iw))
+      tmp_str3_N = str3(nbrN(iw))
+      tmp_str4_NE = str4(nbrNE(iw))
+      tmp_str6_N = str6(nbrN(iw))
+      tmp_str7_E = str7(nbrE(iw))
+      tmp_str8_NE = str8(nbrNE(iw))
 
       ! divergence of the internal stress tensor
-      strintx(iw) = rheofactU(iw)*uarear(iw)*(str1(iw)+tmp_str2_nw+tmp_str3_sse+tmp_str4_sw)
-      strinty(iw) = rheofactU(iw)*uarear(iw)*(str5(iw)+tmp_str6_sse+tmp_str7_nw+tmp_str8_sw)
+      strintx(iw) = rheofactU(iw)*uarear(iw)*(str1(iw)+tmp_str2_E+tmp_str3_N+tmp_str4_NE)
+      strinty(iw) = rheofactU(iw)*uarear(iw)*(str5(iw)+tmp_str6_N+tmp_str7_E+tmp_str8_NE)
     enddo
 
 #ifdef _OPENMP_TARGET

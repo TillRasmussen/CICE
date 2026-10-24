@@ -81,8 +81,10 @@
          ssh_stress     ! 'geostrophic' or 'coupled'
 
       logical (kind=log_kind), public :: &
-         revised_evp, & ! if true, use revised evp procedure
-         free_drift_approx ! if true, set internal stress to 0 for small areas
+         revised_evp,       & ! if true, use revised evp procedure
+         free_drift_approx, & ! if true, set internal stress to 0 for small areas
+         evp1d_reorder        ! if true, evp1d rebuilds its 1d layout from the ice
+                              ! masks every step instead of fixing it at the coast
 
       character (len=char_len), public :: &
          evp_algorithm  ! standard_2d = 2D org version (standard)

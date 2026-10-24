@@ -1013,15 +1013,50 @@
 
       if (grid_ice == "B") then
 
+         ! ⚠ HOISTED above the evp_algorithm branch so BOTH solvers consume the
+         ! same compressed inputs.  It used to sit inside the standard_2d arm,
+         ! which left these slots stale on the evp1d path -- harmless while
+         ! evp1d read only the block arrays, and a silent wrong answer the
+         ! moment it reads a slot instead.  Homogenising means one producer.
+         ! Pack the velocities into the compressed layout once, subcycle on
+         ! them there, and unpack once at the end.  uvel/vvel themselves
+         ! stay in the block layout for restart, history, transport and the
+         ! couplers; only the ndte subcycles run compressed.
+         !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
+         do iblk = 1, nblocks
+            call pack_to_slots(uvel(:,iblk), dynMap(:,iblk), uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            call pack_to_slots(vvel(:,iblk), dynMap(:,iblk), vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            ! constant through the subcycling, so packed once and never
+            ! unpacked; the block-layout originals stay for the consumers
+            ! outside the dynamics
+            call pack_to_slots(aiU (:,iblk), dynMap(:,iblk), aiU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            call pack_to_slots(fmU (:,iblk), dynMap(:,iblk), fmU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            ! umassdti, waterxU, wateryU, forcexU and forceyU are not packed
+            ! here: dyn_prep2 already filled their compressed copies in the
+            ! same loop that computed them, which costs one store instead of
+            ! a second traversal of the block.
+            call pack_to_slots(uocnU(:,:,iblk), dynMap(:,iblk), uocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            call pack_to_slots(vocnU(:,:,iblk), dynMap(:,iblk), vocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            call pack_to_slots(Cdn_ocnU(:,:,iblk), dynMap(:,iblk), cdn_ocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            ! strength is constant through the subcycling; the twelve
+            ! stress components are the subcycle's own state, read and
+            ! written every pass and unpacked once at the end for the
+            ! restart.
+            call pack_to_slots(strength(:,:,iblk), dynMap(:,iblk), strength_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            ! ⚠ The stresses are NOT packed from the block arrays any more.  The
+            ! slot copies are the live state: they persist between timesteps,
+            ! dyn_prep2 applies the no-ice reset to them directly, and the
+            ! restart read seeds them through stresses_to_slots.  Packing here
+            ! would overwrite all of that with block values nothing maintains.
+         enddo
+         !$OMP END PARALLEL DO
+
          if (evp_algorithm == "shared_mem_1d" ) then
 
             call dyn_evp1d_run(dt        ,                                     &
                                stressp_1 , stressp_2, stressp_3  , stressp_4 , &
                                stressm_1 , stressm_2 , stressm_3 , stressm_4 , &
                                stress12_1, stress12_2, stress12_3, stress12_4, &
-                               strength  ,                                     &
-                               cdn_ocnU  , aiU       , uocnU     , vocnU     , &
-                               forcexU   , forceyU   , &
                                umass     , uvel      , &
                                vvel      , iceTmask  , iceUmask)
 
@@ -1031,38 +1066,6 @@
 
          else ! evp_algorithm == standard_2d (Standard CICE)
 
-            ! Pack the velocities into the compressed layout once, subcycle on
-            ! them there, and unpack once at the end.  uvel/vvel themselves
-            ! stay in the block layout for restart, history, transport and the
-            ! couplers; only the ndte subcycles run compressed.
-            !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
-            do iblk = 1, nblocks
-               call pack_to_slots(uvel(:,iblk), dynMap(:,iblk), uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-               call pack_to_slots(vvel(:,iblk), dynMap(:,iblk), vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-               ! constant through the subcycling, so packed once and never
-               ! unpacked; the block-layout originals stay for the consumers
-               ! outside the dynamics
-               call pack_to_slots(aiU (:,iblk), dynMap(:,iblk), aiU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-               call pack_to_slots(fmU (:,iblk), dynMap(:,iblk), fmU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-               ! umassdti, waterxU, wateryU, forcexU and forceyU are not packed
-               ! here: dyn_prep2 already filled their compressed copies in the
-               ! same loop that computed them, which costs one store instead of
-               ! a second traversal of the block.
-               call pack_to_slots(uocnU(:,:,iblk), dynMap(:,iblk), uocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-               call pack_to_slots(vocnU(:,:,iblk), dynMap(:,iblk), vocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-               call pack_to_slots(Cdn_ocnU(:,:,iblk), dynMap(:,iblk), cdn_ocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-               ! strength is constant through the subcycling; the twelve
-               ! stress components are the subcycle's own state, read and
-               ! written every pass and unpacked once at the end for the
-               ! restart.
-               call pack_to_slots(strength(:,:,iblk), dynMap(:,iblk), strength_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-               ! ⚠ The stresses are NOT packed from the block arrays any more.  The
-               ! slot copies are the live state: they persist between timesteps,
-               ! dyn_prep2 applies the no-ice reset to them directly, and the
-               ! restart read seeds them through stresses_to_slots.  Packing here
-               ! would overwrite all of that with block values nothing maintains.
-            enddo
-            !$OMP END PARALLEL DO
 
             do ksub = 1,ndte        ! subcycling
 

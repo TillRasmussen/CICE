@@ -16,7 +16,7 @@ module ice_dyn_evp1d
   use ice_domain_size, only: max_blocks, nx_global, ny_global
   use ice_fileunits, only: nu_diag
   use ice_exit, only: abort_ice
-  use ice_dyn_shared, only: rheo_area_min, free_drift_approx
+  use ice_dyn_shared, only: rheo_area_min, free_drift_approx, evp1d_reorder
 
   !- directives ----------------------------------------------------------------
   implicit none
@@ -31,18 +31,47 @@ module ice_dyn_evp1d
   ! nx and ny are module variables for arrays after gather (G_*) Dimension according to CICE is
   ! nx_global+2*nghost, ny_global+2*nghost
   ! nactive are number of active points (both t and u). navel is number of active
-  integer(kind=int_kind), save :: nx, ny, nActive, navel, nallocated
+  ! nActive and navel are computed on the master alone, yet are read on every
+  ! task as the trip count handed to gather_slot_r8.  Zero-initialised so a
+  ! non-master task passes a defined value rather than whatever was on the
+  ! stack; the helpers return before using it.
+  integer(kind=int_kind), save :: nx, ny, nallocated
+  integer(kind=int_kind), save :: nActive = 0, navel = 0
+  ! The slots the kernels actually visit, aList(1:nIce), ascending.
+  !
+  ! With evp1d_reorder off, nIce == nActive and aList is the identity, so the
+  ! loops are the contiguous ones they always were.  With it on, aList holds
+  ! only the slots where iceTmask .or. iceUmask, so the 240 subcycles never
+  ! stream the ice-free ocean -- and because ice is geographically clustered
+  ! and slots run in cell order, the entries come in long contiguous runs
+  ! rather than scattered singletons.
+  !
+  ! ⚠ It costs no extra pass.  set_skipMe already walks 1..nActive every
+  ! timestep testing exactly this union -- it was counting the result into a
+  ! local and throwing it away.  So whatever fraction of cells changes state
+  ! from one step to the next, the list is rebuilt inside work that was
+  ! already being done.
+  integer(kind=int_kind), save :: nIce = 0
+  logical(kind=log_kind), save :: first_reorder = .true.
+  integer(kind=int_kind), allocatable, dimension(:) :: aList
 
   ! indexes
   integer(kind=int_kind), allocatable, dimension(:,:) :: iwidx
   logical(kind=log_kind), allocatable, dimension(:)   :: skipTcell,skipUcell
-  integer(kind=int_kind), allocatable, dimension(:)   :: ee,ne,se,nw,sw,sse ! arrays for neighbour points
+  integer(kind=int_kind), allocatable, dimension(:)   :: nbrW,nbrSW,nbrS,nbrE,nbrNE,nbrN ! arrays for neighbour points
   integer(kind=int_kind), allocatable, dimension(:)   :: indxti, indxtj, indxTij
   ! Scratch map over the gathered grid, linear index i+(j-1)*nx -> slot.
   ! -1 marks a cell the solver needs before slots are handed out, 0 a cell it
   ! does not. Built by calc_navel, consumed and released by convert_2d_1d_init,
   ! so it exists only during init and only on the master task.
   integer(kind=int_kind), allocatable, dimension(:)   :: ijslot
+
+  ! ONE global block scratch, shared by every gather that lands straight in a
+  ! 1d array -- see gather_slot_r8.  It replaces the 23 (nx,ny) automatics
+  ! dyn_evp1d_run used to put on the stack every timestep.  Allocated on every
+  ! task, not just the master: it is the actual argument of a collective, so it
+  ! has to be a valid array everywhere even though only the master reads it.
+  real   (kind=dbl_kind), allocatable, dimension(:,:) :: G_work
 
   ! 1D arrays to allocate
 
@@ -105,7 +134,7 @@ module ice_dyn_evp1d
     ny=ny_global+2*nghost
 
     allocate(G_dyT(nx,ny),G_dxT(nx,ny),G_uarear(nx,ny),G_tmask(nx,ny), &
-             G_DminTarea(nx,ny), G_fcor(nx,ny),stat=ierr)
+             G_DminTarea(nx,ny), G_fcor(nx,ny),G_work(nx,ny),stat=ierr)
     if (ierr/=0) then
        call abort_ice(subname//' ERROR: allocating', file=__FILE__, line=__LINE__)
     endif
@@ -150,9 +179,6 @@ module ice_dyn_evp1d
                            L_stressp_1 , L_stressp_2 , L_stressp_3 , L_stressp_4 , &
                            L_stressm_1 , L_stressm_2 , L_stressm_3 , L_stressm_4 , &
                            L_stress12_1, L_stress12_2, L_stress12_3, L_stress12_4, &
-                           L_strength,                                             &
-                           L_cdn_ocn   , L_aiu       , L_uocn      , L_vocn      , &
-                           L_forcexU   , L_forceyU   , &
                            L_umass     , L_uvel      , &
                            L_vvel      , L_icetmask  , L_iceUmask)
 
@@ -194,18 +220,13 @@ module ice_dyn_evp1d
       L_stress12_1, L_stress12_2, L_stress12_3, L_stress12_4
     real(kind=dbl_kind), intent(in) :: dt   ! dynamics timestep
 
-    real(kind=dbl_kind)   , dimension(:,:,:), intent(in) ::    &
-      L_strength  ,                                            &
-      L_cdn_ocn   , L_uocn      , L_vocn
-    ! flattened as above
+    ! flattened as above.  umass is the last block field this solver still
+    ! takes: strength, cdn_ocnU, aiU, uocnU, vocnU, forcexU and forceyU used
+    ! to come in too, and were never read -- dyn_prep2 fills the slots as
+    ! well as the blocks, and the gather has taken the slot copies since
+    ! 2677687.  Only the declaration outlived the use.
     real(kind=dbl_kind)   , dimension(:,:)  , intent(in) ::    &
-      L_umass     
-
-    ! these have their i and j dimensions flattened, i.e. element (i,j,iblk)
-    ! lives at ((j-1)*nx_block + i, iblk)
-    real(kind=dbl_kind)   , dimension(:,:)  , intent(in) ::    &
-      L_aiu       ,                                            &
-      L_forcexU  , L_forceyU
+      L_umass
     ! L_iceTmask and L_iceUmask have their i and j dimensions flattened,
     ! i.e. element (i,j,iblk) lives at ((j-1)*nx_block + i, iblk)
     logical(kind=log_kind), dimension(:,:), intent(in) ::      &
@@ -214,16 +235,17 @@ module ice_dyn_evp1d
     ! local variables
 
     ! nx, ny
+    ! Only the globals that still have a reason to exist.  uvel and vvel
+    ! round-trip: gathered in, written at this solver's cells, scattered back,
+    ! so every cell evp1d does not own has to keep the value that arrived.
+    ! The four diagnostics do the same, on the steps history asks for them.
+    ! Everything else now goes straight to the 1d arrays through G_work --
+    ! 23 (nx,ny) automatics off the stack, which on a 1440x1080 grid is about
+    ! 345 MB per call.
     real(kind=dbl_kind),    dimension(nx,ny) ::                &
-      G_stressp_1 , G_stressp_2 , G_stressp_3 , G_stressp_4 ,  &
-      G_stressm_1 , G_stressm_2 , G_stressm_3 , G_stressm_4 ,  &
-      G_stress12_1, G_stress12_2, G_stress12_3, G_stress12_4,  &
-      G_strength,                                              &
-      G_cdn_ocn   , G_aiu       , G_uocn      , G_vocn      ,  &
-      G_waterxU   , G_wateryU   , G_forcexU   , G_forceyU   ,  &
-      G_umass     , G_strintxU  , G_strintyU  ,  &
-      G_Tbu       , G_uvel     , G_vvel       , G_taubxU    ,  &
-      G_taubyU                  ! G_taubxU and G_taubyU are post processed from Cb
+      G_strintxU  , G_strintyU  , G_taubxU    , G_taubyU    ,  &
+      G_uvel      , G_vvel
+    ! G_taubxU and G_taubyU are post processed from Cb
     logical(kind=log_kind), dimension (nx,ny) ::                 &
       G_iceUmask  , G_iceTmask
 
@@ -239,20 +261,27 @@ module ice_dyn_evp1d
     real   (kind=dbl_kind) :: rhow
 
     ! From 3d to 2d on master task
-    call gather_dyn(&
-                    L_strength,                                             &
-                    L_cdn_ocn   , L_aiu       , L_uocn      , L_vocn      , &
-                    L_forcexU   , L_forceyU   , &
+    ! ⚠ These MUST be set before gather_dyn, not after it.  They decide
+    ! whether four of its collectives are entered at all, and they were being
+    ! read here while still undefined -- an uninitialised stack logical
+    ! steering a collective.  On one task that merely risked gathering, or
+    ! not gathering, the four diagnostics at random; on more than one it is a
+    ! hang, because the ranks need not agree on an undefined value.  Nothing
+    ! in hist_field_needed depends on the gather, so the answer is simply to
+    ! ask first.
+    lstrint = hist_field_needed(n_strintx) .or. hist_field_needed(n_strinty) .or. &
+              hist_field_needed(n_siforceintstrx) .or. &
+              hist_field_needed(n_siforceintstry)
+    ltaub   = hist_field_needed(n_taubx  ) .or. hist_field_needed(n_tauby  )
+    lsiforce = hist_field_needed(n_siforceintstrx) .or. &
+               hist_field_needed(n_siforceintstry)
 
+    call gather_dyn(&
                     L_umass     , L_uvel      , L_vvel      ,               &
                     L_iceTmask  , L_iceUmask  ,                             &
                     G_strintxU  , G_strintyU  , G_taubxU    , G_taubyU    , &
                     lstrint     , ltaub       ,                             &
-                    G_strength  ,                                           &
-                    G_cdn_ocn   , G_aiu       , G_uocn      , G_vocn      , &
-                    G_forcexU   , G_forceyU   , &
-
-                    G_umass     , G_Tbu       , G_uvel      , G_vvel      ,               &
+                    G_uvel      , G_vvel      ,                             &
                     G_iceTmask,  G_iceUmask)
 
     ! One-time seed; see stresses_seeded above.
@@ -264,47 +293,19 @@ module ice_dyn_evp1d
     ! is a hang on any run with more than one task, and invisible on one.
     do_seed = .not. stresses_seeded
     if (do_seed) then
-       call gather_stresses(L_stressp_1 , L_stressp_2 , L_stressp_3 , L_stressp_4 , &
-                            L_stressm_1 , L_stressm_2 , L_stressm_3 , L_stressm_4 , &
-                            L_stress12_1, L_stress12_2, L_stress12_3, L_stress12_4, &
-                            G_stressp_1 , G_stressp_2 , G_stressp_3 , G_stressp_4 , &
-                            G_stressm_1 , G_stressm_2 , G_stressm_3 , G_stressm_4 , &
-                            G_stress12_1, G_stress12_2, G_stress12_3, G_stress12_4)
+       ! Writes the 1d stresses itself now, so the twelve globals and the
+       ! loop that copied out of them are both gone.  Still called on every
+       ! task -- it is twelve collectives -- and still master-only in effect,
+       ! because gather_slot_r8 returns before the copy on everyone else.
+       call gather_stresses()
     endif
     stresses_seeded = .true.
-
-    lstrint = hist_field_needed(n_strintx) .or. hist_field_needed(n_strinty) .or. &
-              hist_field_needed(n_siforceintstrx) .or. &
-              hist_field_needed(n_siforceintstry)
-    ltaub   = hist_field_needed(n_taubx  ) .or. hist_field_needed(n_tauby  )
-    lsiforce = hist_field_needed(n_siforceintstrx) .or. &
-               hist_field_needed(n_siforceintstry)
 
     if (my_task == master_task) then
        call set_skipMe(G_iceTmask, G_iceUmask,nActive)
 
-       if (do_seed) then
-          do iw = 1, nActive
-             stressp_1 (iw) = G_stressp_1 (indxti(iw), indxtj(iw))
-             stressp_2 (iw) = G_stressp_2 (indxti(iw), indxtj(iw))
-             stressp_3 (iw) = G_stressp_3 (indxti(iw), indxtj(iw))
-             stressp_4 (iw) = G_stressp_4 (indxti(iw), indxtj(iw))
-             stressm_1 (iw) = G_stressm_1 (indxti(iw), indxtj(iw))
-             stressm_2 (iw) = G_stressm_2 (indxti(iw), indxtj(iw))
-             stressm_3 (iw) = G_stressm_3 (indxti(iw), indxtj(iw))
-             stressm_4 (iw) = G_stressm_4 (indxti(iw), indxtj(iw))
-             stress12_1(iw) = G_stress12_1(indxti(iw), indxtj(iw))
-             stress12_2(iw) = G_stress12_2(indxti(iw), indxtj(iw))
-             stress12_3(iw) = G_stress12_3(indxti(iw), indxtj(iw))
-             stress12_4(iw) = G_stress12_4(indxti(iw), indxtj(iw))
-          enddo
-       endif
        ! Map from 2d to 1d
-       call convert_2d_1d_dyn(nActive, dt,                                                    &
-                              G_strength,                                                 &
-                              G_cdn_ocn   , G_aiu       , G_uocn     ,  G_vocn     ,      &
-                              G_forcexU  , G_forceyU   ,      &
-                              G_umass     , G_Tbu       , G_uvel     , G_vvel)
+       call convert_2d_1d_dyn(nActive, dt, G_uvel, G_vvel)
 
        ! map from cpu to gpu (to) and back.
        ! This could be optimized considering which variables change from time step to time step
@@ -317,7 +318,7 @@ module ice_dyn_evp1d
 
        call ice_timer_start(timer_evp1dcore)
 #ifdef _OPENMP_TARGET
-       !$omp target data map(to: ee, ne, se, nw, sw, sse, skipUcell, skipTcell,&
+       !$omp target data map(to: nbrW, nbrSW, nbrS, nbrE, nbrNE, nbrN, skipUcell, skipTcell,&
        !$omp                 strength, dxT_1d, dyT_1d, DminTarea_1d,           &
        !$omp                 dxhy_1d, dyhx_1d,                                 &
        !$omp                 HTE_1d,HTN_1d,HTEm1_1d,                           &
@@ -343,7 +344,7 @@ module ice_dyn_evp1d
        str8(1:navel+1)=c0
 
        do ksub = 1,ndte        ! subcycling
-          call stress_1d (ee, ne, se, 1, nActive,                                    &
+          call stress_1d (nbrW, nbrSW, nbrS, 1, nIce, aList,                                    &
                           uvel, vvel, dxT_1d, dyT_1d, DminTarea_1d,                  &
                           dxhy_1d, dyhx_1d, skipTcell, strength,                     &
                           HTE_1d, HTN_1d, HTEm1_1d, HTNm1_1d,                        &
@@ -352,24 +353,24 @@ module ice_dyn_evp1d
                           stress12_1, stress12_2, stress12_3, stress12_4,            &
                           str1, str2, str3, str4, str5, str6, str7, str8)
 
-          call stepu_1d  (1, nActive, cdn_ocn, aiu, uocn, vocn,                         &
+          call stepu_1d  (1, nIce, aList, cdn_ocn, aiu, uocn, vocn,                         &
                           waterxU, wateryU, forcexU, forceyU, umassdti, fmU, uarear_1d, &
                           uvel_init, vvel_init, uvel, vvel,                             &
                           str1, str2, str3, str4, str5, str6, str7, str8,               &
-                          nw, sw, sse, skipUcell, Tbu, Cb, rhow, rheofactU)
+                          nbrE, nbrNE, nbrN, skipUcell, Tbu, Cb, rhow, rheofactU)
           call evp1d_halo_update()
        enddo
        ! Skipped outright when no history stream wants strintx/strinty --
        ! which is what the comment here used to say was possible.
        if (lstrint) &
-       call calc_diag_1d(1        , nActive  , &
+       call calc_diag_1d(1        , nIce     , aList, &
                          uarear_1d, skipUcell, &
                          str1     , str2     , &
                          str3     , str4     , &
                          str5     , str6     , &
                          str7     , str8     , &
-                         nw       , sw       , &
-                         sse      , rheofactU, &
+                         nbrE       , nbrNE       , &
+                         nbrN      , rheofactU, &
                          strintxU_1d, strintyU_1d)
 
        call ice_timer_stop(timer_evp1dcore)
@@ -379,14 +380,8 @@ module ice_dyn_evp1d
 #endif
        ! Map results back to 2d
        call convert_1d_2d_dyn(nActive, navel,                                         &
-                              G_stressp_1 , G_stressp_2 , G_stressp_3 , G_stressp_4 , &
-                              G_stressm_1 , G_stressm_2 , G_stressm_3 , G_stressm_4 , &
-                              G_stress12_1, G_stress12_2, G_stress12_3, G_stress12_4, &
-                              G_strength  ,                                           &
-                              G_cdn_ocn   , G_aiu       , G_uocn      , G_vocn      , &
-                              G_waterxU   , G_wateryU   , G_forcexU   , G_forceyU   , &
                               G_strintxU  , G_strintyU  , &
-                              G_Tbu       , G_uvel      , G_vvel      , G_taubxU    , &
+                              G_uvel      , G_vvel      , G_taubxU    , &
                               G_taubyU)
 
     endif ! master_task
@@ -423,10 +418,7 @@ module ice_dyn_evp1d
     if (any(write_history) .or. write_restart == 1 .or. write_ic) then
        call scatter_stresses(L_stressp_1 , L_stressp_2 , L_stressp_3 , L_stressp_4 , &
                              L_stressm_1 , L_stressm_2 , L_stressm_3 , L_stressm_4 , &
-                             L_stress12_1, L_stress12_2, L_stress12_3, L_stress12_4, &
-                             G_stressp_1 , G_stressp_2 , G_stressp_3 , G_stressp_4 , &
-                             G_stressm_1 , G_stressm_2 , G_stressm_3 , G_stressm_4 , &
-                             G_stress12_1, G_stress12_2, G_stress12_3, G_stress12_4)
+                             L_stress12_1, L_stress12_2, L_stress12_3, L_stress12_4)
 
        ! ⚠ The restart and the history read the SLOT copies now, so the
        ! scatter above is only half the job on this path: the block arrays
@@ -491,6 +483,9 @@ module ice_dyn_evp1d
        write(nu_diag,*) 'Close evp 1d log'
     endif
 
+    ! G_work outlives dyn_evp1d_init, unlike the other gathered globals there.
+    if (allocated(G_work)) deallocate(G_work)
+
   end subroutine dyn_evp1d_finalize
 
 !=============================================================================
@@ -519,12 +514,12 @@ module ice_dyn_evp1d
        call abort_ice(subname//' ERROR: allocating', file=__FILE__, line=__LINE__)
     endif
 
-    allocate(ee(1:na0) , &
-             ne(1:na0) , &
-             se(1:na0) , &
-             nw(1:na0) , &
-             sw(1:na0) , &
-             sse(1:na0), &
+    allocate(nbrW(1:na0) , &
+             nbrSW(1:na0) , &
+             nbrS(1:na0) , &
+             nbrE(1:na0) , &
+             nbrNE(1:na0) , &
+             nbrN(1:na0), &
              stat=ierr)
 
     if (ierr/=0) then
@@ -570,11 +565,20 @@ module ice_dyn_evp1d
              strintxU_1d (1:na0), strintyU_1d (1:na0), &
              Tbu      (1:na0), Cb       (1:na0), &
              uvel_init(1:na0), vvel_init(1:na0), &
+             aList    (1:na0),                   &
              stat=ierr)
 
     if (ierr/=0) then
        call abort_ice(subname//' ERROR: allocating', file=__FILE__, line=__LINE__)
     endif
+
+    ! The identity, which is what the kernels walk when evp1d_reorder is off.
+    ! Written once here rather than rebuilt every timestep: with the flag off
+    ! the list never changes.
+    do ierr = 1, na0
+       aList(ierr) = ierr
+    enddo
+    nIce = na0
 
   end subroutine evp1d_alloc_static_na
 
@@ -680,6 +684,13 @@ module ice_dyn_evp1d
       j = indxtj(iw)
       if ( iceTmask(i,j) .or. iceUmask(i,j)) then
          niw=niw+1
+         ! ⚠ The UNION, not iceTmask alone.  iceTmask comes from aice and
+         ! iceUmask from aice_init -- two different snapshots -- so iceUmask
+         ! is true at a few cells where iceTmask is false.  Dropping those
+         ! would leave stepu never updating their velocity, silently.  When
+         ! that artifact is eventually removed the union collapses to one
+         ! mask, but removing it is not bit-for-bit, so not yet.
+         if (evp1d_reorder) aList(niw) = iw
       endif
       if (.not. (iceTmask(i,j))) skipTcell(iw)=.true.
       if (.not. (iceUmask(i,j))) skipUcell(iw)=.true.
@@ -689,6 +700,20 @@ module ice_dyn_evp1d
       if (i > nx - nghost) skipUcell(iw)=.true.
       if (j > ny - nghost) skipUcell(iw)=.true.
     enddo
+    if (evp1d_reorder) then
+       nIce = niw
+       ! Once, on the first step: the compaction ratio is the whole point of
+       ! the flag and it is entirely domain-dependent.  A basin that is mostly
+       ! ice gains nothing and pays one extra integer stream; a global domain,
+       ! where the ice-free tropics are most of the ocean, is where it pays.
+       if (first_reorder) then
+          first_reorder = .false.
+          write(nu_diag,*) subname//' evp1d_reorder: ', niw, ' of ', na0, &
+                           ' slots carry ice'
+       endif
+    else
+       nIce = na0
+    endif
     !    write(nu_diag,*) 'number of points and Active points', na0, niw
 
   end subroutine set_skipMe
@@ -732,10 +757,11 @@ module ice_dyn_evp1d
 
      ! In standalone  distrb_info is an integer. Not needed anyway
      use ice_communicate, only : master_task
-     use ice_gather_scatter, only : gather_global
+     use ice_gather_scatter, only : gather_global, gather_globalR8_compressed
      use ice_domain, only : distrb_info
-     use ice_grid, only: dyT, dxT, uarear, tmask
-     use ice_dyn_shared, only: DminTarea, fcor_blk
+     use ice_grid, only: dyT, dxT, uarear, tmask, &
+             dynMap, dynOff, uarear_slot, dxT_slot, dyT_slot
+     use ice_dyn_shared, only: DminTarea, fcor_blk, DminTarea_slot
      implicit none
 
      ! nx, ny
@@ -753,16 +779,30 @@ module ice_dyn_evp1d
      G_tmask = .false.
 
      ! copy from distributed I_* to G_*
-     call gather_global(G_uarear, uarear, master_task, distrb_info, grid_ext=.true.)
-     call gather_global(G_dxT   , dxT   , master_task, distrb_info, grid_ext=.true.)
-     call gather_global(G_dyT   , dyT   , master_task, distrb_info, grid_ext=.true.)
+     ! ⚠ These four are METRICS -- nonzero over land -- so a compressed
+     ! gather, which leaves c0 wherever a cell has no slot, is safe only
+     ! because the 1-D kernels read them at the OWN cell and nowhere else:
+     ! dxT(iw), dyT(iw), uarear(iw), DminTarea(iw).  The neighbour reads in
+     ! those kernels are all on str1..str8.  Every cell whose metric is read
+     ! is active, and active implies iceTmask implies tmask implies a slot.
+     ! If a metric is ever read at a neighbour this must be revisited --
+     ! that is the uarea bug which broke every real-grid gridc test.
+     call gather_globalR8_compressed(G_uarear, uarear_slot, dynMap, dynOff, &
+                 master_task, distrb_info, c0, grid_ext=.true.)
+     call gather_globalR8_compressed(G_dxT, dxT_slot, dynMap, dynOff, &
+                 master_task, distrb_info, c0, grid_ext=.true.)
+     call gather_globalR8_compressed(G_dyT, dyT_slot, dynMap, dynOff, &
+                 master_task, distrb_info, c0, grid_ext=.true.)
      ! DminTarea is deltamin*tarea, set once in init_dyn_shared.  It is gathered
      ! rather than rebuilt from dxT*dyT because tarea is only that product on the
      ! init_grid2 path; on a MOM supergrid it is a sum of four sub-areas.
-     call gather_global(G_DminTarea, DminTarea, master_task, distrb_info, grid_ext=.true.)
+     call gather_globalR8_compressed(G_DminTarea, DminTarea_slot, dynMap, dynOff, &
+                 master_task, distrb_info, c0, grid_ext=.true.)
      ! Coriolis is constant, so it is a static like the metrics above.  With it
      ! here, fmU and umassdti need not be gathered every timestep: dyn_prep2
      ! forms them as fcor*umass and umass/dt, so umass alone yields both.
+     ! ⚠ fcor and Tmask keep the block gather: fcor_blk has no slot form,
+     ! and Tmask is logical where gather_globalR8_compressed is real.
      call gather_global(G_fcor     , fcor_blk , master_task, distrb_info, grid_ext=.true.)
      call gather_global(G_Tmask , Tmask , master_task, distrb_info, grid_ext=.true.)
 
@@ -774,43 +814,37 @@ module ice_dyn_evp1d
 ! from the block layout -- see stresses_seeded.  Separate from gather_dyn so
 ! the steady-state path carries no stress gathers at all.
 
-  subroutine gather_stresses(L_stressp_1 , L_stressp_2 , L_stressp_3 , L_stressp_4 , &
-                             L_stressm_1 , L_stressm_2 , L_stressm_3 , L_stressm_4 , &
-                             L_stress12_1, L_stress12_2, L_stress12_3, L_stress12_4, &
-                             G_stressp_1 , G_stressp_2 , G_stressp_3 , G_stressp_4 , &
-                             G_stressm_1 , G_stressm_2 , G_stressm_3 , G_stressm_4 , &
-                             G_stress12_1, G_stress12_2, G_stress12_3, G_stress12_4)
+  subroutine gather_stresses()
 
-     use ice_communicate, only : master_task
-     use ice_gather_scatter, only : gather_global
-     use ice_domain, only : distrb_info
+     use ice_dyn_shared, only : &
+          stressp_1_slot, stressp_2_slot, stressp_3_slot, stressp_4_slot, &
+          stressm_1_slot, stressm_2_slot, stressm_3_slot, stressm_4_slot, &
+          stress12_1_slot, stress12_2_slot, stress12_3_slot, stress12_4_slot
      implicit none
-
-     ! i and j flattened: element (i,j,iblk) at ((j-1)*nx_block + i, iblk)
-     real(kind=dbl_kind), dimension(:,:), intent(in)  ::        &
-        L_stressp_1 , L_stressp_2 , L_stressp_3 , L_stressp_4 , &
-        L_stressm_1 , L_stressm_2 , L_stressm_3 , L_stressm_4 , &
-        L_stress12_1, L_stress12_2, L_stress12_3, L_stress12_4
-
-     real(kind=dbl_kind), dimension(:,:), intent(out) ::        &
-        G_stressp_1 , G_stressp_2 , G_stressp_3 , G_stressp_4 , &
-        G_stressm_1 , G_stressm_2 , G_stressm_3 , G_stressm_4 , &
-        G_stress12_1, G_stress12_2, G_stress12_3, G_stress12_4
 
      character(len=*), parameter :: subname = '(gather_stresses)'
 
-     call gather_global(G_stressp_1 , L_stressp_1 , master_task, distrb_info, c0, grid_ext=.true.)
-     call gather_global(G_stressp_2 , L_stressp_2 , master_task, distrb_info, c0, grid_ext=.true.)
-     call gather_global(G_stressp_3 , L_stressp_3 , master_task, distrb_info, c0, grid_ext=.true.)
-     call gather_global(G_stressp_4 , L_stressp_4 , master_task, distrb_info, c0, grid_ext=.true.)
-     call gather_global(G_stressm_1 , L_stressm_1 , master_task, distrb_info, c0, grid_ext=.true.)
-     call gather_global(G_stressm_2 , L_stressm_2 , master_task, distrb_info, c0, grid_ext=.true.)
-     call gather_global(G_stressm_3 , L_stressm_3 , master_task, distrb_info, c0, grid_ext=.true.)
-     call gather_global(G_stressm_4 , L_stressm_4 , master_task, distrb_info, c0, grid_ext=.true.)
-     call gather_global(G_stress12_1, L_stress12_1, master_task, distrb_info, c0, grid_ext=.true.)
-     call gather_global(G_stress12_2, L_stress12_2, master_task, distrb_info, c0, grid_ext=.true.)
-     call gather_global(G_stress12_3, L_stress12_3, master_task, distrb_info, c0, grid_ext=.true.)
-     call gather_global(G_stress12_4, L_stress12_4, master_task, distrb_info, c0, grid_ext=.true.)
+     ! ⚠ Gathered from the SLOT copies, which have been the live stress
+     ! state since 118d511 -- the block arrays are I/O staging now and are
+     ! only current just after a restart read.  The seed runs once, on the
+     ! first call, which is exactly when stresses_to_slots has filled them.
+     ! Zero at a slotless cell is right here: a cell with no slot carries
+     ! no stress in either layout.
+     !
+     ! Straight into the 1d arrays, so the twelve (nx,ny) automatics and the
+     ! seed loop that copied out of them are both gone.
+     call gather_slot_r8(stressp_1 , stressp_1_slot , nActive)
+     call gather_slot_r8(stressp_2 , stressp_2_slot , nActive)
+     call gather_slot_r8(stressp_3 , stressp_3_slot , nActive)
+     call gather_slot_r8(stressp_4 , stressp_4_slot , nActive)
+     call gather_slot_r8(stressm_1 , stressm_1_slot , nActive)
+     call gather_slot_r8(stressm_2 , stressm_2_slot , nActive)
+     call gather_slot_r8(stressm_3 , stressm_3_slot , nActive)
+     call gather_slot_r8(stressm_4 , stressm_4_slot , nActive)
+     call gather_slot_r8(stress12_1, stress12_1_slot, nActive)
+     call gather_slot_r8(stress12_2, stress12_2_slot, nActive)
+     call gather_slot_r8(stress12_3, stress12_3_slot, nActive)
+     call gather_slot_r8(stress12_4, stress12_4_slot, nActive)
 
   end subroutine gather_stresses
 
@@ -825,42 +859,158 @@ module ice_dyn_evp1d
   ! waterxU and wateryU are not gathered either: dyn_prep2 forms them as pure
   ! functions of uocn, vocn and fmU, all three of which arrive here anyway, so
   ! convert_2d_1d_dyn recomputes them from the same operands instead.
-  subroutine gather_dyn(L_strength  ,                                           &
-                        L_cdn_ocn   , L_aiu       , L_uocn      , L_vocn      , &
-                        L_forcexU   , L_forceyU   ,                             &
-                        L_umass     , L_uvel      , L_vvel      , &
+  ! Gather a compressed field and land it straight in its 1d array, through
+  ! the single shared G_work instead of a global of its own.
+  !
+  ! This is the whole point of the change: the value written is bit-for-bit
+  ! what convert_2d_1d_dyn used to copy out of a per-field G_ array, because
+  ! indxTij(iw) decodes to exactly the (indxti(iw), indxtj(iw)) that copy
+  ! indexed with.  What goes away is the storage -- one (nx,ny) array in
+  ! place of 23 -- and on a production grid that is the difference between
+  ! ~360 MB of stack per timestep and ~12 MB.  That stack footprint, not the
+  ! collective count, is what has kept evp1d off real domains.
+  !
+  ! ⚠ n must be the 1d array's own extent.  Everything routed through here is
+  ! allocated (1:nActive); uvel and vvel are navel+1 and are NOT, because they
+  ! round-trip through a global of their own for the scatter back.
+  subroutine gather_slot_r8(A_1d, A_slot, n)
+
+     use ice_communicate, only : my_task, master_task
+     use ice_gather_scatter, only : gather_globalR8_compressed
+     use ice_grid, only : dynMap, dynOff
+     use ice_domain, only : distrb_info
+     implicit none
+
+     ! ⚠ allocatable, and that is not decoration.  evp1d_alloc_static_na runs
+     ! inside the master-only block of dyn_evp1d_init, so on every other task
+     ! this array is UNALLOCATED -- and this routine is a collective, called
+     ! on all of them.  Passing an unallocated allocatable to a plain
+     ! assumed-shape dummy is illegal; to an allocatable dummy it is legal and
+     ! well defined, which is what lets the early return below be the whole
+     ! story.  NO_MPI cannot show this: with one task my_task IS master_task,
+     ! so the array is always allocated and the return never fires.
+     real(kind=dbl_kind), allocatable, dimension(:), intent(inout) :: A_1d
+     real(kind=dbl_kind), dimension(:), intent(in)    :: A_slot
+     integer(kind=int_kind), intent(in) :: n
+
+     integer(kind=int_kind) :: iw, i, j
+
+     character(len=*), parameter :: subname = '(gather_slot_r8)'
+
+     call gather_globalR8_compressed(G_work, A_slot, dynMap, dynOff, &
+            master_task, distrb_info, c0, grid_ext=.true.)
+
+     ! indxTij, nActive and the 1d arrays exist on the master alone -- see
+     ! dyn_evp1d_init, where everything after gather_static is master-only.
+     if (my_task /= master_task) return
+
+     do iw = 1, n
+        j = int((indxTij(iw) - 1) / nx) + 1
+        i =      indxTij(iw) - (j - 1) * nx
+        A_1d(iw) = G_work(i,j)
+     end do
+
+  end subroutine gather_slot_r8
+
+!=============================================================================
+
+  ! The same, for a field that still has only a block form.  umass is the one
+  ! left: fmU is fcor*umass and umassdti is umass/dt, so gathering it covers
+  ! both.
+  subroutine gather_blk_slot_r8(A_1d, L_blk, n)
+
+     use ice_communicate, only : my_task, master_task
+     use ice_gather_scatter, only : gather_global
+     use ice_domain, only : distrb_info
+     implicit none
+
+     ! allocatable for the same reason as in gather_slot_r8
+     real(kind=dbl_kind), allocatable, dimension(:), intent(inout) :: A_1d
+     ! i and j flattened: element (i,j,iblk) at ((j-1)*nx_block + i, iblk)
+     real(kind=dbl_kind), dimension(:,:), intent(in)    :: L_blk
+     integer(kind=int_kind), intent(in) :: n
+
+     integer(kind=int_kind) :: iw, i, j
+
+     character(len=*), parameter :: subname = '(gather_blk_slot_r8)'
+
+     call gather_global(G_work, L_blk, master_task, distrb_info, grid_ext=.true.)
+
+     if (my_task /= master_task) return
+
+     do iw = 1, n
+        j = int((indxTij(iw) - 1) / nx) + 1
+        i =      indxTij(iw) - (j - 1) * nx
+        A_1d(iw) = G_work(i,j)
+     end do
+
+  end subroutine gather_blk_slot_r8
+
+!=============================================================================
+
+  ! The mirror of gather_slot_r8, for a field that goes out and is not read
+  ! back in: zero the shared global, write this solver's cells into it, scatter.
+  !
+  ! Zeroing is right here and wrong for the round-trip fields.  A stress at a
+  ! cell evp1d does not own is zero in both layouts -- that is what
+  ! convert_1d_2d_dyn did to the twelve stress globals before scattering them.
+  ! uvel, vvel and the four diagnostics are the opposite case: they must keep
+  ! the value the gather brought in at those cells, which is why they still
+  ! have globals of their own and do NOT come through here.
+  subroutine scatter_slot_r8(L_blk, A_1d, n)
+
+     use ice_communicate, only : my_task, master_task
+     use ice_gather_scatter, only : scatter_global
+     use ice_domain, only : distrb_info
+     implicit none
+
+     ! i and j flattened: element (i,j,iblk) at ((j-1)*nx_block + i, iblk)
+     real(kind=dbl_kind), dimension(:,:), intent(out) :: L_blk
+     ! allocatable for the same reason as in gather_slot_r8
+     real(kind=dbl_kind), allocatable, dimension(:), intent(in) :: A_1d
+     integer(kind=int_kind), intent(in) :: n
+
+     integer(kind=int_kind) :: iw, i, j
+
+     character(len=*), parameter :: subname = '(scatter_slot_r8)'
+
+     if (my_task == master_task) then
+        G_work = c0
+        do iw = 1, n
+           j = int((indxTij(iw) - 1) / nx) + 1
+           i =      indxTij(iw) - (j - 1) * nx
+           G_work(i,j) = A_1d(iw)
+        end do
+     endif
+
+     call scatter_global(L_blk, G_work, master_task, distrb_info, grid_ext=.true.)
+
+  end subroutine scatter_slot_r8
+
+!=============================================================================
+
+  subroutine gather_dyn(L_umass     , L_uvel      , L_vvel      ,               &
                         L_icetmask  , L_iceUmask  ,                             &
                         G_strintxU  , G_strintyU  , G_taubxU    , G_taubyU    , &
                         lstrint     , ltaub       ,                             &
-                        G_strength,                                             &
-                        G_cdn_ocn   , G_aiu       , G_uocn      , G_vocn      , &
-                        G_forcexU   , G_forceyU   ,                             &
-                        G_umass     , G_Tbu       , G_uvel      , G_vvel      , &
+                        G_uvel      , G_vvel      ,                             &
                         G_iceTmask,  G_iceUmask)
      use ice_communicate, only : master_task
      use ice_gather_scatter, only : gather_global, gather_globalR8_compressed
      use ice_grid, only : dynMap, dynOff
      use ice_dyn_shared, only : strintxU_slot, strintyU_slot, &
-          taubxU_slot, taubyU_slot, TbU_slot
+          taubxU_slot, taubyU_slot, TbU_slot, &
+           strength_slot, cdn_ocnU_slot, aiU_slot, uocnU_slot, vocnU_slot, &
+           forcexU_slot, forceyU_slot, uvel_slot, vvel_slot
      use ice_domain, only : distrb_info
      implicit none
-     ! nx_block, ny_block, max_blocks
-     real(kind=dbl_kind)   , dimension(:,:,:), intent(in)  :: &
-        L_strength  ,                                         &
-        L_cdn_ocn   , L_uocn      , L_vocn
-
-     ! uvel/vvel flattened, as L_umass and L_Tbu below
+     ! uvel/vvel flattened, as L_umass below
      real(kind=dbl_kind)   , dimension(:,:)  , intent(in)  :: &
         L_uvel      , L_vvel
      ! these have their i and j dimensions flattened, i.e. element (i,j,iblk)
      ! lives at ((j-1)*nx_block + i, iblk)
      real(kind=dbl_kind)   , dimension(:,:)  , intent(in)  :: &
-        L_umass     
-     ! these have their i and j dimensions flattened, i.e. element (i,j,iblk)
-     ! lives at ((j-1)*nx_block + i, iblk)
-     real(kind=dbl_kind)   , dimension(:,:)  , intent(in)  :: &
-        L_aiu       ,                                         &
-        L_forcexU   , L_forceyU
+        L_umass
      ! L_iceTmask and L_iceUmask have their i and j dimensions flattened,
      ! i.e. element (i,j,iblk) lives at ((j-1)*nx_block + i, iblk)
      logical(kind=log_kind), dimension(:,:), intent(in)  :: &
@@ -870,33 +1020,36 @@ module ice_dyn_evp1d
      real(kind=dbl_kind)   , dimension(:,:), intent(inout) :: &
         G_strintxU  , G_strintyU  , G_taubxU    , G_taubyU
      logical(kind=log_kind), intent(in) :: lstrint, ltaub
-     ! nx, ny
+     ! nx, ny.  uvel and vvel keep a global of their own: unlike everything
+     ! else here they go back out again, and scatter_dyn needs the gathered
+     ! value still sitting at every cell this solver does not own.
      real(kind=dbl_kind)   , dimension(:,:), intent(out) ::     &
-        G_strength,                                             &
-        G_cdn_ocn   , G_aiu       , G_uocn      , G_vocn      , &
-        G_forcexU   , G_forceyU   ,                             &
-        G_umass     , G_Tbu       , G_uvel      , G_vvel
+        G_uvel      , G_vvel
      logical(kind=log_kind), dimension(:,:), intent(out) :: &
         G_iceUmask  , G_iceTmask
      character(len=*), parameter :: subname = '(gather_dyn)'
-     ! copy from distributed I_* to G_*
 
-     call gather_global(G_strength  ,     L_strength  ,    master_task, distrb_info,c0, grid_ext=.true.)
-     call gather_global(G_cdn_ocn   ,     L_cdn_ocn   ,     master_task, distrb_info, grid_ext=.true.)
-     call gather_global(G_aiu       ,     L_aiu       ,     master_task, distrb_info, grid_ext=.true.)
-     call gather_global(G_uocn      ,     L_uocn      ,     master_task, distrb_info, grid_ext=.true.)
-     call gather_global(G_vocn      ,     L_vocn      ,     master_task, distrb_info, grid_ext=.true.)
-     call gather_global(G_forcexU   ,     L_forcexU   ,     master_task, distrb_info, grid_ext=.true.)
-     call gather_global(G_forceyU   ,     L_forceyU   ,     master_task, distrb_info, grid_ext=.true.)
+     ! Straight into the 1d arrays.  These eleven used to be gathered into
+     ! eleven (nx,ny) automatics and then copied out one cell at a time by
+     ! convert_2d_1d_dyn; the copy is now the tail of gather_slot_r8 and the
+     ! globals are gone.
+     call gather_slot_r8(strength, strength_slot , nActive)
+     call gather_slot_r8(cdn_ocn , cdn_ocnU_slot , nActive)
+     call gather_slot_r8(aiu     , aiU_slot      , nActive)
+     call gather_slot_r8(uocn    , uocnU_slot    , nActive)
+     call gather_slot_r8(vocn    , vocnU_slot    , nActive)
+     call gather_slot_r8(forcexU , forcexU_slot  , nActive)
+     call gather_slot_r8(forceyU , forceyU_slot  , nActive)
      ! umass alone: fmU is fcor*umass and umassdti is umass/dt, and fcor is a
      ! static gathered once, so one field here replaces the two that were.
-     call gather_global(G_umass     ,     L_umass     ,     master_task, distrb_info, grid_ext=.true.)
+     call gather_blk_slot_r8(umass, L_umass      , nActive)
      ! TbU has no block form any more -- seabed_stress_factor_* write the
      ! slots directly -- so it is gathered the way strintxU already is.
-     call gather_globalR8_compressed(G_Tbu, TbU_slot, dynMap, dynOff, &
-          master_task, distrb_info, c0, grid_ext=.true.)
-     call gather_global(G_uvel      ,     L_uvel      ,     master_task, distrb_info,c0, grid_ext=.true.)
-     call gather_global(G_vvel      ,     L_vvel      ,     master_task, distrb_info,c0, grid_ext=.true.)
+     call gather_slot_r8(Tbu     , TbU_slot      , nActive)
+     call gather_globalR8_compressed(G_uvel, uvel_slot, dynMap, dynOff, &
+            master_task, distrb_info, c0, grid_ext=.true.)
+     call gather_globalR8_compressed(G_vvel, vvel_slot, dynMap, dynOff, &
+            master_task, distrb_info, c0, grid_ext=.true.)
      ! Only when history wants them, matching the scatter in scatter_dyn.
      if (lstrint) then
         call gather_globalR8_compressed(G_strintxU  , strintxU_slot, dynMap, dynOff, &
@@ -923,10 +1076,7 @@ module ice_dyn_evp1d
 
   subroutine scatter_stresses(L_stressp_1 , L_stressp_2 , L_stressp_3 , L_stressp_4 , &
                               L_stressm_1 , L_stressm_2 , L_stressm_3 , L_stressm_4 , &
-                              L_stress12_1, L_stress12_2, L_stress12_3, L_stress12_4, &
-                              G_stressp_1 , G_stressp_2 , G_stressp_3 , G_stressp_4 , &
-                              G_stressm_1 , G_stressm_2 , G_stressm_3 , G_stressm_4 , &
-                              G_stress12_1, G_stress12_2, G_stress12_3, G_stress12_4)
+                              L_stress12_1, L_stress12_2, L_stress12_3, L_stress12_4)
 
      use ice_communicate, only : master_task
      use ice_gather_scatter, only : scatter_global
@@ -938,25 +1088,25 @@ module ice_dyn_evp1d
         L_stressm_1 , L_stressm_2 , L_stressm_3 , L_stressm_4 , &
         L_stress12_1, L_stress12_2, L_stress12_3, L_stress12_4
 
-     real(kind=dbl_kind), dimension(:,:), intent(in)  ::        &
-        G_stressp_1 , G_stressp_2 , G_stressp_3 , G_stressp_4 , &
-        G_stressm_1 , G_stressm_2 , G_stressm_3 , G_stressm_4 , &
-        G_stress12_1, G_stress12_2, G_stress12_3, G_stress12_4
-
      character(len=*), parameter :: subname = '(scatter_stresses)'
 
-     call scatter_global(L_stressp_1 , G_stressp_1 , master_task, distrb_info, grid_ext=.true.)
-     call scatter_global(L_stressp_2 , G_stressp_2 , master_task, distrb_info, grid_ext=.true.)
-     call scatter_global(L_stressp_3 , G_stressp_3 , master_task, distrb_info, grid_ext=.true.)
-     call scatter_global(L_stressp_4 , G_stressp_4 , master_task, distrb_info, grid_ext=.true.)
-     call scatter_global(L_stressm_1 , G_stressm_1 , master_task, distrb_info, grid_ext=.true.)
-     call scatter_global(L_stressm_2 , G_stressm_2 , master_task, distrb_info, grid_ext=.true.)
-     call scatter_global(L_stressm_3 , G_stressm_3 , master_task, distrb_info, grid_ext=.true.)
-     call scatter_global(L_stressm_4 , G_stressm_4 , master_task, distrb_info, grid_ext=.true.)
-     call scatter_global(L_stress12_1, G_stress12_1, master_task, distrb_info, grid_ext=.true.)
-     call scatter_global(L_stress12_2, G_stress12_2, master_task, distrb_info, grid_ext=.true.)
-     call scatter_global(L_stress12_3, G_stress12_3, master_task, distrb_info, grid_ext=.true.)
-     call scatter_global(L_stress12_4, G_stress12_4, master_task, distrb_info, grid_ext=.true.)
+     ! Straight out of the 1d arrays, each through the shared G_work, so the
+     ! twelve (nx,ny) globals this used to need are gone.  convert_1d_2d_dyn
+     ! zeroed them and filled them at the active cells every timestep even
+     ! though only an I/O step ever scattered them; that work moves here, to
+     ! the gate that actually wants it.
+     call scatter_slot_r8(L_stressp_1 , stressp_1 , nActive)
+     call scatter_slot_r8(L_stressp_2 , stressp_2 , nActive)
+     call scatter_slot_r8(L_stressp_3 , stressp_3 , nActive)
+     call scatter_slot_r8(L_stressp_4 , stressp_4 , nActive)
+     call scatter_slot_r8(L_stressm_1 , stressm_1 , nActive)
+     call scatter_slot_r8(L_stressm_2 , stressm_2 , nActive)
+     call scatter_slot_r8(L_stressm_3 , stressm_3 , nActive)
+     call scatter_slot_r8(L_stressm_4 , stressm_4 , nActive)
+     call scatter_slot_r8(L_stress12_1, stress12_1, nActive)
+     call scatter_slot_r8(L_stress12_2, stress12_2, nActive)
+     call scatter_slot_r8(L_stress12_3, stress12_3, nActive)
+     call scatter_slot_r8(L_stress12_4, stress12_4, nActive)
 
   end subroutine scatter_stresses
 
@@ -1087,20 +1237,20 @@ module ice_dyn_evp1d
 
      ! Neighbour slots.  A direction that leaves the grid takes the dead slot
      ! at navel+1, which holds zero and is never written.  That only happens
-     ! for nw/sw/sse at i == nx or j == ny, where the cell has no U point to
+     ! for nbrE/nbrNE/nbrN at i == nx or j == ny, where the cell has no U point to
      ! step -- skipUcell is already .true. there, matching the 2-D solver,
      ! which computes stress over jlo..jhi+1 but steps U only over jlo..jhi.
-     ! ee/ne/se step towards i-1 and j-1 and active T cells start at
+     ! nbrW/nbrSW/nbrS step towards i-1 and j-1 and active T cells start at
      ! 1+nghost, so for nghost >= 1 they always land inside the grid.
      do iw = 1, na0
         i = indxti(iw)
         j = indxtj(iw)
-        ee (iw) = slot_of(i - 1, j    , navel + 1)
-        ne (iw) = slot_of(i - 1, j - 1, navel + 1)
-        se (iw) = slot_of(i    , j - 1, navel + 1)
-        nw (iw) = slot_of(i + 1, j    , navel + 1)
-        sw (iw) = slot_of(i + 1, j + 1, navel + 1)
-        sse(iw) = slot_of(i    , j + 1, navel + 1)
+        nbrW (iw) = slot_of(i - 1, j    , navel + 1)
+        nbrSW(iw) = slot_of(i - 1, j - 1, navel + 1)
+        nbrS (iw) = slot_of(i    , j - 1, navel + 1)
+        nbrE (iw) = slot_of(i + 1, j    , navel + 1)
+        nbrNE(iw) = slot_of(i + 1, j + 1, navel + 1)
+        nbrN (iw) = slot_of(i    , j + 1, navel + 1)
      end do
 
      !tar      i$OMP PARALLEL PRIVATE(iw, lo, up, j, i)
@@ -1147,21 +1297,20 @@ module ice_dyn_evp1d
 
 !=============================================================================
 
-  subroutine convert_2d_1d_dyn(na0         , dt          ,                                           &
-                               G_strength  , G_cdn_ocn   , G_aiu       , G_uocn      , &
-                               G_vocn      , G_forcexU   , &
-                               G_forceyU   , &
-                               G_umass     , G_Tbu       , G_uvel      , G_vvel      )
+  ! What is left here after the gathers started landing straight in the 1d
+  ! arrays: the per-cell work that is NOT a copy.  The zeroing that depends on
+  ! skipTcell/skipUcell -- which gather_dyn runs too early to know, since
+  ! set_skipMe comes after it -- and the four quantities derived from fields
+  ! gathered above.  uvel and vvel are still copied, because they alone keep a
+  ! global of their own for the scatter back.
+  subroutine convert_2d_1d_dyn(na0         , dt          , G_uvel      , G_vvel      )
      use ice_dyn_shared, only: cosw, sinw
      implicit none
      integer(kind=int_kind), intent(in) ::  na0
      real(kind=dbl_kind), intent(in) :: dt   ! dynamics timestep
      ! nx, ny
      real(kind=dbl_kind), dimension(:, :), intent(in) :: &
-        G_strength  , G_cdn_ocn   , G_aiu       , G_uocn     , &
-        G_vocn      , G_forcexU  , &
-        G_forceyU   , G_Tbu      , &
-        G_umass     , G_uvel      , G_vvel
+        G_uvel      , G_vvel
      integer(kind=int_kind) ::  lo, up, iw, i, j
      character(len=*), parameter :: subname = '(convert_2d_1d_dyn)'
      lo=1
@@ -1190,27 +1339,22 @@ module ice_dyn_evp1d
            stress12_3(iw) = c0
            stress12_4(iw) = c0
         endif
-        ! map
-        strength(iw)   = G_strength(i,j)
-        cdn_ocn(iw)    = G_cdn_ocn(i, j)
-        aiu(iw)        = G_aiu(i, j)
+        ! strength, cdn_ocn, aiu, uocn, vocn, forcexU, forceyU, umass and Tbu
+        ! were copied out of their globals here.  gather_dyn now writes them
+        ! directly, with the same indxTij -> (i,j) decode, so the values are
+        ! unchanged and only the storage differs.
+        !
         ! The rule dyn_prep2 uses: 1, or 0 where the U cell carries less ice
         ! than rheo_area_min.  #1133 added this factor to the 2-D stepu but
         ! not to this kernel, so the two solvers disagreed on any grid with
         ! marginal ice -- gx3 shows it, a solid-ice box grid does not.
-        if (free_drift_approx .and. G_aiu(i, j) <= rheo_area_min) then
+        if (free_drift_approx .and. aiu(iw) <= rheo_area_min) then
            rheofactU(iw) = c0
         else
            rheofactU(iw) = c1
         endif
-        uocn(iw)       = G_uocn(i, j)
-        vocn(iw)       = G_vocn(i, j)
-        forcexU(iw)    = G_forcexU(i, j)
-        forceyU(iw)    = G_forceyU(i, j)
         strintxU_1d(iw)   = C0
         strintyU_1d(iw)   = C0
-        umass(iw)      = G_umass(i, j)
-        Tbu(iw)        = G_Tbu(i, j)
         Cb(iw)         = c0
         uvel(iw)       = G_uvel(i,j)
         vvel(iw)       = G_vvel(i,j)
@@ -1253,62 +1397,33 @@ module ice_dyn_evp1d
 !=============================================================================
 
   subroutine convert_1d_2d_dyn(na0         , navel0      ,                             &
-                               G_stressp_1 , G_stressp_2 , G_stressp_3 , G_stressp_4 , &
-                               G_stressm_1 , G_stressm_2 , G_stressm_3 , G_stressm_4 , &
-                               G_stress12_1, G_stress12_2, G_stress12_3, G_stress12_4, &
-                               G_strength,                                             &
-                               G_cdn_ocn   , G_aiu       , G_uocn      , G_vocn      , &
-                               G_waterxU   , G_wateryU   , G_forcexU   , G_forceyU   , &
                                G_strintxU  , G_strintyU  , &
-                               G_Tbu       , G_uvel      , G_vvel      , G_taubxU    , &
+                               G_uvel      , G_vvel      , G_taubxU    , &
                                G_taubyU)
 
      implicit none
 
      integer(kind=int_kind), intent(in) ::  na0, navel0
-     ! nx, ny
+     ! nx, ny.  Only the round-trip fields are left: the ones that have to
+     ! keep, at every cell this solver does not own, the value the gather
+     ! brought in.  The twelve stresses went out through scatter_slot_r8
+     ! instead, and ten more globals -- G_strength, G_cdn_ocn, G_aiu, G_uocn,
+     ! G_vocn, G_waterxU, G_wateryU, G_forcexU, G_forceyU, G_Tbu -- turned out
+     ! to be zeroed here and read by nobody at all.
      real(kind=dbl_kind), dimension(:, :), intent(inout) ::     &
-        G_stressp_1 , G_stressp_2 , G_stressp_3 , G_stressp_4 , &
-        G_stressm_1 , G_stressm_2 , G_stressm_3 , G_stressm_4 , &
-        G_stress12_1, G_stress12_2, G_stress12_3, G_stress12_4, &
-        G_strength,                                             &
-        G_cdn_ocn   , G_aiu       , G_uocn      , G_vocn      , &
-        G_waterxU   , G_wateryU   , G_forcexU   , G_forceyU   , &
         G_strintxU  , G_strintyU  , &
-        G_Tbu       , G_uvel      , G_vvel      , G_taubxU    , &
+        G_uvel      , G_vvel      , G_taubxU    , &
         G_taubyU
 
      integer(kind=int_kind) ::  lo, up, iw, i, j
      character(len=*), parameter :: subname = '(convert_1d_2d_dyn)'
 
-     G_stressp_1  = c0
-     G_stressp_2  = c0
-     G_stressp_3  = c0
-     G_stressp_4  = c0
-     G_stressm_1  = c0
-     G_stressm_2  = c0
-     G_stressm_3  = c0
-     G_stressm_4  = c0
-     G_stress12_1 = c0
-     G_stress12_2 = c0
-     G_stress12_3 = c0
-     G_stress12_4 = c0
-     G_strength   = c0
-     G_cdn_ocn    = c0
-     G_aiu        = c0
-     G_uocn       = c0
-     G_vocn       = c0
-     G_waterxU    = c0
-     G_wateryU    = c0
-     G_forcexU    = c0
-     G_forceyU    = c0
      ! G_strintxU, G_strintyU, G_taubxU and G_taubyU are deliberately NOT
      ! zeroed, for the same reason as G_uvel and G_vvel below: gather_dyn has
      ! filled them with the block field, and scatter_dyn writes them straight
      ! back.  The 2-D solver's unpack_from_slots writes only the cells it has
      ! a slot for and leaves the rest, so zeroing here made evp1d clear
      ! diagnostics at cells it does not own where the 2-D solver does not.
-     G_Tbu        = c0
      ! G_uvel and G_vvel are deliberately NOT zeroed.  Unlike the others they
      ! arrive holding the gathered block field -- gather_dyn fills them with
      ! grid_ext, ghosts included -- and they are scattered straight back.  A
@@ -1327,18 +1442,6 @@ module ice_dyn_evp1d
         i = indxti(iw)
         j = indxtj(iw)
         ! map to 2d
-        G_stressp_1 (i,j) = stressp_1(iw)
-        G_stressp_2 (i,j) = stressp_2(iw)
-        G_stressp_3 (i,j) = stressp_3(iw)
-        G_stressp_4 (i,j) = stressp_4(iw)
-        G_stressm_1 (i,j) = stressm_1(iw)
-        G_stressm_2 (i,j) = stressm_2(iw)
-        G_stressm_3 (i,j) = stressm_3(iw)
-        G_stressm_4 (i,j) = stressm_4(iw)
-        G_stress12_1(i,j) = stress12_1(iw)
-        G_stress12_2(i,j) = stress12_2(iw)
-        G_stress12_3(i,j) = stress12_3(iw)
-        G_stress12_4(i,j) = stress12_4(iw)
         G_strintxU(i,j)   = strintxU_1d(iw)
         G_strintyU(i,j)   = strintyU_1d (iw)
         G_taubxU(i,j)     = -uvel(iw)*Cb(iw)
@@ -1470,12 +1573,12 @@ module ice_dyn_evp1d
      do iw = lo,up
         skipTcell(iw)=.false.
         skipUcell(iw)=.false.
-        ee(iw)=0
-        ne(iw)=0
-        se(iw)=0
-        nw(iw)=0
-        sw(iw)=0
-        sse(iw)=0
+        nbrW(iw)=0
+        nbrSW(iw)=0
+        nbrS(iw)=0
+        nbrE(iw)=0
+        nbrNE(iw)=0
+        nbrN(iw)=0
         aiu(iw)=c0
         rheofactU(iw)=c1
         Cb(iw)=c0
