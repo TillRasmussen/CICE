@@ -1034,11 +1034,18 @@
       character(len=*), parameter :: subname = '(init_dyn_shared)'
 
       ! checks
-      if (kdyn == 1 .and. evp_algorithm == 'shared_mem_1d' .and. &
-          (ns_boundary_type == 'tripole' .or. ns_boundary_type == 'tripoleT')) then
-         call abort_ice(subname//' ERROR: evp_alg shared mem 1d not supported with tripole', &
-            file=__FILE__, line=__LINE__)
-      endif
+        ! ⚠ shared_mem_1d + tripole is ALLOWED now.  It was rejected until the
+        ! fold in ice_dyn_evp1d matched the 2-D solver exactly, which it does:
+        ! on a wet seam (kmt_type='none', ns_boundary_type='tripole') the two
+        ! are bit-for-bit, kinetic energy identical to the last digit.
+        !
+        ! ⚠ tripoleT is still rejected.  The fold was measured for the U-fold
+        ! only; the T-fold has a different convention and has not been done.
+        if (kdyn == 1 .and. evp_algorithm == 'shared_mem_1d' .and. &
+            ns_boundary_type == 'tripoleT') then
+           call abort_ice(subname//' ERROR: evp_alg shared mem 1d not supported with tripoleT', &
+              file=__FILE__, line=__LINE__)
+        endif
 
 
       call set_evp_parameters (dt)
