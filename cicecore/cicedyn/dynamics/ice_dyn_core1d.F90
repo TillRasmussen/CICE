@@ -153,20 +153,7 @@ module ice_dyn_core1d
 #ifdef _OPENMP_TARGET
     !$omp target teams distribute parallel do
 #else
-    ! ⚠ schedule(static), NOT runtime.  These loops walk ~nIce uniform-cost
-    ! cells, and CICE ships ICE_OMPSCHED="static,1", which round-robins
-    ! INDIVIDUAL CELLS across threads: adjacent slots land on different
-    ! threads, so every cache line holding str1..str8 and the stresses is
-    ! write-shared.  Measured on gx3/latsst, Dynamics seconds:
-    !
-    !                  1 thr   2 thr   4 thr   8 thr
-    !     static,1      8.58    9.28    9.26    7.38   <- barely threads
-    !     static        9.79    6.01    4.79    3.86
-    !
-    ! The 2-D path wants the opposite -- it threads over 16 unevenly loaded
-    ! blocks, where round-robin balances -- and OMP_SCHEDULE is one global
-    ! setting, so these kernels cannot leave the choice to runtime.
-    !$omp parallel do schedule(static)                        &
+    !$omp parallel do schedule(runtime)                        &
     !$omp default(none)                                        &
     !$omp private(iw, n, divune, divunw, divuse, divusw         , &
     !$omp         tensionne, tensionnw, tensionse, tensionsw , &
@@ -487,7 +474,7 @@ module ice_dyn_core1d
 #ifdef _OPENMP_TARGET
     !$omp target teams distribute parallel do
 #else
-    !$omp parallel do schedule(static)                                        &
+    !$omp parallel do schedule(runtime)                                        &
     !$omp default(none)                                                        &
     !$omp private(iw, n, tmp_str2_E,tmp_str3_N,tmp_str4_NE,                    &
     !$omp         tmp_str6_N,tmp_str7_E,tmp_str8_NE,                        &
@@ -592,7 +579,7 @@ module ice_dyn_core1d
 #ifdef _OPENMP_TARGET
     !$omp target teams distribute parallel do
 #else
-    !$omp parallel do schedule(static)                                   &
+    !$omp parallel do schedule(runtime)                                   &
     !$omp default(none)                                                   &
     !$omp private(iw, n, tmp_str2_E,tmp_str3_N,tmp_str4_NE,               &
     !$omp         tmp_str6_N,tmp_str7_E,tmp_str8_NE)                   &

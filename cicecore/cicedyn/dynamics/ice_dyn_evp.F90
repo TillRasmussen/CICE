@@ -1078,32 +1078,6 @@
             ! the block forms, which is what the shared deformations call
             ! below reads.
 
-            ! ⚠ The compressed fold writes only cells that OWN A SLOT.  The
-            ! ghost columns and the land cells on the seam row have none, so
-            ! they keep what the scatter left -- +0.0 -- where the 2-D path's
-            ! per-subcycle halo stamps -0.0 into them.  Numerically identical,
-            ! bitwise not, and md5/complog both see it: on gx3 it was exactly
-            ! ten words of uvel/vvel at five slotless cells.
-            !
-            ! Running the real handler once makes the two paths agree BY
-            ! CONSTRUCTION rather than by reproducing its sign-of-zero
-            ! convention in the compressed fold.  One halo update per
-            ! timestep, against ndte=240 subcycles in the branch above.
-            !
-            ! Slotted ghost cells are unaffected: the compressed halo has
-            ! already given them the folded value, so the handler writes back
-            ! what is there and uvel_slot/vvel_slot cannot go stale.  Only the
-            ! slotless cells change, and those have no slot to keep current.
-            if (trim(ns_boundary_type) == 'tripole' .or. &
-                trim(ns_boundary_type) == 'tripoleT') then
-               call ice_timer_start(timer_bound)
-               call ice_HaloUpdate (uvel, halo_info, &
-                                    field_loc_NEcorner, field_type_vector)
-               call ice_HaloUpdate (vvel, halo_info, &
-                                    field_loc_NEcorner, field_type_vector)
-               call ice_timer_stop(timer_bound)
-            endif
-
          else ! evp_algorithm == standard_2d (Standard CICE)
 
 

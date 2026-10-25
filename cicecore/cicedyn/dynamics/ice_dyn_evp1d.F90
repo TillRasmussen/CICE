@@ -103,20 +103,6 @@ module ice_dyn_evp1d
   ! no way to say so.  x*1.0 is exact, so adding it changes nothing until
   ! something sets it to -1.
   real   (kind=dbl_kind), allocatable, dimension(:)   :: halo_bc_sgn
-
-  ! Tripole seam symmetry, the one part of the fold the halo list cannot
-  ! express.  tri_a(k) and tri_b(k) are the two slots of a mirrored pair on
-  ! the seam row; tri_neg holds the columns that are negated with no partner.
-  ! See evp1d_tripole_seam for why this is not a halo_bc entry.
-  integer(kind=int_kind), save :: n_tri_pair = 0, n_tri_neg = 0
-  integer(kind=int_kind), allocatable, dimension(:) :: tri_a, tri_b, tri_neg
-  ! Ghost-row fold for the STRESSES.  The velocity fold rides the halo_bc
-  ! list; this cannot, because it runs ONCE PER TIMESTEP after the subcycle
-  ! -- matching where evp's epilogue applies ice_HaloUpdate_stress -- and
-  ! because each component is filled from its DIAGONAL PARTNER, not itself.
-  ! tst_d is the ghost slot, tst_s the slot read from the partner array.
-  integer(kind=int_kind), allocatable, dimension(:) :: tst_d, tst_s
-  integer(kind=int_kind), save :: n_tri_str = 0
   integer(kind=int_kind)                              :: n_halo_bc
 
   ! The 1d stresses are subcycle state and persist between timesteps, so
@@ -135,9 +121,7 @@ module ice_dyn_evp1d
 
   subroutine dyn_evp1d_init
 
-    use ice_grid, only: G_HTE, G_HTN, dynMap, dynOff, dynCnt
-    use ice_gather_scatter, only: slot_gather_setup
-    use ice_domain, only: distrb_info
+    use ice_grid, only: G_HTE, G_HTN
 
     implicit none
 
@@ -187,14 +171,6 @@ module ice_dyn_evp1d
 
     endif
 
-    ! ⚠ Collective, so it sits OUTSIDE the master-only block above even
-    ! though what it describes is read on the master alone.  nActive and
-    ! indxTij are master-only -- indxTij is passed allocatable for exactly
-    ! that reason -- but the probe gather and the slot-list handout both
-    ! need every task present.
-    call slot_gather_setup(dynMap, dynOff, dynCnt, indxTij, nActive, &
-                           nx, ny, master_task, distrb_info)
-
     deallocate(G_dyT,G_dxT,G_uarear,G_tmask,G_DminTarea,G_fcor,stat=ierr)
     if (ierr/=0) then
        call abort_ice(subname//' ERROR: deallocating', file=__FILE__, line=__LINE__)
@@ -211,7 +187,6 @@ module ice_dyn_evp1d
                            L_umass     , L_uvel      , &
                            L_vvel      , L_icetmask  , L_iceUmask)
 
-    use ice_blocks    , only: ns_boundary_type
     use ice_calendar, only : write_history, write_restart, write_ic
     use ice_dyn_shared, only : ndte, strintxU_slot, strintyU_slot, &
            stressp_1_slot, stressp_2_slot, stressp_3_slot, stressp_4_slot, &
@@ -281,9 +256,6 @@ module ice_dyn_evp1d
 
     ! does any history stream want strint/taub this step?
     logical(kind=log_kind) :: lstrint, ltaub, lsiforce
-    ! ns_boundary_type is tripole.  Hoisted to a variable so the subcycle
-    ! branches once instead of testing a string 240 times.
-    logical(kind=log_kind) :: ltripole
     integer(kind=int_kind) :: iblk   ! block index for the siforce expansion
 
     character(len=*), parameter :: subname = '(dyn_evp1d_run)'
@@ -308,8 +280,6 @@ module ice_dyn_evp1d
     ltaub   = hist_field_needed(n_taubx  ) .or. hist_field_needed(n_tauby  )
     lsiforce = hist_field_needed(n_siforceintstrx) .or. &
                hist_field_needed(n_siforceintstry)
-
-    ltripole = (trim(ns_boundary_type) == 'tripole')
 
     call gather_dyn(&
                     L_umass     , L_uvel      , L_vvel      ,               &
@@ -378,54 +348,23 @@ module ice_dyn_evp1d
        str7(1:navel+1)=c0
        str8(1:navel+1)=c0
 
-       ! ⚠ The tripole branch is hoisted OUT of the subcycle, not tested inside
-       ! it.  The body is duplicated deliberately: ndte is 240 and this is the
-       ! hot loop, so the test belongs where it is evaluated once.
-       if (ltripole) then
-          do ksub = 1,ndte        ! subcycling, tripole
-             call stress_1d (nbrW, nbrSW, nbrS, 1, nIce, aList,                                    &
-                             uvel, vvel, dxT_1d, dyT_1d, DminTarea_1d,                  &
-                             dxhy_1d, dyhx_1d, skipTcell, strength,                     &
-                             HTE_1d, HTN_1d, HTEm1_1d, HTNm1_1d,                        &
-                             stressp_1,  stressp_2,  stressp_3,  stressp_4,             &
-                             stressm_1,  stressm_2,  stressm_3,  stressm_4,             &
-                             stress12_1, stress12_2, stress12_3, stress12_4,            &
-                             str1, str2, str3, str4, str5, str6, str7, str8)
-   
-             call stepu_1d  (1, nIce, aList, cdn_ocn, aiu, uocn, vocn,                         &
-                             waterxU, wateryU, forcexU, forceyU, umassdti, fmU, uarear_1d, &
-                             uvel_init, vvel_init, uvel, vvel,                             &
-                             str1, str2, str3, str4, str5, str6, str7, str8,               &
-                             nbrE, nbrNE, nbrN, skipUcell, Tbu, Cb, rhow, rheofactU)
-             ! symmetry along the seam, before the halo list applies the
-             ! ghost-row entries; see evp1d_tripole_seam
-             call evp1d_tripole_seam()
-             call evp1d_halo_update()
-          enddo
-          ! The stress fold, ONCE per timestep after the subcycle -- where evp's
-          ! epilogue applies ice_HaloUpdate_stress to the slot copies.  evp1d's
-          ! own stresses never see that, which is the whole of the residual that
-          ! survived the velocity fold.
-          call evp1d_tripole_stress()
-       else
-          do ksub = 1,ndte        ! subcycling
-             call stress_1d (nbrW, nbrSW, nbrS, 1, nIce, aList,                                    &
-                             uvel, vvel, dxT_1d, dyT_1d, DminTarea_1d,                  &
-                             dxhy_1d, dyhx_1d, skipTcell, strength,                     &
-                             HTE_1d, HTN_1d, HTEm1_1d, HTNm1_1d,                        &
-                             stressp_1,  stressp_2,  stressp_3,  stressp_4,             &
-                             stressm_1,  stressm_2,  stressm_3,  stressm_4,             &
-                             stress12_1, stress12_2, stress12_3, stress12_4,            &
-                             str1, str2, str3, str4, str5, str6, str7, str8)
-   
-             call stepu_1d  (1, nIce, aList, cdn_ocn, aiu, uocn, vocn,                         &
-                             waterxU, wateryU, forcexU, forceyU, umassdti, fmU, uarear_1d, &
-                             uvel_init, vvel_init, uvel, vvel,                             &
-                             str1, str2, str3, str4, str5, str6, str7, str8,               &
-                             nbrE, nbrNE, nbrN, skipUcell, Tbu, Cb, rhow, rheofactU)
-             call evp1d_halo_update()
-          enddo
-       endif
+       do ksub = 1,ndte        ! subcycling
+          call stress_1d (nbrW, nbrSW, nbrS, 1, nIce, aList,                                    &
+                          uvel, vvel, dxT_1d, dyT_1d, DminTarea_1d,                  &
+                          dxhy_1d, dyhx_1d, skipTcell, strength,                     &
+                          HTE_1d, HTN_1d, HTEm1_1d, HTNm1_1d,                        &
+                          stressp_1,  stressp_2,  stressp_3,  stressp_4,             &
+                          stressm_1,  stressm_2,  stressm_3,  stressm_4,             &
+                          stress12_1, stress12_2, stress12_3, stress12_4,            &
+                          str1, str2, str3, str4, str5, str6, str7, str8)
+
+          call stepu_1d  (1, nIce, aList, cdn_ocn, aiu, uocn, vocn,                         &
+                          waterxU, wateryU, forcexU, forceyU, umassdti, fmU, uarear_1d, &
+                          uvel_init, vvel_init, uvel, vvel,                             &
+                          str1, str2, str3, str4, str5, str6, str7, str8,               &
+                          nbrE, nbrNE, nbrN, skipUcell, Tbu, Cb, rhow, rheofactU)
+          call evp1d_halo_update()
+       enddo
        ! Skipped outright when no history stream wants strintx/strinty --
        ! which is what the comment here used to say was possible.
        if (lstrint) &
@@ -943,7 +882,8 @@ module ice_dyn_evp1d
   subroutine gather_slot_r8(A_1d, A_slot, n)
 
      use ice_communicate, only : my_task, master_task
-     use ice_gather_scatter, only : gather_slots_r8
+     use ice_gather_scatter, only : gather_globalR8_compressed
+     use ice_grid, only : dynMap, dynOff
      use ice_domain, only : distrb_info
      implicit none
 
@@ -959,20 +899,22 @@ module ice_dyn_evp1d
      real(kind=dbl_kind), dimension(:), intent(in)    :: A_slot
      integer(kind=int_kind), intent(in) :: n
 
+     integer(kind=int_kind) :: iw, i, j
 
      character(len=*), parameter :: subname = '(gather_slot_r8)'
 
-     ! Was: expand A_slot back to full block shape, gather
-     ! nx_block*ny_block per block into G_work, then read the nActive cells
-     ! back out of it.  The message carried every cell of every block,
-     ! including the ones the 1-D solver never looks at.  gather_slots_r8
-     ! moves sg_nSend(iblk) values per block and lands them straight in
-     ! A_1d, so G_work is not involved at all.
-     !
-     ! indxTij, nActive and the 1d arrays still exist on the master alone;
-     ! gather_slots_r8 touches A_1d only there, which is why A_1d stays
-     ! allocatable all the way down.
-     call gather_slots_r8(A_1d, A_slot, n, master_task, distrb_info)
+     call gather_globalR8_compressed(G_work, A_slot, dynMap, dynOff, &
+            master_task, distrb_info, c0, grid_ext=.true.)
+
+     ! indxTij, nActive and the 1d arrays exist on the master alone -- see
+     ! dyn_evp1d_init, where everything after gather_static is master-only.
+     if (my_task /= master_task) return
+
+     do iw = 1, n
+        j = int((indxTij(iw) - 1) / nx) + 1
+        i =      indxTij(iw) - (j - 1) * nx
+        A_1d(iw) = G_work(i,j)
+     end do
 
   end subroutine gather_slot_r8
 
@@ -1060,8 +1002,7 @@ module ice_dyn_evp1d
                         G_uvel      , G_vvel      ,                             &
                         G_iceTmask,  G_iceUmask)
      use ice_communicate, only : master_task
-     use ice_gather_scatter, only : gather_global, gather_globalR8_compressed, &
-          slot_gather_filter
+     use ice_gather_scatter, only : gather_global, gather_globalR8_compressed
      use ice_grid, only : dynMap, dynOff
      use ice_dyn_shared, only : strintxU_slot, strintyU_slot, &
           taubxU_slot, taubyU_slot, TbU_slot, &
@@ -1098,22 +1039,6 @@ module ice_dyn_evp1d
      ! eleven (nx,ny) automatics and then copied out one cell at a time by
      ! convert_2d_1d_dyn; the copy is now the tail of gather_slot_r8 and the
      ! globals are gone.
-     ! ⚠ The masks go FIRST, ahead of every data field.  That ordering is
-     ! what lets slot_gather_filter work without sending any indices: once
-     ! both sides hold the mask, each decides membership itself -- the task
-     ! from its own block copy, the master from the gathered global one --
-     ! and the two lists agree entry for entry.  Gathered after the data, as
-     ! they used to be, the filter would be a step behind.
-     call gather_global(G_iceTmask  ,     L_iceTmask  ,     master_task, distrb_info, grid_ext=.true.)
-     call gather_global(G_iceUmask  ,     L_iceUmask  ,     master_task, distrb_info, grid_ext=.true.)
-
-     ! evp1d_reorder decides what the word "active" means for the wire, the
-     ! same way it decides it for the kernels: off, every ocean slot moves;
-     ! on, only the slots carrying ice.
-     call slot_gather_filter(evp1d_reorder, L_iceTmask, L_iceUmask,        &
-                             G_iceTmask, G_iceUmask, indxTij, nx,          &
-                             master_task, distrb_info)
-
      call gather_slot_r8(strength, strength_slot , nActive)
      call gather_slot_r8(cdn_ocn , cdn_ocnU_slot , nActive)
      call gather_slot_r8(aiu     , aiU_slot      , nActive)
@@ -1144,6 +1069,8 @@ module ice_dyn_evp1d
         call gather_globalR8_compressed(G_taubyU    , taubyU_slot, dynMap, dynOff, &
              master_task, distrb_info, c0, grid_ext=.true.)
      endif
+     call gather_global(G_iceTmask  ,     L_iceTmask  ,     master_task, distrb_info, grid_ext=.true.)
+     call gather_global(G_iceUmask  ,     L_iceUmask  ,     master_task, distrb_info, grid_ext=.true.)
   end subroutine gather_dyn
 
 
@@ -1747,7 +1674,7 @@ module ice_dyn_evp1d
 
      ! local variables
 
-     integer(kind=int_kind) :: i, j, g, ilo, ihi, jlo, jhi, isrc
+     integer(kind=int_kind) :: i, j, g, ilo, ihi, jlo, jhi
      real   (kind=dbl_kind) :: w
 
      character(len=*), parameter :: subname = '(halo_sweep)'
@@ -1760,47 +1687,6 @@ module ice_dyn_evp1d
      ihi = nx - nghost
      jlo = 1  + nghost
      jhi = ny - nghost
-
-     ! ⚠ The tripole fold goes FIRST, before the cyclic exchange.  Measured:
-     ! the ghosts at i=1 and i=nx on the seam row come back holding the NEGATED
-     ! value of their cyclic partner, so the cyclic pass reads a seam the fold
-     ! has already touched.  Building these entries after the cyclic ones would
-     ! apply them in the wrong order.
-     !
-     ! Only the ghost rows are entries here.  The symmetry along the seam row
-     ! itself is evp1d_tripole_seam -- see there for why it cannot be one.
-     if (trim(ns_boundary_type) == 'tripole') then
-        call tripole_sweep(domark)
-
-        ! u(i, jhi+g) = -u(nx-i, jhi-g).  The source row is jhi-g, NOT the seam,
-        ! so these are independent of the seam symmetry and may run either side
-        ! of it.
-        !
-        ! ⚠ i runs to nx-1, not nx-2.  The earlier bound assumed the cyclic
-        ! pass would fill what the fold skipped, but cyclic writes only the
-        ! GHOST columns 1 and nx -- column nx-1 is PHYSICAL, so nothing wrote
-        ! (nx-1, jhi+g) at all, and (1, jhi+g) then inherited that stale value
-        ! cyclically.  Measured as the entire residual: with ndte=1 the only
-        ! cells differing from the 2-D solver were uvel and vvel at exactly
-        ! those two.
-        !
-        ! At i = nx-1 the mirror column nx-i is 1, a ghost.  Under a cyclic
-        ! east-west boundary that ghost IS column nx-1, so the source is taken
-        ! there directly rather than relying on the cyclic pass having run.
-        ! Without cyclic there is no such image and the column is left to the
-        ! old behaviour.
-        do g = 1, nghost
-        do i = 1, nx - 1
-           isrc = nx - i
-           if (isrc < 1 + nghost) then
-              if (trim(ew_boundary_type) /= 'cyclic') cycle
-              isrc = isrc + (nx - 2*nghost)
-           endif
-           call halo_point(i, jhi + g, isrc, jhi - g, isrc, jhi - g, &
-                           c0, domark, -c1)
-        end do
-        end do
-     endif
 
      ! the cyclic exchange, both directions
      if (trim(ew_boundary_type) == 'cyclic') then
@@ -1854,112 +1740,6 @@ module ice_dyn_evp1d
 
 !=======================================================================
 
-  subroutine tripole_sweep(domark)
-
-     ! Mark, or build, the seam-row symmetry lists.  Same two-pass shape as
-     ! halo_sweep: the marking pass is what gives these cells slots at all.
-
-     implicit none
-
-     logical(kind=log_kind), intent(in) :: domark
-
-     integer(kind=int_kind) :: i, ip, g, jhi, sa, sb, ierr
-
-     character(len=*), parameter :: subname = '(tripole_sweep)'
-
-     jhi = ny - nghost
-
-     if (domark) then
-        do i = 2, nx/2 - 1
-           call mark_cell(i     , jhi)
-           call mark_cell(nx - i, jhi)
-        end do
-        call mark_cell(nx/2  , jhi)
-        call mark_cell(nx - 1, jhi)
-        ! and the ghost rows the stress fold writes, plus their sources.
-        ! Columns only within calc_2d_indices_init's range: marking outside
-        ! it just grows the read-only tail, which the stresses cannot index.
-        do g = 1, nghost
-        do i = 1 + nghost, nx - nghost + 1
-           call mark_cell(i, jhi + g)
-           call mark_cell(nx + 1 - i, jhi + 1 - g)
-        end do
-        end do
-        return
-     endif
-
-     if (.not. allocated(tri_a)) then
-        allocate(tri_a(nx), tri_b(nx), tri_neg(2), &
-                 tst_d(nx*nghost), tst_s(nx*nghost), stat=ierr)
-        if (ierr /= 0) call abort_ice(subname//' ERROR: allocating', &
-                                      file=__FILE__, line=__LINE__)
-     endif
-
-     ! Ghost-row fold for the stresses.  field_loc_center and
-     ! field_type_scalar, unlike the velocities' NEcorner/vector, so the
-     ! offsets are 0,0 instead of 1,1 and the sign is +1 instead of -1:
-     !
-     !     stressX_1(i, jhi+g) = stressX_3(nx+1-i, jhi+1-g)
-     !
-     ! A centre-located field has no degenerate seam row -- that symmetry
-     ! exists only for NEcorner and Nface -- so there is no stage 1 here.
-     n_tri_str = 0
-     do g = 1, nghost
-     do i = 1, nx
-        ! Measured against ice_HaloUpdate_stress on a one-block tripole grid:
-        !     dst (i, jhi+g) <- partner (nx+1-i, jhi+1-g)
-        ! verified i=8 -> 75, i=15 -> 68, i=78 -> 5, source row jhi.
-        !
-        ! ⚠ At the ends nx+1-i leaves the physical range and the handler uses
-        ! the CYCLIC IMAGE, not the ghost: measured i=1 -> 2, where nx+1-i is
-        ! 82, the east ghost, whose image is column 2.  Reading the ghost
-        ! instead was the whole of the residual the derived mapping left.
-        ip = nx + 1 - i
-        if (ip > nx - nghost) ip = ip - (nx - 2*nghost)
-        if (ip < 1 + nghost)  ip = ip + (nx - 2*nghost)
-        if (ip < 1 .or. ip > nx) cycle
-        sa = ijslot(i  + (jhi + g - 1) * nx)
-        sb = ijslot(ip + (jhi + 1 - g - 1) * nx)
-        ! ⚠ Both ends must be ACTIVE slots.  The stress arrays are
-        ! dimension(nActive); slots above that are the read-only neighbour
-        ! tail and have no stress storage at all.  Cells outside
-        ! calc_2d_indices_init's range -- the ghost COLUMNS i=1 and i=nx --
-        ! land there, and indexing them overran f1 by exactly nx*ny-nActive.
-        if (sa == 0 .or. sb == 0) cycle
-        if (sa > nActive .or. sb > nActive) cycle
-        n_tri_str = n_tri_str + 1
-        tst_d(n_tri_str) = sa
-        tst_s(n_tri_str) = sb
-     end do
-     end do
-
-     n_tri_pair = 0
-     do i = 2, nx/2 - 1
-        ip = nx - i
-        sa = ijslot(i  + (jhi - 1) * nx)
-        sb = ijslot(ip + (jhi - 1) * nx)
-        if (sa == 0 .or. sb == 0) cycle
-        n_tri_pair = n_tri_pair + 1
-        tri_a(n_tri_pair) = sa
-        tri_b(n_tri_pair) = sb
-     end do
-
-     ! The two columns with no distinct partner: nx/2 and nx-1.
-     n_tri_neg = 0
-     do ip = 1, 2
-        i = nx/2
-        if (ip == 2) i = nx - 1
-        sa = ijslot(i + (jhi - 1) * nx)
-        if (sa == 0) cycle
-        n_tri_neg = n_tri_neg + 1
-        tri_neg(n_tri_neg) = sa
-     end do
-
-  end subroutine tripole_sweep
-
-  !=============================================================================
-
-
   subroutine halo_point(id, jd, i1, j1, i2, j2, w, domark, sgn)
      ! Mark, or append, one halo point.
      !
@@ -2012,116 +1792,6 @@ module ice_dyn_evp1d
   end subroutine halo_point
 
 !=======================================================================
-
-  subroutine evp1d_tripole_seam()
-
-     ! Symmetry ALONG the tripole seam row, applied before the halo list.
-     !
-     ! ⚠ This cannot be a halo_bc entry, for two independent reasons:
-     !
-     !   the arithmetic.  An entry computes sgn*(s1 + w*(s1-s2)); the seam
-     !   needs p5*(x1-x2), and solving the coefficients for that gives
-     !   sgn = 0.  Two independent coefficients would be required.
-     !
-     !   the ordering.  Both ends of a pair are written FROM THE ORIGINAL
-     !   PAIR.  The halo list is applied sequentially and deliberately so --
-     !   its north/south entries read ghosts the east/west ones just wrote --
-     !   so the second write of a pair would read the first's result.
-     !
-     ! Visiting each pair once and writing both ends from saved locals is
-     ! what makes it correct.
-     !
-     ! Mapping measured against the 2-D halo on a one-block tripole grid,
-     ! not transcribed from ice_boundary: for a pair (i, nx-i) on row jhi,
-     !     xavg = p5*(u(i) - u(nx-i)),  u(i) = xavg,  u(nx-i) = -xavg
-
-     implicit none
-
-     integer(kind=int_kind) :: k, ka, kb
-     real   (kind=dbl_kind) :: ua, ub, va, vb
-
-     character(len=*), parameter :: subname = '(evp1d_tripole_seam)'
-
-     do k = 1, n_tri_pair
-        ka = tri_a(k)
-        kb = tri_b(k)
-        ua = uvel(ka)
-        ub = uvel(kb)
-        va = vvel(ka)
-        vb = vvel(kb)
-        uvel(ka) =  p5*(ua - ub)
-        uvel(kb) = -p5*(ua - ub)
-        vvel(ka) =  p5*(va - vb)
-        vvel(kb) = -p5*(va - vb)
-     end do
-
-     ! The two columns with no distinct partner -- i = nx/2 and i = nx-1 --
-     ! are negated outright.  Measured, not assumed: both come back as
-     ! -(original) from the 2-D halo.
-     do k = 1, n_tri_neg
-        uvel(tri_neg(k)) = -uvel(tri_neg(k))
-        vvel(tri_neg(k)) = -vvel(tri_neg(k))
-     end do
-
-  end subroutine evp1d_tripole_seam
-
-!=============================================================================
-
-  subroutine evp1d_tripole_stress()
-
-     ! The tripole fold for the twelve stresses, applied ONCE PER TIMESTEP
-     ! after the subcycle -- where evp's epilogue applies
-     ! ice_HaloUpdate_stress to the block/slot copies.
-     !
-     ! ⚠ Why evp1d needs its own.  That epilogue updates stressp_1_slot and
-     ! friends, but evp1d subcycles on its OWN stressp_1, seeded once by
-     ! gather_stresses and never refreshed.  Without this the seam never
-     ! reaches the working stresses and the error enters once per timestep --
-     ! which is exactly what the measurement showed: bit-for-bit within a
-     ! timestep at any ndte, diverging only across them.
-     !
-     ! ⚠ Each component is filled from its DIAGONAL PARTNER, 1<->3 and 2<->4,
-     ! matching the pairing in evp's twelve calls.  Sign is +1: these go in as
-     ! field_type_scalar, unlike the velocities.
-     !
-     ! Re-gathering from the slot copies would be the other way to do it, and
-     ! would cost twelve collectives per timestep -- the ones 2677687 removed.
-
-     implicit none
-     integer(kind=int_kind) :: k, d, sr
-
-     character(len=*), parameter :: subname = '(evp1d_tripole_stress)'
-
-     ! ⚠ A one-way copy into the GHOST, not a swap: the handler fills
-     ! array1's ghost cells from array2's interior and leaves the interior
-     ! alone.  Both partners are read before either is written, because the
-     ! two directed updates of a pair would otherwise see each other.
-     do k = 1, n_tri_str
-        d = tst_d(k)
-        sr = tst_s(k)
-        call swap_pair(stressp_1 , stressp_3 , d, sr)
-        call swap_pair(stressp_2 , stressp_4 , d, sr)
-        call swap_pair(stressm_1 , stressm_3 , d, sr)
-        call swap_pair(stressm_2 , stressm_4 , d, sr)
-        call swap_pair(stress12_1, stress12_3, d, sr)
-        call swap_pair(stress12_2, stress12_4, d, sr)
-     end do
-
-  contains
-
-     subroutine swap_pair(f1, f3, d, sr)
-        real   (kind=dbl_kind), dimension(:), intent(inout) :: f1, f3
-        integer(kind=int_kind), intent(in) :: d, sr
-        real   (kind=dbl_kind) :: v1, v3
-        v1 = f1(sr)
-        v3 = f3(sr)
-        f1(d) = v3
-        f3(d) = v1
-     end subroutine swap_pair
-
-  end subroutine evp1d_tripole_stress
-
-!=============================================================================
 
   subroutine evp1d_halo_update()
 
