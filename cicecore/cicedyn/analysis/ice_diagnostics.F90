@@ -1761,7 +1761,8 @@
 
       subroutine print_state(plabel,i,j,iblk)
 
-      use ice_grid, only: grid_ice
+      use ice_grid, only: grid_ice, &
+          dynMap, dynOff
       use ice_blocks, only: block, get_block
       use ice_domain, only: blocks_ice
       use ice_domain_size, only: ncat, nilyr, nslyr, nfsd
@@ -1786,6 +1787,7 @@
            rad_to_deg, puny, rhoi, lfresh, rhos, cp_ice
 
       integer (kind=int_kind) :: n, k, nt_Tsfc, nt_qice, nt_qsno, nt_fsd, &
+             msl, &   ! slot of this cell, 0 if none
            nt_isosno, nt_isoice, nt_sice, nt_smice, nt_smliq
 
       logical (kind=log_kind) :: tr_fsd, tr_iso, tr_snow
@@ -1927,8 +1929,17 @@
       write(nu_diag,*) '            Tf      = ',Tf      (i,j,iblk)
       write(nu_diag,*) '            uocn    = ',uocn    (i,j,iblk)
       write(nu_diag,*) '            vocn    = ',vocn    (i,j,iblk)
-      write(nu_diag,*) '            strtltxU= ',strtltxU(i,j,iblk)
-      write(nu_diag,*) '            strtltyU= ',strtltyU(i,j,iblk)
+      ! ⚠ Compressed, so there is no (i,j,iblk) to print.  A cell with no slot
+      ! has no value at all -- the block array used to show the c0 that
+      ! init_history_dyn left there, which was not information.
+      msl = dynMap((j-1)*nx_block + i, iblk)
+      if (msl > 0) then
+         write(nu_diag,*) '            strtltxU= ',strtltxU(dynOff(iblk)+msl)
+         write(nu_diag,*) '            strtltyU= ',strtltyU(dynOff(iblk)+msl)
+      else
+         write(nu_diag,*) '            strtltxU=  (no slot)'
+         write(nu_diag,*) '            strtltyU=  (no slot)'
+      endif
       write(nu_diag,*) ' '
       write(nu_diag,*) 'srf states and fluxes'
       write(nu_diag,*) '            Tref    = ',Tref  (i,j,iblk)

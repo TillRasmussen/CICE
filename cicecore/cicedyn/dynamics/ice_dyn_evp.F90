@@ -381,7 +381,7 @@
           tarear, uarear, earear, narear, grid_average_X2Y, uarea, &
           grid_ice, grid_atm_dynu, grid_atm_dynv, grid_ocn_dynu, grid_ocn_dynv
       use ice_restoring, only: ice_restoring_halo, restore_ice
-      use ice_state, only: aice, aiU, vice, vsno, uvel, vvel, uvelN, vvelN, &
+      use ice_state, only: aice, aiU, vice, vsno, aice_slot, vice_slot, vsno_slot, uvel, vvel, uvelN, vvelN, &
           uvelE, vvelE, divu, shear, vort, &
           aice_init, aice0, aicen, vicen, strength
       use ice_timers, only: timer_dynamics, timer_bound, &
@@ -552,8 +552,10 @@
 
          call dyn_prep1 (nx_block,           ny_block,           &
                          ilo, ihi,           jlo, jhi,           &
-                         aice    (:,:,iblk), vice    (:,:,iblk), &
-                         vsno    (:,:,iblk), tmask   (:,  iblk), &
+                           aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                           vice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                           vsno_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                           dynMap  (:,iblk),   tmask   (:,  iblk), &
                          tmass   (:,iblk),   iceTmask(:,iblk))
 
       enddo                     ! iblk
@@ -660,12 +662,15 @@
                             umassdti  (:,iblk),   fcor_blk  (:,iblk)  , &
                             umask     (:,iblk)  ,                       &
                             uocnU     (:,:,iblk), vocnU     (:,:,iblk), &
-                            strairxU  (:,:,iblk), strairyU  (:,:,iblk), &
+                            strairxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            strairyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             ss_tltxU  (:,:,iblk), ss_tltyU  (:,:,iblk), &
                             iceTmask  (:,iblk),   iceUmask  (:,iblk),   &
                             fmU       (:,iblk), dt                  , &
-                            strtltxU  (:,:,iblk), strtltyU  (:,:,iblk), &
-                            strocnxU  (:,:,iblk), strocnyU  (:,:,iblk), &
+                            strtltxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            strtltyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            strocnxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            strocnyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strintxU  (:,iblk), strintyU  (:,iblk), &
                             taubxU    (:,iblk)  , taubyU    (:,iblk)  , &
                             waterxU   (:,iblk)  , wateryU   (:,iblk)  , &
@@ -725,12 +730,15 @@
                             umassdti  (:,iblk),   fcor_blk  (:,iblk)  , &
                             umaskCD   (:,iblk)  ,                       &
                             uocnU     (:,:,iblk), vocnU     (:,:,iblk), &
-                            strairxU  (:,:,iblk), strairyU  (:,:,iblk), &
+                            strairxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            strairyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             ss_tltxU  (:,:,iblk), ss_tltyU  (:,:,iblk), &
                             iceTmask  (:,iblk),   iceUmask  (:,iblk),   &
                             fmU       (:,iblk), dt,                   &
-                            strtltxU  (:,:,iblk), strtltyU  (:,:,iblk), &
-                            strocnxU  (:,:,iblk), strocnyU  (:,:,iblk), &
+                            strtltxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            strtltyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            strocnxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            strocnyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strintxU  (:,iblk), strintyU  (:,iblk), &
                             taubxU    (:,iblk)  , taubyU    (:,iblk)  , &
                             waterxU   (:,iblk)  , wateryU   (:,iblk)  , &
@@ -777,12 +785,15 @@
                             nmassdti  (:,iblk),   fcorN_blk (:,iblk)  , &
                             nmask     (:,iblk)  ,                       &
                             uocnN     (:,:,iblk), vocnN     (:,:,iblk), &
-                            strairxN  (:,:,iblk), strairyN  (:,:,iblk), &
+                            strairxN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            strairyN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             ss_tltxN  (:,:,iblk), ss_tltyN  (:,:,iblk), &
                             iceTmask  (:,iblk),   iceNmask  (:,iblk),   &
                             fmN       (:,iblk), dt                  , &
-                            strtltxN  (:,:,iblk), strtltyN  (:,:,iblk), &
-                            strocnxN  (:,:,iblk), strocnyN  (:,:,iblk), &
+                            strtltxN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            strtltyN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            strocnxN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            strocnyN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strintxN  (:,:,iblk), strintyN  (:,:,iblk), &
                             taubxN    (:,iblk)  , taubyN    (:,iblk)  , &
                             waterxN   (:,iblk)  , wateryN   (:,iblk)  , &
@@ -813,12 +824,15 @@
                             emassdti  (:,iblk),   fcorE_blk (:,iblk)  , &
                             emask     (:,iblk)  ,                       &
                             uocnE     (:,:,iblk), vocnE     (:,:,iblk), &
-                            strairxE  (:,:,iblk), strairyE  (:,:,iblk), &
+                            strairxE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            strairyE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             ss_tltxE  (:,:,iblk), ss_tltyE  (:,:,iblk), &
                             iceTmask  (:,iblk),   iceEmask  (:,iblk),   &
                             fmE       (:,iblk), dt                  , &
-                            strtltxE  (:,:,iblk), strtltyE  (:,:,iblk), &
-                            strocnxE  (:,:,iblk), strocnyE  (:,:,iblk), &
+                            strtltxE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            strtltyE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            strocnxE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            strocnyE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strintxE  (:,:,iblk), strintyE  (:,:,iblk), &
                             taubxE    (:,iblk)  , taubyE    (:,iblk)  , &
                             waterxE   (:,iblk)  , wateryE   (:,iblk)  , &
@@ -1063,6 +1077,32 @@
             ! scatter_dyn leaves uvel_slot and vvel_slot current along with
             ! the block forms, which is what the shared deformations call
             ! below reads.
+
+            ! ⚠ The compressed fold writes only cells that OWN A SLOT.  The
+            ! ghost columns and the land cells on the seam row have none, so
+            ! they keep what the scatter left -- +0.0 -- where the 2-D path's
+            ! per-subcycle halo stamps -0.0 into them.  Numerically identical,
+            ! bitwise not, and md5/complog both see it: on gx3 it was exactly
+            ! ten words of uvel/vvel at five slotless cells.
+            !
+            ! Running the real handler once makes the two paths agree BY
+            ! CONSTRUCTION rather than by reproducing its sign-of-zero
+            ! convention in the compressed fold.  One halo update per
+            ! timestep, against ndte=240 subcycles in the branch above.
+            !
+            ! Slotted ghost cells are unaffected: the compressed halo has
+            ! already given them the folded value, so the handler writes back
+            ! what is there and uvel_slot/vvel_slot cannot go stale.  Only the
+            ! slotless cells change, and those have no slot to keep current.
+            if (trim(ns_boundary_type) == 'tripole' .or. &
+                trim(ns_boundary_type) == 'tripoleT') then
+               call ice_timer_start(timer_bound)
+               call ice_HaloUpdate (uvel, halo_info, &
+                                    field_loc_NEcorner, field_type_vector)
+               call ice_HaloUpdate (vvel, halo_info, &
+                                    field_loc_NEcorner, field_type_vector)
+               call ice_timer_stop(timer_bound)
+            endif
 
          else ! evp_algorithm == standard_2d (Standard CICE)
 
@@ -2039,7 +2079,9 @@
                uvel(:,iblk), vvel(:,iblk), &
                uocnU   (:,:,iblk), vocnU   (:,:,iblk), &
                aiU     (:,iblk),   fmU     (:,iblk), &
-               strocnxU(:,:,iblk), strocnyU(:,:,iblk))
+               dynMap(:,iblk), &
+               strocnxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+               strocnyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
       enddo
       !$OMP END PARALLEL DO
 
@@ -2055,7 +2097,9 @@
                   uvelN   (:,:,iblk), vvelN   (:,:,iblk), &
                   uocnN   (:,:,iblk), vocnN   (:,:,iblk), &
                   aiN     (:,iblk),   fmN     (:,iblk), &
-                  strocnxN(:,:,iblk), strocnyN(:,:,iblk))
+                  dynMap(:,iblk), &
+                  strocnxN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                  strocnyN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
 
             call dyn_finish                               &
                  (nx_block          , ny_block          , &
@@ -2064,7 +2108,9 @@
                   uvelE   (:,:,iblk), vvelE   (:,:,iblk), &
                   uocnE   (:,:,iblk), vocnE   (:,:,iblk), &
                   aiE     (:,iblk),   fmE     (:,iblk), &
-                  strocnxE(:,:,iblk), strocnyE(:,:,iblk))
+                  dynMap(:,iblk), &
+                  strocnxE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                  strocnyE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
 
          enddo
          !$OMP END PARALLEL DO

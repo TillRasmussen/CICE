@@ -46,7 +46,7 @@
 
       implicit none
       private
-      public :: alloc_state
+      public :: alloc_state, alloc_state_slots
 
       !-----------------------------------------------------------------
       ! state of the ice aggregated over all categories
@@ -81,6 +81,40 @@
       real (kind=dbl_kind), dimension (:,:,:,:,:), allocatable, public :: &
          trcrn     ! tracers
                    ! 1: surface temperature of ice/snow (C)
+
+      !-----------------------------------------------------------------
+      ! The same state in the compressed layout.
+      !
+      ! Slot first, then category and tracer -- the order aim(ms,n) and
+      ! trm(ms,it,n) already use in the transport, so the two agree.
+      !
+      ! ⚠ These are NOT yet the live copy.  They are the storage the
+      ! loop-by-loop conversion needs before it can start: a loop that calls
+      ! icepack per cell passes eight or nine of these at once, so the unit
+      ! of conversion is a LOOP, not a variable, and no single variable can
+      ! move on its own.  Until a given loop is converted, the block form
+      ! above stays authoritative for it.
+      !
+      ! ⚠ Allocated by alloc_state_slots, NOT alloc_state: dynTot does not
+      ! exist yet when alloc_state runs.  init_grid2 builds the ragged layout
+      ! as its last act and calls alloc_state_slots there.
+      !-----------------------------------------------------------------
+
+      real (kind=dbl_kind), dimension(:), allocatable, public :: &
+         aice_slot  , & ! concentration of ice on T grid, compressed
+         vice_slot  , & ! volume per unit area of ice  (m), compressed
+         vsno_slot  , & ! volume per unit area of snow (m), compressed
+         aice0_slot     ! concentration of open water, compressed
+
+      real (kind=dbl_kind), dimension(:,:), allocatable, public :: &
+         trcr_slot  , & ! ice tracers              (slot,ntrcr)
+         aicen_slot , & ! concentration of ice     (slot,ncat)
+         vicen_slot , & ! volume per unit area of ice  (m) (slot,ncat)
+         vsnon_slot     ! volume per unit area of snow (m) (slot,ncat)
+
+      real (kind=dbl_kind), dimension(:,:,:), allocatable, public :: &
+         trcrn_slot     ! tracers                  (slot,ntrcr,ncat)
+
 
       !-----------------------------------------------------------------
       ! tracers infrastructure arrays
@@ -146,6 +180,50 @@
 !=======================================================================
 
       contains
+
+!=======================================================================
+!
+! Allocate the compressed copies of the state.
+!
+! Separate from alloc_state because of ordering: CICE_InitMod calls
+! alloc_state before init_grid2, and dynTot is not known until
+! init_ragged_layout runs at the end of init_grid2.  Rather than add a call
+! to all fifteen drivers' CICE_InitMod, init_ragged_layout calls this itself
+! once the layout exists.
+!
+      subroutine alloc_state_slots(nslot)
+
+      integer (int_kind), intent(in) :: nslot   ! dynTot
+
+      integer (int_kind) :: ierr
+      character(len=*),parameter :: subname='(alloc_state_slots)'
+
+      ! ⚠ Only the aggregates, deliberately.  Holding both layouts is a
+      ! transitional cost and it is not small: the full set is
+      ! 4 + ntrcr + 3*ncat + ntrcr*ncat words per slot, which at ntrcr=19,
+      ! ncat=5 is 139 -- about 1.2 GB of duplicate state on a single-task
+      ! quarter-degree run, and trcrn_slot alone is 95 of those 139.
+      !
+      ! So each array is allocated by the commit that converts the loop
+      ! which first reads it, not up front.  The declarations above are
+      ! complete; this list grows as the conversion proceeds and the block
+      ! forms it replaces are retired.
+      allocate ( &
+         aice_slot (nslot) , & ! concentration of ice on T grid
+         vice_slot (nslot) , & ! volume per unit area of ice  (m)
+         vsno_slot (nslot) , & ! volume per unit area of snow (m)
+         aice0_slot(nslot) , & ! concentration of open water
+         stat=ierr)
+      if (ierr/=0) call abort_ice(error_message=trim(subname)//' ERROR: Out of memory', &
+         file=__FILE__, line=__LINE__)
+
+      aice_slot  = c0
+      vice_slot  = c0
+      vsno_slot  = c0
+      aice0_slot = c0
+
+      end subroutine alloc_state_slots
+
 
 !=======================================================================
 !

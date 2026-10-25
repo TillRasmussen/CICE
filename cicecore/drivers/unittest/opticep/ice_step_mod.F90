@@ -990,6 +990,7 @@
          this_block      ! block information for current block
 
       integer (kind=int_kind) :: &
+      ,   msl            ! block-local slot, 0 if none
          ilo,ihi,jlo,jhi, & ! beginning and end of physical domain
          iblk,            & ! block index
          i, j,            & ! horizontal indices
@@ -1029,9 +1030,15 @@
          do j = jlo, jhi
          do i = ilo, ihi
             ij = (j-1)*nx_block + i
-            if (aiU(ij,iblk) /= c0) then
-               work1(i,j,iblk) = strocnxU(i,j,iblk)/aiU(ij,iblk)
-               work2(i,j,iblk) = strocnyU(i,j,iblk)/aiU(ij,iblk)
+            ! ⚠ strocnxU/yU are compressed now, so this block loop needs the slot.
+            ! The main ice_step_mod iterates slots directly; this copy still walks
+            ! the block, so it looks the slot up instead.
+            msl = dynMap(ij,iblk)
+            if (msl > 0) then
+               if (aiU(ij,iblk) /= c0) then
+                  work1(i,j,iblk) = strocnxU(dynOff(iblk)+msl)/aiU(ij,iblk)
+                  work2(i,j,iblk) = strocnyU(dynOff(iblk)+msl)/aiU(ij,iblk)
+               endif
             endif
         enddo
         enddo

@@ -168,7 +168,7 @@
           tarear, uarear, grid_average_X2Y, &
           grid_atm_dynu, grid_atm_dynv, grid_ocn_dynu, grid_ocn_dynv
       use ice_restoring, only: ice_restoring_halo, restore_ice
-      use ice_state, only: aice, aiU, vice, vsno, uvel, vvel, divu, shear, vort, &
+      use ice_state, only: aice_slot, vice_slot, vsno_slot, aice, aiU, vice, vsno, uvel, vvel, divu, shear, vort, &
           aice_init, aice0, aicen, vicen, strength
       use ice_timers, only: timer_dynamics, timer_bound, &
           ice_timer_start, ice_timer_stop
@@ -283,8 +283,10 @@
 
          call dyn_prep1 (nx_block,           ny_block,           &
                          ilo, ihi,           jlo, jhi,           &
-                         aice    (:,:,iblk), vice    (:,:,iblk), &
-                         vsno    (:,:,iblk), tmask   (:,  iblk), &
+                           aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                           vice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                           vsno_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                           dynMap  (:,iblk),   tmask   (:,  iblk), &
                          tmass   (:,iblk),   iceTmask(:,iblk))
 
       enddo                     ! iblk
@@ -360,12 +362,15 @@
                          umassdti  (:,iblk),   fcor_blk  (:,iblk)  , &
                          umask     (:,iblk)  ,                       &
                          uocnU     (:,:,iblk), vocnU     (:,:,iblk), &
-                         strairxU  (:,:,iblk), strairyU  (:,:,iblk), &
+                         strairxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                         strairyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                          ss_tltxU  (:,:,iblk), ss_tltyU  (:,:,iblk), &
                          iceTmask  (:,iblk),   iceUmask  (:,iblk),   &
                          fmU       (:,iblk), dt,                   &
-                         strtltxU  (:,:,iblk), strtltyU  (:,:,iblk), &
-                         strocnxU  (:,:,iblk), strocnyU  (:,:,iblk), &
+                         strtltxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                         strtltyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                         strocnxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                         strocnyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                          strintxU  (:,iblk), strintyU  (:,iblk), &
                          taubxU    (:,iblk)  , taubyU    (:,iblk)  , &
                          waterxU   (:,iblk)  , wateryU   (:,iblk)  , &
@@ -729,7 +734,9 @@
                uvel(:,iblk), vvel(:,iblk), &
                uocnU   (:,:,iblk), vocnU   (:,:,iblk), &
                aiU     (:,iblk),   fmU     (:,iblk), &
-               strocnxU(:,:,iblk), strocnyU(:,:,iblk))
+               dynMap(:,iblk), &
+               strocnxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+               strocnyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
 
       enddo
       !$OMP END PARALLEL DO

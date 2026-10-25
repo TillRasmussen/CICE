@@ -26,7 +26,8 @@
       implicit none
       private
       public :: init_coupler_flux, init_history_therm, init_history_dyn, &
-                init_flux_ocn, init_flux_atm, scale_fluxes, alloc_flux
+                init_flux_ocn, init_flux_atm, scale_fluxes, alloc_flux, &
+                alloc_flux_slots
 
       character (char_len), public :: &
          default_season ! seasonal default values for forcing
@@ -81,30 +82,45 @@
          taubxE  , & ! seabed stress (x) at E points (N/m^2)
          taubyE      ! seabed stress (y) at E points (N/m^2)
 
-      real (kind=dbl_kind), dimension (:,:,:), allocatable, public :: &
+      ! The sea-surface-slope stresses, compressed.
+      !
+      ! These six are the first ice_flux arrays to lose their block form
+      ! outright rather than gain a slot copy beside it, and they can because
+      ! their consumers are few and all known: dyn_prep2 WRITES them and
+      ! consumes them into forcex/forcey in the same loop, and after that only
+      ! history and one diagnostics print read them.  Nothing in any coupled
+      ! driver touches them -- checked across mct, nuopc, mapl and direct.
+      !
+      ! ⚠ Allocated by alloc_flux_slots, not alloc_flux: dynTot does not exist
+      ! yet when alloc_flux runs (CICE_InitMod calls it before init_grid2).
+      ! Same split as alloc_state_slots.
+      real (kind=dbl_kind), dimension(:), allocatable, public :: &
+         strtltxU, & ! stress due to sea surface slope, x-direction
+         strtltyU, & ! stress due to sea surface slope, y-direction
+         strtltxN, & ! stress due to sea surface slope, x at N points
+         strtltyN, & ! stress due to sea surface slope, y at N points
+         strtltxE, & ! stress due to sea surface slope, x at E points
+         strtltyE, & ! stress due to sea surface slope, y at E points
+         strocnxU, & ! ice-ocean stress, x at U points, from dyn_finish
+         strocnyU, & ! ice-ocean stress, y at U points, from dyn_finish
+         strocnxN, & ! ice-ocean stress, x at N points, from dyn_finish
+         strocnyN, & ! ice-ocean stress, y at N points, from dyn_finish
+         strocnxE, & ! ice-ocean stress, x at E points, from dyn_finish
+         strocnyE, & ! ice-ocean stress, y at E points, from dyn_finish
          sig1    , & ! normalized principal stress component
          sig2    , & ! normalized principal stress component
          sigP    , & ! internal ice pressure (N/m)
-         strairxU, & ! stress on ice by air, x-direction at U points
-         strairyU, & ! stress on ice by air, y-direction at U points
-         strocnxU, & ! ice-ocean stress, x-direction at U points, computed in dyn_finish
-         strocnyU, & ! ice-ocean stress, y-direction at U points, computed in dyn_finish
-         strtltxU, & ! stress due to sea surface slope, x-direction
-         strtltyU, & ! stress due to sea surface slope, y-direction
-         strairxN, & ! stress on ice by air, x-direction at N points
-         strairyN, & ! stress on ice by air, y-direction at N points
-         strocnxN, & ! ice-ocean stress, x-direction at N points, computed in dyn_finish
-         strocnyN, & ! ice-ocean stress, y-direction at N points, computed in dyn_finish
-         strtltxN, & ! stress due to sea surface slope, x-direction at N points
-         strtltyN, & ! stress due to sea surface slope, y-direction at N points
+         strairxU, & ! stress on ice by air, x at U points
+         strairyU, & ! stress on ice by air, y at U points
+         strairxN, & ! stress on ice by air, x at N points
+         strairyN, & ! stress on ice by air, y at N points
+         strairxE, & ! stress on ice by air, x at E points
+         strairyE    ! stress on ice by air, y at E points
+
+
+      real (kind=dbl_kind), dimension (:,:,:), allocatable, public :: &
          strintxN, & ! divergence of internal ice stress, x at N points (N/m^2)
          strintyN, & ! divergence of internal ice stress, y at N points (N/m^2)
-         strairxE, & ! stress on ice by air, x-direction at E points
-         strairyE, & ! stress on ice by air, y-direction at E points
-         strocnxE, & ! ice-ocean stress, x-direction at E points, computed in dyn_finish
-         strocnyE, & ! ice-ocean stress, y-direction at E points, computed in dyn_finish
-         strtltxE, & ! stress due to sea surface slope, x-direction at E points
-         strtltyE, & ! stress due to sea surface slope, y-direction at E points
          strintxE, & ! divergence of internal ice stress, x at E points (N/m^2)
          strintyE, & ! divergence of internal ice stress, y at E points (N/m^2)
          daidtd  , & ! ice area tendency due to transport   (1/s)
@@ -426,6 +442,76 @@
 
 !=======================================================================
 !
+! Allocate the compressed sea-surface-slope stresses.
+!
+! Separate from alloc_flux for ordering: CICE_InitMod calls alloc_flux
+! before init_grid2, and dynTot is not known until init_ragged_layout runs
+! at the end of init_grid2.  init_ragged_layout calls this, which keeps the
+! call out of all fifteen drivers' CICE_InitMod.
+!
+      subroutine alloc_flux_slots
+
+      ! ⚠ Called from init_coupler_flux, NOT from init_ragged_layout where
+      ! alloc_state_slots is called.  ice_flux already uses ice_grid in three
+      ! places, so ice_grid cannot call back into ice_flux -- that is a module
+      ! cycle, and make reports it as "Circular ice_grid.o <- ice_flux.o
+      ! dependency dropped" and then fails on a missing ice_flux.mod rather
+      ! than on anything legible.  ice_state has no such use, which is why the
+      ! state slots could take the tidier hook.
+      !
+      ! init_coupler_flux runs after init_grid2, so dynTot exists, and all
+      ! twelve drivers' CICE_InitMod call it -- checked.
+
+      use ice_grid, only: dynTot, grid_ice
+
+      integer (int_kind) :: ierr
+      character(len=*),parameter :: subname='(alloc_flux_slots)'
+
+      allocate(strtltxU(dynTot), strtltyU(dynTot), &
+               strocnxU(dynTot), strocnyU(dynTot), &
+               sig1(dynTot), sig2(dynTot), sigP(dynTot), &
+               strairxU(dynTot), strairyU(dynTot), stat=ierr)
+      if (ierr/=0) call abort_ice(error_message=trim(subname)//' ERROR: Out of memory', &
+         file=__FILE__, line=__LINE__)
+      strtltxU = c0
+      strtltyU = c0
+      strocnxU = c0
+      strocnyU = c0
+      sig1     = c0
+      sig2     = c0
+      sigP     = c0
+      strairxU = c0
+      strairyU = c0
+
+      ! The N and E forms exist only on a C or CD grid, matching alloc_flux.
+      if (grid_ice == "CD" .or. grid_ice == "C") then
+         allocate(strtltxN(dynTot), strtltyN(dynTot), &
+                  strtltxE(dynTot), strtltyE(dynTot), &
+                  strocnxN(dynTot), strocnyN(dynTot), &
+                  strocnxE(dynTot), strocnyE(dynTot), &
+                  strairxN(dynTot), strairyN(dynTot), &
+                  strairxE(dynTot), strairyE(dynTot), stat=ierr)
+         if (ierr/=0) call abort_ice(error_message=trim(subname)//' ERROR: Out of memory', &
+            file=__FILE__, line=__LINE__)
+         strtltxN = c0
+         strtltyN = c0
+         strtltxE = c0
+         strtltyE = c0
+         strocnxN = c0
+         strocnyN = c0
+         strocnxE = c0
+         strocnyE = c0
+         strairxN = c0
+         strairyN = c0
+         strairxE = c0
+         strairyE = c0
+      endif
+
+      end subroutine alloc_flux_slots
+
+
+!=======================================================================
+!
 ! Allocate space for all variables
 !
       subroutine alloc_flux
@@ -446,17 +532,8 @@
          strairyT   (nx_block,ny_block,max_blocks), & ! stress on ice by air, y-direction
          strocnxT_iavg(nx_block,ny_block,max_blocks), & ! ice-ocean stress, x-direction, per ice area
          strocnyT_iavg(nx_block,ny_block,max_blocks), & ! ice-ocean stress, y-direction, per ice area
-         sig1       (nx_block,ny_block,max_blocks), & ! normalized principal stress component
-         sig2       (nx_block,ny_block,max_blocks), & ! normalized principal stress component
-         sigP       (nx_block,ny_block,max_blocks), & ! internal ice pressure (N/m)
          taubxU     (nx_block*ny_block,max_blocks), & ! seabed stress (x) (N/m^2)
          taubyU     (nx_block*ny_block,max_blocks), & ! seabed stress (y) (N/m^2)
-         strairxU   (nx_block,ny_block,max_blocks), & ! stress on ice by air, x-direction
-         strairyU   (nx_block,ny_block,max_blocks), & ! stress on ice by air, y-direction
-         strocnxU   (nx_block,ny_block,max_blocks), & ! ice-ocean stress, x-direction
-         strocnyU   (nx_block,ny_block,max_blocks), & ! ice-ocean stress, y-direction
-         strtltxU   (nx_block,ny_block,max_blocks), & ! stress due to sea surface slope, x-direction
-         strtltyU   (nx_block,ny_block,max_blocks), & ! stress due to sea surface slope, y-direction
          strintxU   (nx_block*ny_block,max_blocks), & ! divergence of internal ice stress, x (N/m^2)
          strintyU   (nx_block*ny_block,max_blocks), & ! divergence of internal ice stress, y (N/m^2)
          daidtd     (nx_block,ny_block,max_blocks), & ! ice area tendency due to transport   (1/s)
@@ -647,17 +724,8 @@
       strairyT   = c0
       strocnxT_iavg= c0
       strocnyT_iavg= c0
-      sig1       = c0
-      sig2       = c0
-      sigP       = c0
       taubxU     = c0
       taubyU     = c0
-      strairxU   = c0
-      strairyU   = c0
-      strocnxU   = c0
-      strocnyU   = c0
-      strtltxU   = c0
-      strtltyU   = c0
       strintxU   = c0
       strintyU   = c0
       daidtd     = c0
@@ -838,23 +906,11 @@
          allocate( &
             taubxN     (nx_block*ny_block,max_blocks), & ! seabed stress (x) at N points (N/m^2)
             taubyN     (nx_block*ny_block,max_blocks), & ! seabed stress (y) at N points (N/m^2)
-            strairxN   (nx_block,ny_block,max_blocks), & ! stress on ice by air, x-direction at N points
-            strairyN   (nx_block,ny_block,max_blocks), & ! stress on ice by air, y-direction at N points
-            strocnxN   (nx_block,ny_block,max_blocks), & ! ice-ocean stress, x-direction at N points
-            strocnyN   (nx_block,ny_block,max_blocks), & ! ice-ocean stress, y-direction at N points
-            strtltxN   (nx_block,ny_block,max_blocks), & ! stress due to sea surface slope, x-direction at N points
-            strtltyN   (nx_block,ny_block,max_blocks), & ! stress due to sea surface slope, y-direction at N points
             strintxN   (nx_block,ny_block,max_blocks), & ! divergence of internal ice stress, x at N points (N/m^2)
             strintyN   (nx_block,ny_block,max_blocks), & ! divergence of internal ice stress, y at N points (N/m^2)
             fmN        (nx_block*ny_block,max_blocks), & ! Coriolis param. * mass in N-cell (kg/s)
             taubxE     (nx_block*ny_block,max_blocks), & ! seabed stress (x) at E points (N/m^2)
             taubyE     (nx_block*ny_block,max_blocks), & ! seabed stress (y) at E points (N/m^2)
-            strairxE   (nx_block,ny_block,max_blocks), & ! stress on ice by air, x-direction at E points
-            strairyE   (nx_block,ny_block,max_blocks), & ! stress on ice by air, y-direction at E points
-            strocnxE   (nx_block,ny_block,max_blocks), & ! ice-ocean stress, x-direction at E points
-            strocnyE   (nx_block,ny_block,max_blocks), & ! ice-ocean stress, y-direction at E points
-            strtltxE   (nx_block,ny_block,max_blocks), & ! stress due to sea surface slope, x-direction at E points
-            strtltyE   (nx_block,ny_block,max_blocks), & ! stress due to sea surface slope, y-direction at E points
             strintxE   (nx_block,ny_block,max_blocks), & ! divergence of internal ice stress, x at E points (N/m^2)
             strintyE   (nx_block,ny_block,max_blocks), & ! divergence of internal ice stress, y at E points (N/m^2)
             fmE        (nx_block*ny_block,max_blocks), & ! Coriolis param. * mass in E-cell (kg/s)
@@ -869,23 +925,11 @@
 
          taubxN     = c0
          taubyN     = c0
-         strairxN   = c0
-         strairyN   = c0
-         strocnxN   = c0
-         strocnyN   = c0
-         strtltxN   = c0
-         strtltyN   = c0
          strintxN   = c0
          strintyN   = c0
          fmN        = c0
          taubxE     = c0
          taubyE     = c0
-         strairxE   = c0
-         strairyE   = c0
-         strocnxE   = c0
-         strocnyE   = c0
-         strtltxE   = c0
-         strtltyE   = c0
          strintxE   = c0
          strintyE   = c0
          fmE        = c0
@@ -954,6 +998,10 @@
       integer :: i, j, iblk
 
       character(len=*), parameter :: subname = '(init_coupler_flux)'
+
+      ! The compressed sea-surface-slope stresses.  Here because dynTot does
+      ! not exist when alloc_flux runs; see the note on alloc_flux_slots.
+      call alloc_flux_slots
 
       data fcondtopn_d / -50.0_dbl_kind,-17.0_dbl_kind,-12.0_dbl_kind, &
                           -9.0_dbl_kind, -7.0_dbl_kind, -3.0_dbl_kind /
@@ -1382,20 +1430,28 @@
       if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
          file=__FILE__, line=__LINE__)
 
-      sig1    (:,:,:) = c0
-      sig2    (:,:,:) = c0
       divu    (:,:) = c0
       shear   (:,:) = c0
       vort    (:,:) = c0
       taubxU  (:,:) = c0
       taubyU  (:,:) = c0
       strength (:,:,:) = c0
-      strocnxU(:,:,:) = c0
-      strocnyU(:,:,:) = c0
-      strairxU(:,:,:) = c0
-      strairyU(:,:,:) = c0
-      strtltxU(:,:,:) = c0
-      strtltyU(:,:,:) = c0
+      strtltxU = c0
+      strtltyU = c0
+      strocnxU = c0
+      strocnyU = c0
+      ! sig1/sig2/sigP keep their per-step reset: principal_stress is called
+      ! only on history steps and only for some grids, so without it a slot
+      ! could carry a previous step's value into an accumulation.
+      sig1 = c0
+      sig2 = c0
+      sigP = c0
+      ! ⚠ strair* need this too.  grid_average_X2YF_toslot writes only the
+      ! physical domain (jlo:jhi x ilo:ihi), so a GHOST slot is never
+      ! assigned -- and history reads every mapped slot, ghosts included.
+      ! The block form relied on exactly this reset for the same reason.
+      strairxU = c0
+      strairyU = c0
       strintxU(:,:) = c0
       strintyU(:,:) = c0
       dardg1dt(:,:,:) = c0
@@ -1425,23 +1481,23 @@
       if (grid_ice == "CD" .or. grid_ice == "C") then
          taubxE     (:,:) = c0
          taubyE     (:,:) = c0
-         strocnxE   (:,:,:) = c0
-         strocnyE   (:,:,:) = c0
-         strairxE   (:,:,:) = c0
-         strairyE   (:,:,:) = c0
-         strtltxE   (:,:,:) = c0
-         strtltyE   (:,:,:) = c0
+         strtltxE = c0
+         strtltyE = c0
+         strocnxE = c0
+         strocnyE = c0
+         strairxE = c0
+         strairyE = c0
          strintxE   (:,:,:) = c0
          strintyE   (:,:,:) = c0
          fmE        (:,:) = c0
          taubxN     (:,:) = c0
          taubyN     (:,:) = c0
-         strocnxN   (:,:,:) = c0
-         strocnyN   (:,:,:) = c0
-         strairxN   (:,:,:) = c0
-         strairyN   (:,:,:) = c0
-         strtltxN   (:,:,:) = c0
-         strtltyN   (:,:,:) = c0
+         strtltxN = c0
+         strtltyN = c0
+         strocnxN = c0
+         strocnyN = c0
+         strairxN = c0
+         strairyN = c0
          strintxN   (:,:,:) = c0
          strintyN   (:,:,:) = c0
          fmN        (:,:) = c0

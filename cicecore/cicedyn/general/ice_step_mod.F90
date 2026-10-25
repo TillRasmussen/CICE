@@ -146,6 +146,7 @@
            fswthrun, fswthrun_vdr, fswthrun_vdf, fswthrun_idr, fswthrun_idf, &
            fswpenln, Sswabsn, Iswabsn
       use ice_state, only: aice, aicen
+        use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys
       use ice_timers, only: ice_timer_start, ice_timer_stop, timer_sw
 
       integer (kind=int_kind), intent(in) :: &
@@ -155,7 +156,8 @@
 
       integer (kind=int_kind) :: &
          ilo,ihi,jlo,jhi, & ! beginning and end of physical domain
-         i, j               ! horizontal indices
+         i, j,            & ! horizontal indices
+         is, ij             ! slot, and its flattened cell index
 
       type (block) :: &
          this_block      ! block information for current block
@@ -179,8 +181,20 @@
       ! Compute netsw scaling factor (new netsw / old netsw)
       !-----------------------------------------------------------------
 
-         do j = jlo, jhi
-         do i = ilo, ihi
+           ! Slot-driven, so the land cells inside the physical domain are
+           ! never visited.  Nothing else changes: every array here is still
+           ! block-shaped and addressed through the (i,j) recovered from the
+           ! slot.  This is the step BEFORE converting the arrays, and it is
+           ! the one that decides whether the arrays are worth converting.
+           !
+           ! ⚠ Bit-for-bit only if icepack_prep_radiation at a land cell
+           ! leaves exactly what is already there.  That is a question for
+           ! the suite, not for inspection.
+           do is = 1, dynCnt(iblk)
+              if (skipPhys(dynOff(iblk)+is)) cycle
+              ij = dynIJ(dynOff(iblk)+is)
+              j  = (ij-1)/nx_block + 1
+              i  = ij - (j-1)*nx_block
 
             alvdr_init(i,j,iblk) = alvdr_ai(i,j,iblk)
             alvdf_init(i,j,iblk) = alvdf_ai(i,j,iblk)
@@ -202,8 +216,7 @@
                         fswpenln = fswpenln(i,j,:,:,iblk), &
                         Sswabsn  = Sswabsn (i,j,:,:,iblk), Iswabsn  = Iswabsn (i,j,:,:,iblk))
 
-         enddo               ! i
-         enddo               ! j
+           enddo               ! is
 
       call icepack_warnings_flush(nu_diag)
       if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
@@ -222,6 +235,7 @@
 
       subroutine step_therm1 (dt, iblk)
 
+        use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys
       use ice_arrays_column, only: ffracn, dhsn, &
           Cdn_ocn, Cdn_ocn_skin, Cdn_ocn_floe, Cdn_ocn_keel, Cdn_atm_ratio, &
           Cdn_atm, Cdn_atm_skin, Cdn_atm_floe, Cdn_atm_rdg, Cdn_atm_pond, &
@@ -272,6 +286,7 @@
          raice              ! reciprocal of ice concentration
 #endif
       integer (kind=int_kind) :: &
+         is, ij, & ! slot, and its flattened cell index
          ilo,ihi,jlo,jhi, & ! beginning and end of physical domain
          i, j           , & ! horizontal indices
          n              , & ! thickness category index
@@ -360,8 +375,15 @@
       jlo = this_block%jlo
       jhi = this_block%jhi
 
-      do j = jlo, jhi
-      do i = ilo, ihi
+      ! Slot-driven: the land inside the physical domain is not visited.
+      ! Every array below is still block-shaped, reached through the (i,j)
+      ! recovered from the slot.  See prep_radiation for why this is the
+      ! step that comes before converting the arrays.
+      do is = 1, dynCnt(iblk)
+         if (skipPhys(dynOff(iblk)+is)) cycle
+         ij = dynIJ(dynOff(iblk)+is)
+         j  = (ij-1)/nx_block + 1
+         i  = ij - (j-1)*nx_block
 
          if (snwgrain) then
             do n = 1, ncat
@@ -619,8 +641,7 @@
             enddo
          endif ! tr_aero
 
-      enddo ! i
-      enddo ! j
+      enddo   ! is
 
       call icepack_warnings_flush(nu_diag)
       if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
@@ -637,6 +658,7 @@
 
       subroutine step_therm2 (dt, iblk)
 
+        use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys
       use ice_arrays_column, only: hin_max, ocean_bio, wave_sig_ht, &
           wave_spectrum, wavefreq, dwavefreq, &
           first_ice, &
@@ -661,6 +683,7 @@
       ! local variables
 
       integer (kind=int_kind) :: &
+         is, ij, & ! slot, and its flattened cell index
          ilo,ihi,jlo,jhi, & ! beginning and end of physical domain
          i, j               ! horizontal indices
 
@@ -700,8 +723,15 @@
       jlo = this_block%jlo
       jhi = this_block%jhi
 
-      do j = jlo, jhi
-      do i = ilo, ihi
+      ! Slot-driven: the land inside the physical domain is not visited.
+      ! Every array below is still block-shaped, reached through the (i,j)
+      ! recovered from the slot.  See prep_radiation for why this is the
+      ! step that comes before converting the arrays.
+      do is = 1, dynCnt(iblk)
+         if (skipPhys(dynOff(iblk)+is)) cycle
+         ij = dynIJ(dynOff(iblk)+is)
+         j  = (ij-1)/nx_block + 1
+         i  = ij - (j-1)*nx_block
 
          if (tmask((j-1)*nx_block+i,iblk) .or. opmask((j-1)*nx_block+i,iblk)) then
 
@@ -760,8 +790,7 @@
                       dpnd_melt   = dpnd_melt  (i,j,  iblk))
          endif ! tmask
 
-      enddo                     ! i
-      enddo                     ! j
+      enddo   ! is
 
       call icepack_warnings_flush(nu_diag)
       if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
@@ -780,7 +809,9 @@
 !     use ice_grid, only: tmask
       use ice_state, only: aicen, trcrn, vicen, vsnon, &
                            aice,  trcr,  vice,  vsno, aice0, trcr_depend, &
-                           trcr_base, nt_strata, n_trcr_strata
+                           trcr_base, nt_strata, n_trcr_strata , &
+                             aice_slot, vice_slot, vsno_slot, aice0_slot
+        use ice_grid,  only: dynMap, dynOff
       use ice_bound_state, only: bound_state
       use ice_flux,  only: Tf
       use ice_timers, only: ice_timer_start, ice_timer_stop, timer_bound, timer_updstate
@@ -801,7 +832,8 @@
          iblk,  & ! block index
          i,j,   & ! horizontal indices
          ntrcr, & !
-         nt_iage  !
+         nt_iage, & !
+         ms       ! slot of this cell, 0 if none
 
       logical (kind=log_kind) :: &
          tr_iage  !
@@ -826,7 +858,7 @@
                         ntrcr, trcrn)
       call ice_timer_stop(timer_bound)
 
-      !$OMP PARALLEL DO PRIVATE(iblk,i,j) SCHEDULE(runtime)
+      !$OMP PARALLEL DO PRIVATE(iblk,i,j,ms) SCHEDULE(runtime)
       do iblk = 1, nblocks
          do j = 1, ny_block
          do i = 1, nx_block
@@ -850,6 +882,26 @@
                                    n_trcr_strata = n_trcr_strata(:), &
                                    nt_strata     = nt_strata(:,:),   &
                                    Tf            = Tf(i,j,iblk))
+
+              ! The compressed copies, written in the SAME loop rather than
+              ! by a second traversal: one store per cell instead of another
+              ! pass over the block.  This is the producer -- icepack_aggregate
+              ! has just filled the block forms, including the ghost cells,
+              ! which is why the dynamics can read the slots without a halo
+              ! update of its own.
+              !
+              ! ⚠ Both layouts are written while the conversion is in
+              ! progress.  The block forms stay authoritative for every
+              ! consumer that has not moved yet.
+              ms = dynMap((j-1)*nx_block + i, iblk)
+              if (ms > 0) then
+                 ms = dynOff(iblk) + ms
+                 aice_slot (ms) = aice (i,j,iblk)
+                 vice_slot (ms) = vice (i,j,iblk)
+                 vsno_slot (ms) = vsno (i,j,iblk)
+                 aice0_slot(ms) = aice0(i,j,iblk)
+              endif
+
 
             if (present(offset)) then
 
@@ -893,6 +945,7 @@
 
       subroutine step_dyn_wave (dt)
 
+        use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys
       use ice_arrays_column, only: wave_spectrum, wave_sig_ht, &
           d_afsd_wave, wavefreq, dwavefreq
       use ice_domain_size, only: nfreq
@@ -909,6 +962,7 @@
          this_block      ! block information for current block
 
       integer (kind=int_kind) :: &
+         is, ij, & ! slot, and its flattened cell index
          ilo,ihi,jlo,jhi, & ! beginning and end of physical domain
          iblk,            & ! block index
          i, j               ! horizontal indices
@@ -922,7 +976,7 @@
       if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
          file=__FILE__, line=__LINE__)
 
-      !$OMP PARALLEL DO PRIVATE(iblk,i,j,ilo,ihi,jlo,jhi,this_block)
+      !$OMP PARALLEL DO PRIVATE(iblk,i,j,is,ij,ilo,ihi,jlo,jhi,this_block)
       do iblk = 1, nblocks
 
          this_block = get_block(blocks_ice(iblk),iblk)
@@ -931,8 +985,15 @@
          jlo = this_block%jlo
          jhi = this_block%jhi
 
-         do j = jlo, jhi
-         do i = ilo, ihi
+         ! Slot-driven: the land inside the physical domain is not visited.
+         ! Every array below is still block-shaped, reached through the (i,j)
+         ! recovered from the slot.  See prep_radiation for why this is the
+         ! step that comes before converting the arrays.
+         do is = 1, dynCnt(iblk)
+            if (skipPhys(dynOff(iblk)+is)) cycle
+            ij = dynIJ(dynOff(iblk)+is)
+            j  = (ij-1)/nx_block + 1
+            i  = ij - (j-1)*nx_block
             d_afsd_wave(i,j,:,iblk) = c0
             call icepack_step_wavefracture(dt = dt, nfreq = nfreq,                      &
                                            aice        = aice           (i,j,    iblk), &
@@ -944,8 +1005,7 @@
                                            trcrn       = trcrn          (i,j,:,:,iblk), &
                                            d_afsd_wave = d_afsd_wave    (i,j,:,  iblk), &
                                            wave_height = wave_sig_ht    (i,j,    iblk))
-         end do ! i
-         end do ! j
+         enddo   ! is
       end do    ! iblk
       !$OMP END PARALLEL DO
 
@@ -965,6 +1025,7 @@
 
       subroutine step_dyn_horiz (dt)
 
+        use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys
       use ice_boundary, only: ice_HaloUpdate
       use ice_dyn_evp, only: evp
       use ice_dyn_eap, only: eap
@@ -985,6 +1046,7 @@
          this_block      ! block information for current block
 
       integer (kind=int_kind) :: &
+         is, & ! slot, and its flattened cell index
          ilo,ihi,jlo,jhi, & ! beginning and end of physical domain
          iblk,            & ! block index
          i, j,            & ! horizontal indices
@@ -1014,22 +1076,27 @@
       ! conservation requires aiU be divided before averaging
       work1 = c0
       work2 = c0
-      !$OMP PARALLEL DO PRIVATE(iblk,i,j,ij,ilo,ihi,jlo,jhi,this_block)
+      !$OMP PARALLEL DO PRIVATE(iblk,i,j,ij,is,ilo,ihi,jlo,jhi,this_block)
       do iblk = 1, nblocks
          this_block = get_block(blocks_ice(iblk), iblk)
          ilo = this_block%ilo
          ihi = this_block%ihi
          jlo = this_block%jlo
          jhi = this_block%jhi
-         do j = jlo, jhi
-         do i = ilo, ihi
-            ij = (j-1)*nx_block + i
+         ! Slot-driven: the land inside the physical domain is not visited.
+         ! Every array below is still block-shaped, reached through the (i,j)
+         ! recovered from the slot.  See prep_radiation for why this is the
+         ! step that comes before converting the arrays.
+         do is = 1, dynCnt(iblk)
+            if (skipPhys(dynOff(iblk)+is)) cycle
+            ij = dynIJ(dynOff(iblk)+is)
+            j  = (ij-1)/nx_block + 1
+            i  = ij - (j-1)*nx_block
             if (aiU(ij,iblk) /= c0) then
-               work1(i,j,iblk) = strocnxU(i,j,iblk)/aiU(ij,iblk)
-               work2(i,j,iblk) = strocnyU(i,j,iblk)/aiU(ij,iblk)
+               work1(i,j,iblk) = strocnxU(dynOff(iblk)+is)/aiU(ij,iblk)
+               work2(i,j,iblk) = strocnyU(dynOff(iblk)+is)/aiU(ij,iblk)
             endif
-        enddo
-        enddo
+         enddo   ! is
       enddo
       !$OMP END PARALLEL DO
       call ice_HaloUpdate (work1,              halo_info, &
@@ -1060,6 +1127,7 @@
 
       subroutine step_dyn_ridge (dt, ndtd, iblk)
 
+        use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys
       use ice_arrays_column, only: hin_max, first_ice
       use ice_domain_size, only: ncat
       use ice_flux, only: &
@@ -1088,6 +1156,7 @@
          this_block      ! block information for current block
 
       integer (kind=int_kind) :: &
+         is, ij, & ! slot, and its flattened cell index
          ilo,ihi,jlo,jhi, & ! beginning and end of physical domain
          i, j,            & ! horizontal indices
          ntrcr,           & !
@@ -1113,8 +1182,15 @@
       jlo = this_block%jlo
       jhi = this_block%jhi
 
-      do j = jlo, jhi
-      do i = ilo, ihi
+      ! Slot-driven: the land inside the physical domain is not visited.
+      ! Every array below is still block-shaped, reached through the (i,j)
+      ! recovered from the slot.  See prep_radiation for why this is the
+      ! step that comes before converting the arrays.
+      do is = 1, dynCnt(iblk)
+         if (skipPhys(dynOff(iblk)+is)) cycle
+         ij = dynIJ(dynOff(iblk)+is)
+         j  = (ij-1)/nx_block + 1
+         i  = ij - (j-1)*nx_block
 
 !echmod: this changes the answers, continue using tmask for now
 !      call aggregate_area (ncat, aicen(i,j,:,iblk), atmp, atmp0)
@@ -1161,8 +1237,7 @@
                          dpnd_ridge=dpnd_ridge(i,j,  iblk))
          endif ! tmask
 
-      enddo ! i
-      enddo ! j
+      enddo   ! is
 
       call icepack_warnings_flush(nu_diag)
       if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
@@ -1182,6 +1257,7 @@
 
       subroutine step_snow (dt, iblk)
 
+        use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys
       use ice_calendar, only: nstreams
       use ice_domain_size, only: nslyr
       use ice_flux, only: snwcnt, wind, fresh, fhocn, fsloss, fsnow
@@ -1197,6 +1273,7 @@
       ! local variables
 
       integer (kind=int_kind) :: &
+         is, ij, & ! slot, and its flattened cell index
          nt_smice, nt_smliq, nt_rsnw, &
          nt_Tsfc, nt_qice, nt_sice, nt_qsno, &
          nt_alvl, nt_vlvl, nt_rhos
@@ -1241,8 +1318,15 @@
       ! Snow redistribution and metamorphosis
       !-----------------------------------------------------------------
 
-      do j = jlo, jhi
-      do i = ilo, ihi
+      ! Slot-driven: the land inside the physical domain is not visited.
+      ! Every array below is still block-shaped, reached through the (i,j)
+      ! recovered from the slot.  See prep_radiation for why this is the
+      ! step that comes before converting the arrays.
+      do is = 1, dynCnt(iblk)
+         if (skipPhys(dynOff(iblk)+is)) cycle
+         ij = dynIJ(dynOff(iblk)+is)
+         j  = (ij-1)/nx_block + 1
+         i  = ij - (j-1)*nx_block
 
          call icepack_step_snow (dt = dt,                &
                      wind   = wind (i,j,  iblk),         &
@@ -1264,19 +1348,24 @@
                      fhocn  = fhocn   (i,j,iblk),        &
                      fsloss = fsloss  (i,j,iblk),        &
                      fsnow  = fsnow   (i,j,iblk))
-      enddo
-      enddo
+      enddo   ! is
 
       ! increment counter for history averaging
-      do j = jlo, jhi
-      do i = ilo, ihi
+      ! Slot-driven: the land inside the physical domain is not visited.
+      ! Every array below is still block-shaped, reached through the (i,j)
+      ! recovered from the slot.  See prep_radiation for why this is the
+      ! step that comes before converting the arrays.
+      do is = 1, dynCnt(iblk)
+         if (skipPhys(dynOff(iblk)+is)) cycle
+         ij = dynIJ(dynOff(iblk)+is)
+         j  = (ij-1)/nx_block + 1
+         i  = ij - (j-1)*nx_block
          fhs = c0
          if (vsno(i,j,iblk) > puny) fhs = c1
          do ns = 1, nstreams
             snwcnt(i,j,iblk,ns) = snwcnt(i,j,iblk,ns) + fhs
          enddo
-      enddo
-      enddo
+      enddo   ! is
 
       end subroutine step_snow
 
@@ -1290,6 +1379,7 @@
 
       subroutine step_radiation (dt, iblk)
 
+        use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys
       use ice_arrays_column, only: ffracn, dhsn, &
           fswsfcn, fswintn, fswpenln, Sswabsn, Iswabsn, &
           fswthrun, fswthrun_vdr, fswthrun_vdf, fswthrun_idr, fswthrun_idf, &
@@ -1315,6 +1405,7 @@
       ! local variables
 
       integer (kind=int_kind) :: &
+         is, ij, & ! slot, and its flattened cell index
          ilo,ihi,jlo,jhi, & ! beginning and end of physical domain
          i, j, n,   k,    & ! horizontal indices
          ipoint             ! index for print diagnostic
@@ -1375,8 +1466,15 @@
       jlo = this_block%jlo
       jhi = this_block%jhi
 
-      do j = jlo, jhi
-      do i = ilo, ihi
+      ! Slot-driven: the land inside the physical domain is not visited.
+      ! Every array below is still block-shaped, reached through the (i,j)
+      ! recovered from the slot.  See prep_radiation for why this is the
+      ! step that comes before converting the arrays.
+      do is = 1, dynCnt(iblk)
+         if (skipPhys(dynOff(iblk)+is)) cycle
+         ij = dynIJ(dynOff(iblk)+is)
+         j  = (ij-1)/nx_block + 1
+         i  = ij - (j-1)*nx_block
 
          l_print_point = .false.
          debug = .false.
@@ -1456,8 +1554,7 @@
            enddo
          endif
 
-      enddo ! i
-      enddo ! j
+      enddo   ! is
 
       call icepack_warnings_flush(nu_diag)
       if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
@@ -1628,6 +1725,7 @@
 
       subroutine biogeochemistry (dt, iblk)
 
+        use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys
       use ice_arrays_column, only: upNO, upNH, iDi, iki, zfswin, &
                            darcy_V, grow_net,  &
                            PP_net, hbri,dhbr_bot, dhbr_top, Zoo,&
@@ -1653,6 +1751,7 @@
       ! local variables
 
       integer (kind=int_kind) :: &
+         is, ij, & ! slot, and its flattened cell index
          i, j           , & ! horizontal indices
          ilo,ihi,jlo,jhi, & ! beginning and end of physical domain
          mm              ! tracer index
@@ -1695,8 +1794,15 @@
       jhi = this_block%jhi
 
       ! Define ocean concentrations for tracers used in simulation
-      do j = jlo, jhi
-      do i = ilo, ihi
+      ! Slot-driven: the land inside the physical domain is not visited.
+      ! Every array below is still block-shaped, reached through the (i,j)
+      ! recovered from the slot.  See prep_radiation for why this is the
+      ! step that comes before converting the arrays.
+      do is = 1, dynCnt(iblk)
+         if (skipPhys(dynOff(iblk)+is)) cycle
+         ij = dynIJ(dynOff(iblk)+is)
+         j  = (ij-1)/nx_block + 1
+         i  = ij - (j-1)*nx_block
 
          call icepack_load_ocean_bio_array(                         &
                 nit = nit(i,j,  iblk), amm    = amm   (i,j,  iblk), &
@@ -1761,8 +1867,7 @@
                               trcrn        = trcrn       (i,j,:,:,      iblk), &
                               vsnon_init   = vsnon_init  (i,j,:,        iblk))
 
-      enddo               ! i
-      enddo               ! j
+      enddo   ! is
 
       call icepack_warnings_flush(nu_diag)
       if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &

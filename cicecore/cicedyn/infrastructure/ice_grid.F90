@@ -197,7 +197,8 @@
                           grid_average_X2Y_base_3d2d, &
                           grid_average_X2Y_base_2d3d, &
                           grid_average_X2Y_userwghts, &
-                          grid_average_X2Y_NEversion
+                         grid_average_X2Y_NEversion, &
+                         grid_average_X2Y_base_toslot
       end interface
 
       ! The X2YS/X2YA/X2YF helpers below are overloaded on the shape of their
@@ -725,6 +726,8 @@
 
       subroutine init_grid2
 
+      use ice_state, only: alloc_state_slots
+
 #if defined (_OPENMP)
       use OMP_LIB
 #endif
@@ -1069,6 +1072,12 @@
       ! layout with the grid it is derived from, and lets grid metrics that are
       ! compressed once per run be packed at creation.
       call init_ragged_layout
+
+      ! The compressed copies of the state live in ice_state but cannot be
+      ! allocated there: alloc_state runs before this point and dynTot does
+      ! not exist yet.  Doing it here keeps the call out of all fifteen
+      ! drivers' CICE_InitMod.
+      call alloc_state_slots(dynTot)
 
       end subroutine init_grid2
 
@@ -4016,6 +4025,51 @@
       end subroutine NElatlon
 
 !=======================================================================
+! grid_average_X2Y with a COMPRESSED destination.  Same type/grid arguments
+! as grid_average_X2Y_base; work2 is dynTot instead of a block.  Only the
+! 'F' form is provided -- it is the one whose destinations have moved.
+
+      subroutine grid_average_X2Y_base_toslot(type,work1,grid1,work2,grid2)
+
+      character(len=*) , intent(in) :: type, grid1, grid2
+      real (kind=dbl_kind), intent(in)  :: work1(:,:,:)
+      real (kind=dbl_kind), intent(out) :: work2(:)      ! dynTot
+
+      character(len=16) :: X2Y
+      integer (kind=int_kind) :: i, j, iblk, ms
+
+      character(len=*), parameter :: subname = '(grid_average_X2Y_base_toslot)'
+
+      if (trim(type) /= 'F') then
+         call abort_ice(subname//' ERROR: only type F has a slot form', &
+            file=__FILE__, line=__LINE__)
+      endif
+
+      ! ⚠ Same-grid short circuit, as in grid_average_X2Y_base.  Omitting it
+      ! aborted with "unknown X2Y U2UF" the moment a configuration set
+      ! grid_atm_dynu = 'U' -- box2001 forcing does, and no local template
+      ! uses box2001, so every configuration here missed it.
+      !
+      ! The block form is a plain copy; with a slot destination it is a pack.
+      if (trim(grid1) == trim(grid2)) then
+         do iblk = 1, nblocks
+            do j = 1, ny_block
+            do i = 1, nx_block
+               ms = dynMap((j-1)*nx_block + i, iblk)
+               if (ms < 1) cycle
+               work2(dynOff(iblk) + ms) = work1(i,j,iblk)
+            enddo
+            enddo
+         enddo
+         return
+      endif
+
+      X2Y = trim(grid1)//'2'//trim(grid2)//trim(type)
+      call grid_average_X2Y_1_toslot(X2Y,work1,work2)
+
+      end subroutine grid_average_X2Y_base_toslot
+
+!=======================================================================
 ! Shifts quantities from one grid to another
 ! Constructs the shift based on the grid
 ! NOTE: Input array includes ghost cells that must be updated before
@@ -4245,6 +4299,52 @@
       end select
 
       end subroutine grid_average_X2Y_NEversion
+
+!=======================================================================
+! Dispatcher for the compressed-destination flux average.  Mirrors the F
+! cases of grid_average_X2Y_1 exactly; only work2 and its weight differ.
+
+      subroutine grid_average_X2Y_1_toslot(X2Y,work1,work2)
+
+      character(len=*) , intent(in) :: X2Y
+      real (kind=dbl_kind), intent(in)  :: work1(:,:,:)
+      real (kind=dbl_kind), intent(out) :: work2(:)      ! dynTot
+
+      character(len=*), parameter :: subname = '(grid_average_X2Y_1_toslot)'
+
+      select case (trim(X2Y))
+
+         case('T2UF')
+            call grid_average_X2YF_toslot('NE',work1,tarea,work2,uarea_slot)
+         case('T2EF')
+            call grid_average_X2YF_toslot('E',work1,tarea,work2,earea_slot)
+         case('T2NF')
+            call grid_average_X2YF_toslot('N',work1,tarea,work2,narea_slot)
+         case('U2TF')
+            call grid_average_X2YF_toslot('SW',work1,uarea,work2,tarea_slot)
+         case('U2EF')
+            call grid_average_X2YF_toslot('S',work1,uarea,work2,earea_slot)
+         case('U2NF')
+            call grid_average_X2YF_toslot('W',work1,uarea,work2,narea_slot)
+         case('E2TF')
+            call grid_average_X2YF_toslot('W',work1,earea,work2,tarea_slot)
+         case('E2UF')
+            call grid_average_X2YF_toslot('N',work1,earea,work2,uarea_slot)
+         case('E2NF')
+            call grid_average_X2YF_toslot('NW',work1,earea,work2,narea_slot)
+         case('N2TF')
+            call grid_average_X2YF_toslot('S',work1,narea,work2,tarea_slot)
+         case('N2UF')
+            call grid_average_X2YF_toslot('E',work1,narea,work2,uarea_slot)
+         case('N2EF')
+            call grid_average_X2YF_toslot('SE',work1,narea,work2,earea_slot)
+
+         case default
+            call abort_ice(subname//' ERROR: unknown X2Y '//trim(X2Y), &
+               file=__FILE__, line=__LINE__)
+      end select
+
+      end subroutine grid_average_X2Y_1_toslot
 
 !=======================================================================
 ! Shifts quantities from one grid to another
@@ -5003,6 +5103,243 @@
 
       end subroutine grid_average_X2YA_w1f
 
+
+!=======================================================================
+! Flux-form grid average with a COMPRESSED destination.
+!
+! work1 and wght1 stay block-shaped -- they come from the atmosphere and the
+! coupler, so they are not ours to move -- while work2 and wght2 are slots.
+! The loop stays block-shaped too; only the output and the own-cell
+! denominator are indexed by slot.
+!
+! ⚠ That is what makes this safe.  The numerator reads wght1 (tarea, uarea,
+! earea, narea) at NEIGHBOURS, and those are nonzero over land, so reading
+! them through dynNbr would hand back the dead slot's c0 where the block path
+! has a real area -- the de0b9c3 fault class exactly.  Keeping the numerator
+! block-indexed sidesteps it rather than working around it.
+!
+! ⚠ The denominator is wght2 at the destination's OWN cell, never a sum over
+! neighbours, which is why no precomputed weight sums are needed here --
+! unlike grid_average_X2YA, whose wtmp IS such a sum.
+!
+! wght1 is flattened, as everywhere else: element (i,j,iblk) lives at
+! ((j-1)*nx_block + i, iblk).
+
+      subroutine grid_average_X2YF_toslot(dir,work1,wght1,work2,wght2)
+
+      character(len=*) , intent(in) :: dir
+
+      real (kind=dbl_kind), intent(in) :: work1(:,:,:)  ! block-shaped source
+      real (kind=dbl_kind), intent(in) :: wght1(:,:)    ! weight, i/j flattened
+
+      real (kind=dbl_kind), intent(out) :: work2(:)     ! dynTot
+      real (kind=dbl_kind), intent(in)  :: wght2(:)     ! dynTot
+
+      integer (kind=int_kind) :: i, j, iblk, ms, ilo, ihi, jlo, jhi
+      type (block) :: this_block
+
+      character(len=*), parameter :: subname = '(grid_average_X2YF_toslot)'
+
+      if (size(wght1,dim=1) /= nx_block*ny_block) then
+         call abort_ice(subname//' ERROR: first dimension is not nx_block*ny_block', &
+            file=__FILE__, line=__LINE__)
+      endif
+
+      work2(:) = c0
+
+      select case (trim(dir))
+
+
+         case('NE')
+            !$OMP PARALLEL DO PRIVATE(iblk,i,j,ms,ilo,ihi,jlo,jhi,this_block)
+            do iblk = 1, nblocks
+               this_block = get_block(blocks_ice(iblk),iblk)
+               ilo = this_block%ilo
+               ihi = this_block%ihi
+               jlo = this_block%jlo
+               jhi = this_block%jhi
+               do j = jlo, jhi
+               do i = ilo, ihi
+                  ms = dynMap((j-1)*nx_block + i, iblk)
+                  if (ms < 1) cycle
+                  ms = dynOff(iblk) + ms
+                  work2(ms) = p25 * &
+                              (work1(i  ,j  ,iblk)*wght1((j-1)*nx_block + i,iblk) &
+                             + work1(i+1,j  ,iblk)*wght1((j-1)*nx_block + i+1,iblk) &
+                             + work1(i  ,j+1,iblk)*wght1((j+1-1)*nx_block + i,iblk) &
+                             + work1(i+1,j+1,iblk)*wght1((j+1-1)*nx_block + i+1,iblk)) &
+                              / wght2(ms)
+               enddo
+               enddo
+            enddo
+            !$OMP END PARALLEL DO
+
+         case('SW')
+            !$OMP PARALLEL DO PRIVATE(iblk,i,j,ms,ilo,ihi,jlo,jhi,this_block)
+            do iblk = 1, nblocks
+               this_block = get_block(blocks_ice(iblk),iblk)
+               ilo = this_block%ilo
+               ihi = this_block%ihi
+               jlo = this_block%jlo
+               jhi = this_block%jhi
+               do j = jlo, jhi
+               do i = ilo, ihi
+                  ms = dynMap((j-1)*nx_block + i, iblk)
+                  if (ms < 1) cycle
+                  ms = dynOff(iblk) + ms
+                  work2(ms) = p25 * &
+                              (work1(i  ,j  ,iblk)*wght1((j-1)*nx_block + i,iblk) &
+                             + work1(i-1,j  ,iblk)*wght1((j-1)*nx_block + i-1,iblk) &
+                             + work1(i  ,j-1,iblk)*wght1((j-1-1)*nx_block + i,iblk) &
+                             + work1(i-1,j-1,iblk)*wght1((j-1-1)*nx_block + i-1,iblk)) &
+                              / wght2(ms)
+               enddo
+               enddo
+            enddo
+            !$OMP END PARALLEL DO
+
+         case('NW')
+            !$OMP PARALLEL DO PRIVATE(iblk,i,j,ms,ilo,ihi,jlo,jhi,this_block)
+            do iblk = 1, nblocks
+               this_block = get_block(blocks_ice(iblk),iblk)
+               ilo = this_block%ilo
+               ihi = this_block%ihi
+               jlo = this_block%jlo
+               jhi = this_block%jhi
+               do j = jlo, jhi
+               do i = ilo, ihi
+                  ms = dynMap((j-1)*nx_block + i, iblk)
+                  if (ms < 1) cycle
+                  ms = dynOff(iblk) + ms
+                  work2(ms) = p25 * &
+                              (work1(i  ,j  ,iblk)*wght1((j-1)*nx_block + i,iblk) &
+                             + work1(i-1,j  ,iblk)*wght1((j-1)*nx_block + i-1,iblk) &
+                             + work1(i  ,j+1,iblk)*wght1((j+1-1)*nx_block + i,iblk) &
+                             + work1(i-1,j+1,iblk)*wght1((j+1-1)*nx_block + i-1,iblk)) &
+                              / wght2(ms)
+               enddo
+               enddo
+            enddo
+            !$OMP END PARALLEL DO
+
+         case('SE')
+            !$OMP PARALLEL DO PRIVATE(iblk,i,j,ms,ilo,ihi,jlo,jhi,this_block)
+            do iblk = 1, nblocks
+               this_block = get_block(blocks_ice(iblk),iblk)
+               ilo = this_block%ilo
+               ihi = this_block%ihi
+               jlo = this_block%jlo
+               jhi = this_block%jhi
+               do j = jlo, jhi
+               do i = ilo, ihi
+                  ms = dynMap((j-1)*nx_block + i, iblk)
+                  if (ms < 1) cycle
+                  ms = dynOff(iblk) + ms
+                  work2(ms) = p25 * &
+                              (work1(i  ,j  ,iblk)*wght1((j-1)*nx_block + i,iblk) &
+                             + work1(i+1,j  ,iblk)*wght1((j-1)*nx_block + i+1,iblk) &
+                             + work1(i  ,j-1,iblk)*wght1((j-1-1)*nx_block + i,iblk) &
+                             + work1(i+1,j-1,iblk)*wght1((j-1-1)*nx_block + i+1,iblk)) &
+                              / wght2(ms)
+               enddo
+               enddo
+            enddo
+            !$OMP END PARALLEL DO
+
+         case('E')
+            !$OMP PARALLEL DO PRIVATE(iblk,i,j,ms,ilo,ihi,jlo,jhi,this_block)
+            do iblk = 1, nblocks
+               this_block = get_block(blocks_ice(iblk),iblk)
+               ilo = this_block%ilo
+               ihi = this_block%ihi
+               jlo = this_block%jlo
+               jhi = this_block%jhi
+               do j = jlo, jhi
+               do i = ilo, ihi
+                  ms = dynMap((j-1)*nx_block + i, iblk)
+                  if (ms < 1) cycle
+                  ms = dynOff(iblk) + ms
+                  work2(ms) = p5 * &
+                              (work1(i  ,j  ,iblk)*wght1((j-1)*nx_block + i,iblk) &
+                             + work1(i+1,j  ,iblk)*wght1((j-1)*nx_block + i+1,iblk)) &
+                              / wght2(ms)
+               enddo
+               enddo
+            enddo
+            !$OMP END PARALLEL DO
+
+         case('W')
+            !$OMP PARALLEL DO PRIVATE(iblk,i,j,ms,ilo,ihi,jlo,jhi,this_block)
+            do iblk = 1, nblocks
+               this_block = get_block(blocks_ice(iblk),iblk)
+               ilo = this_block%ilo
+               ihi = this_block%ihi
+               jlo = this_block%jlo
+               jhi = this_block%jhi
+               do j = jlo, jhi
+               do i = ilo, ihi
+                  ms = dynMap((j-1)*nx_block + i, iblk)
+                  if (ms < 1) cycle
+                  ms = dynOff(iblk) + ms
+                  work2(ms) = p5 * &
+                              (work1(i-1,j  ,iblk)*wght1((j-1)*nx_block + i-1,iblk) &
+                             + work1(i  ,j  ,iblk)*wght1((j-1)*nx_block + i,iblk)) &
+                              / wght2(ms)
+               enddo
+               enddo
+            enddo
+            !$OMP END PARALLEL DO
+
+         case('N')
+            !$OMP PARALLEL DO PRIVATE(iblk,i,j,ms,ilo,ihi,jlo,jhi,this_block)
+            do iblk = 1, nblocks
+               this_block = get_block(blocks_ice(iblk),iblk)
+               ilo = this_block%ilo
+               ihi = this_block%ihi
+               jlo = this_block%jlo
+               jhi = this_block%jhi
+               do j = jlo, jhi
+               do i = ilo, ihi
+                  ms = dynMap((j-1)*nx_block + i, iblk)
+                  if (ms < 1) cycle
+                  ms = dynOff(iblk) + ms
+                  work2(ms) = p5 * &
+                              (work1(i  ,j  ,iblk)*wght1((j-1)*nx_block + i,iblk) &
+                             + work1(i  ,j+1,iblk)*wght1((j+1-1)*nx_block + i,iblk)) &
+                              / wght2(ms)
+               enddo
+               enddo
+            enddo
+            !$OMP END PARALLEL DO
+
+         case('S')
+            !$OMP PARALLEL DO PRIVATE(iblk,i,j,ms,ilo,ihi,jlo,jhi,this_block)
+            do iblk = 1, nblocks
+               this_block = get_block(blocks_ice(iblk),iblk)
+               ilo = this_block%ilo
+               ihi = this_block%ihi
+               jlo = this_block%jlo
+               jhi = this_block%jhi
+               do j = jlo, jhi
+               do i = ilo, ihi
+                  ms = dynMap((j-1)*nx_block + i, iblk)
+                  if (ms < 1) cycle
+                  ms = dynOff(iblk) + ms
+                  work2(ms) = p5 * &
+                              (work1(i  ,j-1,iblk)*wght1((j-1-1)*nx_block + i,iblk) &
+                             + work1(i  ,j  ,iblk)*wght1((j-1)*nx_block + i,iblk)) &
+                              / wght2(ms)
+               enddo
+               enddo
+            enddo
+            !$OMP END PARALLEL DO
+
+         case default
+            call abort_ice(subname//' ERROR: unknown dir '//trim(dir), &
+               file=__FILE__, line=__LINE__)
+      end select
+
+      end subroutine grid_average_X2YF_toslot
 
 !=======================================================================
 ! Shifts quantities from one grid to another

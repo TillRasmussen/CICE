@@ -2205,7 +2205,7 @@
       use ice_domain, only: blocks_ice, nblocks
       use ice_domain_size, only: nfsd
       use ice_grid, only: tmask, lmask_n, lmask_s, dxU, dyU, grid_ice, &
-                          dynMap, dynOff, dynCnt, pack_to_slots, &
+                          dynMap, dynOff, dynCnt, dynIJ, pack_to_slots, &
                           unpack_from_slots
       use ice_calendar, only: new_year, write_history, write_restart, &
                               write_ic, timesecs, histfreq, nstreams, mmonth, &
@@ -2258,6 +2258,16 @@
       use ice_state ! almost everything
       use ice_timers, only: ice_timer_start, ice_timer_stop, timer_readwrite
 
+      ! slot-sized scratch for the siforcetilt products, which multiply a
+      ! block-flattened field by a compressed one
+      ! ⚠ Dimensioned BY BLOCK, not just by slot.  This is written inside
+      ! the !$OMP PARALLEL DO over iblk, so a single shared vector is a race
+      ! -- which is exactly how it failed: "Subscript #1 of the array AICE
+      ! has value 105 which is greater than the upper bound of 7", one
+      ! thread's i and j landing in another thread's iteration.  One column
+      ! per block makes each thread's slice its own.
+      real (kind=dbl_kind), dimension(:,:), allocatable :: worksl
+
       real (kind=dbl_kind), intent(in) :: &
          dt      ! time step
 
@@ -2269,6 +2279,8 @@
            worksig1, worksig2, worksig3
 
       integer (kind=int_kind) :: &
+         is             , & ! slot index
+         ij             , & ! flattened cell index of that slot
            i,j,k,ic,n,ns,nn, &
            iblk             , & ! block index
            ilo,ihi,jlo,jhi  , & ! beginning and end of physical domain
@@ -2303,6 +2315,8 @@
       type (block) :: &
          this_block           ! block information for current block
       character(len=*), parameter :: subname = '(accum_hist)'
+
+      allocate(worksl(maxval(dynCnt),nblocks))
 
       call icepack_query_parameters(awtvdr_out=awtvdr, awtidr_out=awtidr, &
            awtvdf_out=awtvdf, awtidf_out=awtidf, puny_out=puny, secday_out=secday, &
@@ -2395,7 +2409,7 @@
       !---------------------------------------------------------------
 
 #ifndef __INTEL_LLVM_COMPILER
-      !$OMP PARALLEL DO PRIVATE(iblk,i,j,ilo,ihi,jlo,jhi,this_block, &
+      !$OMP PARALLEL DO PRIVATE(iblk,i,j,is,ij,ilo,ihi,jlo,jhi,this_block, &
       !$OMP             k,n,qn,ns,sn,rho_ocn,rho_ice,sal_ice,dfresh,dfsalt,sicen, &
       !$OMP             worka,workb,Tinz4d,Sinz4d,Tsnz4d)
 #endif
@@ -2665,21 +2679,27 @@
              call accum_hist_field(n_fswthru_ai,iblk, fswthru_ai(:,:,iblk), a2D)
 
          if (f_strairx(1:1) /= 'x') &
-             call accum_hist_field(n_strairx, iblk, strairxU(:,:,iblk), a2D)
+             call accum_hist_field(n_strairx, iblk, strairxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                                   dynMap(:,iblk), a2D)
          if (f_strairy(1:1) /= 'x') &
-             call accum_hist_field(n_strairy, iblk, strairyU(:,:,iblk), a2D)
+             call accum_hist_field(n_strairy, iblk, strairyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                                   dynMap(:,iblk), a2D)
          if (f_strtltx(1:1) /= 'x') &
-             call accum_hist_field(n_strtltx, iblk, strtltxU(:,:,iblk), a2D)
+             call accum_hist_field(n_strtltx, iblk, strtltxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                                   dynMap(:,iblk), a2D)
          if (f_strtlty(1:1) /= 'x') &
-             call accum_hist_field(n_strtlty, iblk, strtltyU(:,:,iblk), a2D)
+             call accum_hist_field(n_strtlty, iblk, strtltyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                                   dynMap(:,iblk), a2D)
          if (f_strcorx(1:1) /= 'x') &
              call accum_hist_field(n_strcorx, iblk, reshape(fmU(:,iblk),(/nx_block,ny_block/))*reshape(vvel(:,iblk),(/nx_block,ny_block/)), a2D)
          if (f_strcory(1:1) /= 'x') &
              call accum_hist_field(n_strcory, iblk,-reshape(fmU(:,iblk),(/nx_block,ny_block/))*reshape(uvel(:,iblk),(/nx_block,ny_block/)), a2D)
          if (f_strocnx(1:1) /= 'x') &
-             call accum_hist_field(n_strocnx, iblk, strocnxU(:,:,iblk), a2D)
+             call accum_hist_field(n_strocnx, iblk, strocnxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                                   dynMap(:,iblk), a2D)
          if (f_strocny(1:1) /= 'x') &
-             call accum_hist_field(n_strocny, iblk, strocnyU(:,:,iblk), a2D)
+             call accum_hist_field(n_strocny, iblk, strocnyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                                   dynMap(:,iblk), a2D)
          if (f_strintx(1:1) /= 'x') &
              call accum_hist_field(n_strintx, iblk, strintxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                                    dynMap(:,iblk), a2D)
@@ -2693,21 +2713,29 @@
              call accum_hist_field(n_tauby, iblk, taubyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                                    dynMap(:,iblk), a2D)
          if (f_strairxN(1:1) /= 'x') &
-             call accum_hist_field(n_strairxN, iblk, strairxN(:,:,iblk), a2D)
+             call accum_hist_field(n_strairxN, iblk, strairxN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                                   dynMap(:,iblk), a2D)
          if (f_strairyN(1:1) /= 'x') &
-             call accum_hist_field(n_strairyN, iblk, strairyN(:,:,iblk), a2D)
+             call accum_hist_field(n_strairyN, iblk, strairyN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                                   dynMap(:,iblk), a2D)
          if (f_strairxE(1:1) /= 'x') &
-             call accum_hist_field(n_strairxE, iblk, strairxE(:,:,iblk), a2D)
+             call accum_hist_field(n_strairxE, iblk, strairxE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                                   dynMap(:,iblk), a2D)
          if (f_strairyE(1:1) /= 'x') &
-             call accum_hist_field(n_strairyE, iblk, strairyE(:,:,iblk), a2D)
+             call accum_hist_field(n_strairyE, iblk, strairyE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                                   dynMap(:,iblk), a2D)
          if (f_strtltxN(1:1) /= 'x') &
-             call accum_hist_field(n_strtltxN, iblk, strtltxN(:,:,iblk), a2D)
+             call accum_hist_field(n_strtltxN, iblk, strtltxN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                                   dynMap(:,iblk), a2D)
          if (f_strtltyN(1:1) /= 'x') &
-             call accum_hist_field(n_strtltyN, iblk, strtltyN(:,:,iblk), a2D)
+             call accum_hist_field(n_strtltyN, iblk, strtltyN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                                   dynMap(:,iblk), a2D)
          if (f_strtltxE(1:1) /= 'x') &
-             call accum_hist_field(n_strtltxE, iblk, strtltxE(:,:,iblk), a2D)
+             call accum_hist_field(n_strtltxE, iblk, strtltxE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                                   dynMap(:,iblk), a2D)
          if (f_strtltyE(1:1) /= 'x') &
-             call accum_hist_field(n_strtltyE, iblk, strtltyE(:,:,iblk), a2D)
+             call accum_hist_field(n_strtltyE, iblk, strtltyE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                                   dynMap(:,iblk), a2D)
          if (f_strcorxN(1:1) /= 'x') &
              call accum_hist_field(n_strcorxN, iblk, reshape(fmN(:,iblk),(/nx_block,ny_block/))*vvelN(:,:,iblk), a2D)
          if (f_strcoryN(1:1) /= 'x') &
@@ -2717,13 +2745,17 @@
          if (f_strcoryE(1:1) /= 'x') &
              call accum_hist_field(n_strcoryE, iblk,-reshape(fmE(:,iblk),(/nx_block,ny_block/))*uvelE(:,:,iblk), a2D)
          if (f_strocnxN(1:1) /= 'x') &
-             call accum_hist_field(n_strocnxN, iblk, strocnxN(:,:,iblk), a2D)
+             call accum_hist_field(n_strocnxN, iblk, strocnxN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                                   dynMap(:,iblk), a2D)
          if (f_strocnyN(1:1) /= 'x') &
-             call accum_hist_field(n_strocnyN, iblk, strocnyN(:,:,iblk), a2D)
+             call accum_hist_field(n_strocnyN, iblk, strocnyN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                                   dynMap(:,iblk), a2D)
          if (f_strocnxE(1:1) /= 'x') &
-             call accum_hist_field(n_strocnxE, iblk, strocnxE(:,:,iblk), a2D)
+             call accum_hist_field(n_strocnxE, iblk, strocnxE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                                   dynMap(:,iblk), a2D)
          if (f_strocnyE(1:1) /= 'x') &
-             call accum_hist_field(n_strocnyE, iblk, strocnyE(:,:,iblk), a2D)
+             call accum_hist_field(n_strocnyE, iblk, strocnyE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                                   dynMap(:,iblk), a2D)
          if (f_strintxN(1:1) /= 'x') &
              call accum_hist_field(n_strintxN, iblk, strintxN(:,:,iblk), a2D)
          if (f_strintyN(1:1) /= 'x') &
@@ -2927,19 +2959,53 @@
          endif
 
          if (f_sistrxdtop(1:1) /= 'x') then
-           call accum_hist_field(n_sistrxdtop, iblk, aice(:,:,iblk)*strairxU(:,:,iblk), a2D)
+           ! aice is block-shaped and strairxU compressed; product built per slot.
+           do is = 1, dynCnt(iblk)
+              ij = dynIJ(dynOff(iblk)+is)
+              j  = (ij-1)/nx_block + 1
+              i  = ij - (j-1)*nx_block
+              worksl(is,iblk) = aice(i,j,iblk) * strairxU(dynOff(iblk)+is)
+           enddo
+           call accum_hist_field(n_sistrxdtop, iblk, worksl(1:dynCnt(iblk),iblk), &
+                                 dynMap(:,iblk), a2D)
          endif
 
          if (f_sistrydtop(1:1) /= 'x') then
-           call accum_hist_field(n_sistrydtop, iblk, aice(:,:,iblk)*strairyU(:,:,iblk), a2D)
+           ! aice is block-shaped and strairyU compressed; product built per slot.
+           do is = 1, dynCnt(iblk)
+              ij = dynIJ(dynOff(iblk)+is)
+              j  = (ij-1)/nx_block + 1
+              i  = ij - (j-1)*nx_block
+              worksl(is,iblk) = aice(i,j,iblk) * strairyU(dynOff(iblk)+is)
+           enddo
+           call accum_hist_field(n_sistrydtop, iblk, worksl(1:dynCnt(iblk),iblk), &
+                                 dynMap(:,iblk), a2D)
          endif
 
          if (f_sistrxubot(1:1) /= 'x') then
-           call accum_hist_field(n_sistrxubot, iblk, aice(:,:,iblk)*strocnxU(:,:,iblk), a2D)
+           ! aice is block-shaped and strocnxU compressed, so the product is built
+           ! per slot -- same reason as the siforcetilt fields above.
+           do is = 1, dynCnt(iblk)
+              ij = dynIJ(dynOff(iblk)+is)
+              j  = (ij-1)/nx_block + 1
+              i  = ij - (j-1)*nx_block
+              worksl(is,iblk) = aice(i,j,iblk) * strocnxU(dynOff(iblk)+is)
+           enddo
+           call accum_hist_field(n_sistrxubot, iblk, worksl(1:dynCnt(iblk),iblk), &
+                                 dynMap(:,iblk), a2D)
          endif
 
          if (f_sistryubot(1:1) /= 'x') then
-           call accum_hist_field(n_sistryubot, iblk, aice(:,:,iblk)*strocnyU(:,:,iblk), a2D)
+           ! aice is block-shaped and strocnyU compressed, so the product is built
+           ! per slot -- same reason as the siforcetilt fields above.
+           do is = 1, dynCnt(iblk)
+              ij = dynIJ(dynOff(iblk)+is)
+              j  = (ij-1)/nx_block + 1
+              i  = ij - (j-1)*nx_block
+              worksl(is,iblk) = aice(i,j,iblk) * strocnyU(dynOff(iblk)+is)
+           enddo
+           call accum_hist_field(n_sistryubot, iblk, worksl(1:dynCnt(iblk),iblk), &
+                                 dynMap(:,iblk), a2D)
          endif
 
          if (f_sicompstren(1:1) /= 'x') then
@@ -3168,11 +3234,27 @@
          endif
 
          if (f_siforcetiltx(1:1) /= 'x') then
-           call accum_hist_field(n_siforcetiltx, iblk, aice_init3d(:,:,iblk)*strtltxU(:,:,iblk), a2D)
+           ! ⚠ aice_init is block-flattened and strtltxU is compressed, so the
+           ! product cannot be written inline the way the block form did.  Build
+           ! it per slot instead -- dynIJ gives this slot's flattened cell, which
+           ! is what aice_init is indexed by.  History steps only.
+           do is = 1, dynCnt(iblk)
+              worksl(is,iblk) = aice_init(dynIJ(dynOff(iblk)+is),iblk) * strtltxU(dynOff(iblk)+is)
+           enddo
+           call accum_hist_field(n_siforcetiltx, iblk, worksl(1:dynCnt(iblk),iblk), &
+                                 dynMap(:,iblk), a2D)
          endif
 
          if (f_siforcetilty(1:1) /= 'x') then
-           call accum_hist_field(n_siforcetilty, iblk, aice_init3d(:,:,iblk)*strtltyU(:,:,iblk), a2D)
+           ! ⚠ aice_init is block-flattened and strtltyU is compressed, so the
+           ! product cannot be written inline the way the block form did.  Build
+           ! it per slot instead -- dynIJ gives this slot's flattened cell, which
+           ! is what aice_init is indexed by.  History steps only.
+           do is = 1, dynCnt(iblk)
+              worksl(is,iblk) = aice_init(dynIJ(dynOff(iblk)+is),iblk) * strtltyU(dynOff(iblk)+is)
+           enddo
+           call accum_hist_field(n_siforcetilty, iblk, worksl(1:dynCnt(iblk),iblk), &
+                                 dynMap(:,iblk), a2D)
          endif
 
          if (f_siforcecoriolx(1:1) /= 'x') then
@@ -3954,18 +4036,20 @@
                                       worksig2          , &
                                       worksig3          , &
                                       strength  (:,:,iblk), &
-                                      sig1      (:,:,iblk), &
-                                      sig2      (:,:,iblk), &
-                                      sigP      (:,:,iblk))
+                                      sig1(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                                      sig2(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                                      sigP(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                                      dynMap(:,iblk))
             case('CD','C')
                call principal_stress (nx_block,  ny_block,  &
                                       stresspT  (:,iblk), &
                                       stressmT  (:,iblk), &
                                       stress12T (:,iblk), &
                                       strength  (:,:,iblk), &
-                                      sig1      (:,:,iblk), &
-                                      sig2      (:,:,iblk), &
-                                      sigP      (:,:,iblk))
+                                      sig1(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                                      sig2(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                                      sigP(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                                      dynMap(:,iblk))
             end select
 
            do j = jlo, jhi
@@ -4014,15 +4098,15 @@
                  if (n_vort     (ns) /= 0) a2D(ms,n_vort(ns))      = &
                        vort((j-1)*nx_block+i,iblk)*avail_hist_fields(n_vort(ns))%cona
                  if (n_sig1     (ns) /= 0) a2D(ms,n_sig1(ns))      = &
-                       sig1 (i,j,iblk)*avail_hist_fields(n_sig1(ns))%cona
+                       sig1(ms)*avail_hist_fields(n_sig1(ns))%cona
                  if (n_sig2     (ns) /= 0) a2D(ms,n_sig2(ns))      = &
-                       sig2 (i,j,iblk)*avail_hist_fields(n_sig2(ns))%cona
+                       sig2(ms)*avail_hist_fields(n_sig2(ns))%cona
                  if (n_sigP     (ns) /= 0) a2D(ms,n_sigP(ns))      = &
-                       sigP (i,j,iblk)*avail_hist_fields(n_sigP(ns))%cona
+                       sigP(ms)*avail_hist_fields(n_sigP(ns))%cona
                  if (n_sistressave(ns) /= 0) a2D(ms,n_sistressave(ns)) = &
-                       p5*(sig1(i,j,iblk)+sig2(i,j,iblk))*avail_hist_fields(n_sistressave(ns))%cona
+                       p5*(sig1(ms)+sig2(ms))*avail_hist_fields(n_sistressave(ns))%cona
                  if (n_sistressmax(ns) /= 0) a2D(ms,n_sistressmax(ns)) = &
-                       p5*(sig1(i,j,iblk)-sig2(i,j,iblk))*avail_hist_fields(n_sistressmax(ns))%cona
+                       p5*(sig1(ms)-sig2(ms))*avail_hist_fields(n_sistressmax(ns))%cona
                  if (n_sidivvel(ns) /= 0) a2D(ms,n_sidivvel(ns)) = &
                        divu ((j-1)*nx_block+i,iblk)*avail_hist_fields(n_sidivvel(ns))%cona
                  if (n_sishearvel(ns) /= 0) a2D(ms,n_sishearvel(ns)) = &
@@ -4222,6 +4306,8 @@
         ! turn off histrest features
         write_histrest_now = .false.
       endif
+
+      deallocate(worksl)
 
       end subroutine accum_hist
 

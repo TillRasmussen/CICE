@@ -1034,11 +1034,18 @@
       character(len=*), parameter :: subname = '(init_dyn_shared)'
 
       ! checks
-      if (kdyn == 1 .and. evp_algorithm == 'shared_mem_1d' .and. &
-          (ns_boundary_type == 'tripole' .or. ns_boundary_type == 'tripoleT')) then
-         call abort_ice(subname//' ERROR: evp_alg shared mem 1d not supported with tripole', &
-            file=__FILE__, line=__LINE__)
-      endif
+        ! ⚠ shared_mem_1d + tripole is ALLOWED now.  It was rejected until the
+        ! fold in ice_dyn_evp1d matched the 2-D solver exactly, which it does:
+        ! on a wet seam (kmt_type='none', ns_boundary_type='tripole') the two
+        ! are bit-for-bit, kinetic energy identical to the last digit.
+        !
+        ! ⚠ tripoleT is still rejected.  The fold was measured for the U-fold
+        ! only; the T-fold has a different convention and has not been done.
+        if (kdyn == 1 .and. evp_algorithm == 'shared_mem_1d' .and. &
+            ns_boundary_type == 'tripoleT') then
+           call abort_ice(subname//' ERROR: evp_alg shared mem 1d not supported with tripoleT', &
+              file=__FILE__, line=__LINE__)
+        endif
 
 
       call set_evp_parameters (dt)
@@ -1266,7 +1273,7 @@
       subroutine dyn_prep1 (nx_block,  ny_block, &
                             ilo, ihi,  jlo, jhi, &
                             aice,      vice,     &
-                            vsno,      Tmask,    &
+                            vsno,      map,      Tmask,    &
                             Tmass,     iceTmask)
 
       integer (kind=int_kind), intent(in) :: &
@@ -1279,10 +1286,21 @@
       ! in Fortran storage order so that element (i,j) is stored at
       ! (j-1)*nx_block+i
 
-      real (kind=dbl_kind), dimension (:,:), intent(in) :: &
-         aice    , & ! concentration of ice
+      ! ⚠ Compressed now, not block-shaped.  update_state writes these in
+      ! the same loop that calls icepack_aggregate, ghost cells included,
+      ! so they are current here without a halo update of their own.
+      !
+      ! A cell with no slot reads c0 below, which is what the block form
+      ! held: dynMap comes from tmask .or. umask, so an unmapped cell is
+      ! land, and both Tmass and tmphm are forced false/zero there by the
+      ! Tmask test regardless of what aice, vice and vsno contain.
+      real (kind=dbl_kind), dimension (:), intent(in) :: &
+         aice    , & ! concentration of ice, this block's slots
          vice    , & ! volume per unit area of ice          (m)
          vsno        ! volume per unit area of snow         (m)
+
+      integer (kind=int_kind), dimension (:), intent(in) :: &
+         map         ! this block's dynMap column
 
       logical (kind=log_kind), dimension (:), intent(in) :: &
          Tmask       ! land/boundary mask, thickness (T-cell)
@@ -1298,7 +1316,8 @@
       integer (kind=int_kind) :: &
          i, j, ij       , & ! i, j and the matching 1D index into the block
          ijsub          , & ! 1D index over the physical domain only
-         nisub, njsub       ! i and j extent of the physical domain
+         nisub, njsub     , & ! i and j extent of the physical domain
+         ms                 ! slot of this cell
 
       real (kind=dbl_kind) :: &
          rhoi, rhos
@@ -1319,13 +1338,23 @@
          j = (ij-1)/nx_block + 1
          i = ij - (j-1)*nx_block
 
+         ! Slot of this cell, or the dead slot at the end of the slice.
+         !
+         ! ⚠ The fallback is for INDEX VALIDITY, not for its value.  An
+         ! unmapped cell is land -- dynMap is tmask .or. umask -- so Tmask(ij)
+         ! is false there and both results below are forced regardless.  But
+         ! Fortran does not guarantee short-circuit evaluation, so aice(ms)
+         ! may be read even when Tmask(ij) is false, and ms must be in range.
+         ms = map(ij)
+         if (ms < 1) ms = size(aice)
+
          !-----------------------------------------------------------------
          ! total mass of ice and snow, centered in T-cell
          ! NOTE: vice and vsno must be up to date in all grid cells,
          !       including ghost cells
          !-----------------------------------------------------------------
          if (Tmask(ij)) then
-            Tmass(ij) = (rhoi*vice(i,j) + rhos*vsno(i,j)) ! kg/m^2
+            Tmass(ij) = (rhoi*vice(ms) + rhos*vsno(ms)) ! kg/m^2
          else
             Tmass(ij) = c0
          endif
@@ -1333,7 +1362,7 @@
          !-----------------------------------------------------------------
          ! ice extent mask (T-cells)
          !-----------------------------------------------------------------
-         tmphm(ij) = Tmask(ij) .and. (aice (i,j) > dyn_area_min) &
+           tmphm(ij) = Tmask(ij) .and. (aice (ms) > dyn_area_min) &
                                 .and. (Tmass(ij)  > dyn_mass_min)
 
          !-----------------------------------------------------------------
@@ -1450,8 +1479,6 @@
          fcor        ! Coriolis parameter (1/s)
 
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
-         strairx , & ! stress on ice by air, x-direction
-         strairy , & ! stress on ice by air, y-direction
          uocn    , & ! ocean current, x-direction (m/s)
          vocn    , & ! ocean current, y-direction (m/s)
          ss_tltx , & ! sea surface slope, x-direction (m/m)
@@ -1495,6 +1522,18 @@
       real (kind=dbl_kind), dimension (:), intent(out), contiguous :: &
          TbU         ! seabed stress factor (N/m^2)
 
+      ! ⚠ Compressed, unlike the rest of this group.  Written here and read
+      ! straight into forcex/forcey below; after that only history and one
+      ! diagnostics print touch them, and no coupled driver does.  Indexed
+      ! by Xmap(ijb), the same block-local slot the rheofactX_s copy uses.
+      real (kind=dbl_kind), dimension (:), intent(inout) :: &
+         strtltx , & ! stress due to sea surface slope, x-direction
+         strtlty , & ! stress due to sea surface slope, y-direction
+         strocnx , & ! ice-ocean stress, x-direction
+         strocny , & ! ice-ocean stress, y-direction
+         strairx , & ! stress on ice by air, x-direction
+         strairy     ! stress on ice by air, y-direction
+
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(inout) :: &
          fm      , & ! Coriolis param. * mass in U-cell (kg/s)
          stressp_1, stressp_2, stressp_3, stressp_4 , & ! sigma11+sigma22
@@ -1502,10 +1541,6 @@
          stress12_1,stress12_2,stress12_3,stress12_4, & ! sigma12
          uvel    , & ! x-component of velocity (m/s)
          vvel    , & ! y-component of velocity (m/s)
-         strtltx , & ! stress due to sea surface slope, x-direction
-         strtlty , & ! stress due to sea surface slope, y-direction
-         strocnx , & ! ice-ocean stress, x-direction
-         strocny , & ! ice-ocean stress, y-direction
          strintx , & ! divergence of internal ice stress, x (N/m^2)
          strinty     ! divergence of internal ice stress, y (N/m^2)
 
@@ -1715,8 +1750,15 @@
             vvel(i,j)    = c0
             strintx(i,j) = c0
             strinty(i,j) = c0
-            strocnx(i,j) = c0
-            strocny(i,j) = c0
+            ! strocnx and strocny are NOT zeroed here any more, and did not need to
+            ! be in the block form either: init_history_dyn zeroes the whole array
+            ! at ice_step_mod:1061, which runs BEFORE the solver at :1067 in the same
+            ! timestep.  This branch was writing c0 over c0.
+            !
+            ! ⚠ uvel and vvel above are different -- they are state and persist
+            ! across timesteps, so their zeroing here is real.  strintx and strinty
+            ! are zeroed at :1061 too and are equally redundant, but they are still
+            ! block-shaped, so leaving them is a separate question.
          endif
 
       enddo
@@ -1759,18 +1801,18 @@
          ! combine tilt with wind stress
          if (trim(ssh_stress) == 'geostrophic') then
             ! calculate tilt from geostrophic currents if needed
-            strtltx(i,j) = -fm(i,j)*vocn(i,j)
-            strtlty(i,j) =  fm(i,j)*uocn(i,j)
+            strtltx(Xmap(ijb)) = -fm(i,j)*vocn(i,j)
+            strtlty(Xmap(ijb)) =  fm(i,j)*uocn(i,j)
          elseif (trim(ssh_stress) == 'coupled') then
-            strtltx(i,j) = -gravit*Xmass(ijb)*ss_tltx(i,j)
-            strtlty(i,j) = -gravit*Xmass(ijb)*ss_tlty(i,j)
+            strtltx(Xmap(ijb)) = -gravit*Xmass(ijb)*ss_tltx(i,j)
+            strtlty(Xmap(ijb)) = -gravit*Xmass(ijb)*ss_tlty(i,j)
          else
             call abort_ice(subname//' ERROR: unknown ssh_stress='//trim(ssh_stress), &
                file=__FILE__, line=__LINE__)
          endif
 
-         forcex(ijb) = strairx(i,j) + strtltx(i,j)
-         forcey(ijb) = strairy(i,j) + strtlty(i,j)
+         forcex(ijb) = strairx(Xmap(ijb)) + strtltx(Xmap(ijb))
+         forcey(ijb) = strairy(Xmap(ijb)) + strtlty(Xmap(ijb))
 
          ! copy, never relayout: the block arrays above keep every value, and
          ! these are read back from them so the two cannot drift apart
@@ -2494,7 +2536,7 @@
                              uvel,     vvel,     &
                              uocn,     vocn,     &
                              aiX,      fm,       &
-                             strocnx,  strocny)
+                             Xmap,     strocnx,  strocny)
 
       integer (kind=int_kind), intent(in) :: &
          nx_block, ny_block, & ! block dimensions
@@ -2516,7 +2558,13 @@
          vocn    , & ! ocean current, y-direction (m/s)
          fm          ! Coriolis param. * mass in U-cell (kg/s)
 
-      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(inout) :: &
+      ! ⚠ Compressed.  Indexed by Xmap(ijb), the block-local slot, the same
+      ! way dyn_prep2 writes them.  Their only readers are history and the
+      ! strocnT_iavg average in step_dyn_horiz, both of which take slots now.
+      integer (kind=int_kind), dimension (nx_block*ny_block), intent(in) :: &
+         Xmap        ! block-local slot of each cell
+
+      real (kind=dbl_kind), dimension (:), intent(inout) :: &
          strocnx , & ! ice-ocean stress, x-direction
          strocny     ! ice-ocean stress, y-direction
 
@@ -2556,9 +2604,9 @@
 
          ! update strocnx to most recent iterate and complete the term
          vrel = vrel * aiX(ijb)
-         strocnx(i,j) = vrel*((uocn(i,j) - uvel(i,j))*cosw &
+         strocnx(Xmap(ijb)) = vrel*((uocn(i,j) - uvel(i,j))*cosw &
                             - (vocn(i,j) - vvel(i,j))*sinw*sign(c1,fm(i,j)))
-         strocny(i,j) = vrel*((vocn(i,j) - vvel(i,j))*cosw &
+         strocny(Xmap(ijb)) = vrel*((vocn(i,j) - vvel(i,j))*cosw &
                             + (uocn(i,j) - uvel(i,j))*sinw*sign(c1,fm(i,j)))
 
          ! Hibler/Bryan stress
@@ -2922,7 +2970,7 @@
                                   stressp,    stressm,   &
                                   stress12,   strength,  &
                                   sig1,       sig2,      &
-                                  sigP)
+                                  sigP,       map)
 
       integer (kind=int_kind), intent(in) :: &
          nx_block, ny_block  ! block dimensions
@@ -2933,15 +2981,25 @@
          stress12  , & ! sigma12
          strength      ! for normalization of sig1 and sig2
 
-      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(out):: &
+      ! ⚠ Compressed.  Written at every slot this block owns, so the
+      ! consumer in accum_hist -- which cycles unmapped cells and indexes
+      ! a2D(ms,...) -- always reads a value this routine defined.
+      !
+      ! ⚠ Note the else-branch below writes spval_dbl, NOT c0.  The
+      ! dead-slot convention would be wrong for these: an inactive cell is
+      ! a fill value here, not a zero.
+      real (kind=dbl_kind), dimension (:), intent(out) :: &
          sig1    , & ! normalized principal stress component
          sig2    , & ! normalized principal stress component
          sigP        ! internal ice pressure (N/m)
 
+      integer (kind=int_kind), dimension (:), intent(in) :: &
+         map         ! block-local slot of each cell, 0 if none
+
       ! local variables
 
       integer (kind=int_kind) :: &
-         i, j
+         i, j, ms
 
       real (kind=dbl_kind) :: &
          puny
@@ -2953,23 +3011,29 @@
       if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
          file=__FILE__, line=__LINE__)
 
+      ! The inputs are still block-shaped; the outputs are slots.  A cell with
+      ! no slot is skipped -- the block form wrote spval_dbl over the whole
+      ! block, ghosts and land included, and none of that was read back:
+      ! accum_hist cycles unmapped cells before it touches sig1.
       do j = 1, ny_block
       do i = 1, nx_block
+         ms = map((j-1)*nx_block + i)
+         if (ms < 1) cycle
          if (strength(i,j) > puny) then
             ! ice internal pressure
-            sigP(i,j) = -p5*stressp(i,j)
-
+            sigP(ms) = -p5*stressp(i,j)
+      
             ! normalized principal stresses
-            sig1(i,j) = (p5*(stressp(i,j) &
-                      + sqrt(stressm(i,j)**2+c4*stress12(i,j)**2))) &
-                      / strength(i,j)
-            sig2(i,j) = (p5*(stressp(i,j) &
-                      - sqrt(stressm(i,j)**2+c4*stress12(i,j)**2))) &
-                      / strength(i,j)
+            sig1(ms) = (p5*(stressp(i,j) &
+                     + sqrt(stressm(i,j)**2+c4*stress12(i,j)**2))) &
+                     / strength(i,j)
+            sig2(ms) = (p5*(stressp(i,j) &
+                     - sqrt(stressm(i,j)**2+c4*stress12(i,j)**2))) &
+                     / strength(i,j)
          else
-            sig1(i,j) = spval_dbl
-            sig2(i,j) = spval_dbl
-            sigP(i,j) = spval_dbl
+            sig1(ms) = spval_dbl
+            sig2(ms) = spval_dbl
+            sigP(ms) = spval_dbl
          endif
       enddo
       enddo

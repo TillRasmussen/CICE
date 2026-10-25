@@ -256,7 +256,7 @@
       use ice_domain, only: nblocks, distrb_info, blocks_ice, halo_info
       use ice_domain_size, only: ncat, max_blocks
       use ice_blocks, only: nx_block, ny_block, block, get_block, nghost
-      use ice_state, only: aice0, aicen, vicen, vsnon, trcrn, &
+      use ice_state, only: aice0, aice0_slot, aicen, vicen, vsnon, trcrn, &
           uvel, vvel, uvelE, vvelN
       use ice_bound_state, only: bound_state
       use ice_grid, only: tarea, grid_ice, &
@@ -410,7 +410,7 @@
          call state_to_tracers(nx_block,            ny_block,            &
                                dynMap(:,iblk),                           &
                                ntrcr,               ntrace,              &
-                               aice0(:,:,    iblk), aicen(:,:,:,  iblk), &
+                               aice0_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), aicen(:,:,:,  iblk), &
                                trcrn(:,:,:,:,iblk),                      &
                                vicen(:,:,:,  iblk), vsnon(:,:,:,  iblk), &
                                aim(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),  &
@@ -606,7 +606,7 @@
                                 ntrcr,               ntrace,              &
                                 aim(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),  &
                                 trm(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:),&
-                                aice0(:,:,    iblk), aicen(:,:,:,  iblk), &
+                               aice0(:,:,    iblk), aice0_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), aicen(:,:,:,  iblk), &
                                 trcrn(:,:,:,:,iblk),                      &
                                 vicen(:,:,:,  iblk), vsnon(:,:,  :,iblk))
 
@@ -803,7 +803,7 @@
           ew_boundary_type, ns_boundary_type
       use ice_domain, only: blocks_ice, halo_info, nblocks, distrb_info
       use ice_domain_size, only: ncat, max_blocks
-      use ice_state, only: aice0, aicen, vicen, vsnon, trcrn, &
+      use ice_state, only: aice0, aice0_slot, aicen, vicen, vsnon, trcrn, &
           uvel, vvel, trcr_depend, trcr_base, &
           n_trcr_strata, nt_strata, uvelE, vvelN
       use ice_bound_state, only: bound_state
@@ -968,7 +968,7 @@
                              narr,                 trcr_depend,          &
                              aicen (:,:,  :,iblk), trcrn (:,:,:,:,iblk), &
                              vicen (:,:,  :,iblk), vsnon (:,:,  :,iblk), &
-                             aice0 (:,:,    iblk),                       &
+                             aice0_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                              works (dynOff(iblk)+1:dynOff(iblk)+nc+1,:))
 
          !-----------------------------------------------------------------
@@ -1001,7 +1001,7 @@
                              tmask(:,      iblk), Tf    (:,:,iblk),     &
                              aicen(:,:,  :,iblk), trcrn (:,:,:,:,iblk), &
                              vicen(:,:,  :,iblk), vsnon (:,:,  :,iblk), &
-                             aice0(:,:,    iblk),                       &
+                             aice0(:,:,    iblk), aice0_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                              works(dynOff(iblk)+1:dynOff(iblk)+nc+1,:))
 
       enddo                     ! iblk
@@ -1066,8 +1066,12 @@
       integer (kind=int_kind), dimension (:), intent(in) :: &
          map         ! this block's dynMap column
 
-      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
-         aice0       ! fractional open water area
+      ! ⚠ Compressed.  update_state writes aice0_slot in the same loop that
+      ! calls icepack_aggregate, so it is current here, and this routine no
+      ! longer walks the block to find it.  The slice is cnt+1 long: real
+      ! cells then the dead slot, which matches aim's first dimension.
+      real (kind=dbl_kind), dimension (:), intent(in) :: &
+         aice0       ! fractional open water area, this block's slots
 
       real (kind=dbl_kind), dimension (nx_block,ny_block,ncat), intent(in) :: &
          aicen   , & ! fractional ice area
@@ -1108,14 +1112,10 @@
 
       ! The dead slot is written too: it is the last element of the slice,
       ! and a stencil that lands on it must read c0.
+      ! A straight copy now: slot order on both sides, dead slot included,
+      ! so the block walk and its map lookup are gone.
       aim(:,0) = c0
-      do j = 1, ny_block
-      do i = 1, nx_block
-         ms = map((j-1)*nx_block + i)
-         if (ms < 1) cycle
-         aim(ms,0) = aice0(i,j)
-      enddo
-      enddo
+      aim(1:size(aice0),0) = aice0(:)
 
       do n = 1, ncat
 
@@ -1179,7 +1179,7 @@
                                    map,                  &
                                    ntrcr,    ntrace,     &
                                    aim,      trm,        &
-                                   aice0,    aicen,      &
+                                   aice0,    aice0_s,  aicen,      &
                                    trcrn,                &
                                    vicen,    vsnon)
 
@@ -1201,6 +1201,14 @@
 
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(inout) :: &
          aice0     ! fractional ice area
+
+      ! ⚠ BOTH layouts are written below.  The slot copy is what the
+      ! transport boundary now reads on the way in; the block copy stays
+      ! because history, restart and the thermo loops have not moved yet.
+      ! Written in the SAME loop -- one extra store per cell, not a
+      ! second traversal.
+      real (kind=dbl_kind), dimension (:), intent(inout) :: &
+         aice0_s   ! the same, this block's slots
 
       real (kind=dbl_kind), dimension (nx_block,ny_block,ncat), intent(inout) :: &
          aicen , & ! fractional ice area
@@ -1240,6 +1248,7 @@
          ms = map((j-1)*nx_block + i)
          if (ms < 1) cycle
          aice0(i,j) = aim(ms,0)
+            aice0_s(ms)  = aim(ms,0)
       enddo
       enddo
 
@@ -1695,8 +1704,9 @@
       real (kind=dbl_kind), dimension (nx_block,ny_block,ntrcr,ncat), intent(in) ::     &
          trcrn       ! ice tracers
 
-      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) ::        &
-         aice0       ! concentration of open water
+      ! compressed, as in state_to_tracers
+      real (kind=dbl_kind), dimension (:), intent(in) :: &
+         aice0       ! concentration of open water, this block's slots
 
       real (kind=dbl_kind), dimension(:,:), intent (out) ::      &
          works       ! work array, (slot, array)
@@ -1736,13 +1746,8 @@
       ! start at c0.
       works(:,:) = c0
 
-      do j = 1, ny_block
-      do i = 1, nx_block
-         ms = map((j-1)*nx_block + i)
-         if (ms < 1) cycle
-         works(ms,1) = aice0(i,j)
-      enddo
-      enddo
+      ! straight copy: slot order on both sides
+      works(1:size(aice0),1) = aice0(:)
       narrays = 1
 
       do n=1, ncat
@@ -1851,7 +1856,7 @@
                                 tmask,         Tf,       &
                                 aicen,         trcrn,    &
                                 vicen,         vsnon,    &
-                                aice0,         works)
+                                aice0,         aice0_s,  works)
 
       use ice_domain_size, only: ncat
 
@@ -1898,6 +1903,14 @@
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(out) :: &
          aice0          ! concentration of open water
 
+      ! ⚠ BOTH layouts are written below.  The slot copy is what the
+      ! transport boundary now reads on the way in; the block copy stays
+      ! because history, restart and the thermo loops have not moved yet.
+      ! Written in the SAME loop -- one extra store per cell, not a
+      ! second traversal.
+      real (kind=dbl_kind), dimension (:), intent(inout) :: &
+         aice0_s   ! the same, this block's slots
+
       ! local variables
 
       ! The nx_block*ny_block x narr copy of works that used to live here is
@@ -1922,6 +1935,7 @@
          ms = map((j-1)*nx_block + i)
          if (ms < 1) cycle
          aice0(i,j) = works(ms,1)
+            aice0_s(ms)  = works(ms,1)
       enddo
       enddo
       narrays = 1               ! aice0 is first array
