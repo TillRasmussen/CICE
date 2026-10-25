@@ -135,7 +135,9 @@ module ice_dyn_evp1d
 
   subroutine dyn_evp1d_init
 
-    use ice_grid, only: G_HTE, G_HTN
+    use ice_grid, only: G_HTE, G_HTN, dynMap, dynOff, dynCnt
+    use ice_gather_scatter, only: slot_gather_setup
+    use ice_domain, only: distrb_info
 
     implicit none
 
@@ -184,6 +186,14 @@ module ice_dyn_evp1d
       endif
 
     endif
+
+    ! ⚠ Collective, so it sits OUTSIDE the master-only block above even
+    ! though what it describes is read on the master alone.  nActive and
+    ! indxTij are master-only -- indxTij is passed allocatable for exactly
+    ! that reason -- but the probe gather and the slot-list handout both
+    ! need every task present.
+    call slot_gather_setup(dynMap, dynOff, dynCnt, indxTij, nActive, &
+                           nx, ny, master_task, distrb_info)
 
     deallocate(G_dyT,G_dxT,G_uarear,G_tmask,G_DminTarea,G_fcor,stat=ierr)
     if (ierr/=0) then
@@ -933,8 +943,7 @@ module ice_dyn_evp1d
   subroutine gather_slot_r8(A_1d, A_slot, n)
 
      use ice_communicate, only : my_task, master_task
-     use ice_gather_scatter, only : gather_globalR8_compressed
-     use ice_grid, only : dynMap, dynOff
+     use ice_gather_scatter, only : gather_slots_r8
      use ice_domain, only : distrb_info
      implicit none
 
@@ -950,22 +959,20 @@ module ice_dyn_evp1d
      real(kind=dbl_kind), dimension(:), intent(in)    :: A_slot
      integer(kind=int_kind), intent(in) :: n
 
-     integer(kind=int_kind) :: iw, i, j
 
      character(len=*), parameter :: subname = '(gather_slot_r8)'
 
-     call gather_globalR8_compressed(G_work, A_slot, dynMap, dynOff, &
-            master_task, distrb_info, c0, grid_ext=.true.)
-
-     ! indxTij, nActive and the 1d arrays exist on the master alone -- see
-     ! dyn_evp1d_init, where everything after gather_static is master-only.
-     if (my_task /= master_task) return
-
-     do iw = 1, n
-        j = int((indxTij(iw) - 1) / nx) + 1
-        i =      indxTij(iw) - (j - 1) * nx
-        A_1d(iw) = G_work(i,j)
-     end do
+     ! Was: expand A_slot back to full block shape, gather
+     ! nx_block*ny_block per block into G_work, then read the nActive cells
+     ! back out of it.  The message carried every cell of every block,
+     ! including the ones the 1-D solver never looks at.  gather_slots_r8
+     ! moves sg_nSend(iblk) values per block and lands them straight in
+     ! A_1d, so G_work is not involved at all.
+     !
+     ! indxTij, nActive and the 1d arrays still exist on the master alone;
+     ! gather_slots_r8 touches A_1d only there, which is why A_1d stays
+     ! allocatable all the way down.
+     call gather_slots_r8(A_1d, A_slot, n, master_task, distrb_info)
 
   end subroutine gather_slot_r8
 
@@ -1053,7 +1060,8 @@ module ice_dyn_evp1d
                         G_uvel      , G_vvel      ,                             &
                         G_iceTmask,  G_iceUmask)
      use ice_communicate, only : master_task
-     use ice_gather_scatter, only : gather_global, gather_globalR8_compressed
+     use ice_gather_scatter, only : gather_global, gather_globalR8_compressed, &
+          slot_gather_filter
      use ice_grid, only : dynMap, dynOff
      use ice_dyn_shared, only : strintxU_slot, strintyU_slot, &
           taubxU_slot, taubyU_slot, TbU_slot, &
@@ -1090,6 +1098,22 @@ module ice_dyn_evp1d
      ! eleven (nx,ny) automatics and then copied out one cell at a time by
      ! convert_2d_1d_dyn; the copy is now the tail of gather_slot_r8 and the
      ! globals are gone.
+     ! ⚠ The masks go FIRST, ahead of every data field.  That ordering is
+     ! what lets slot_gather_filter work without sending any indices: once
+     ! both sides hold the mask, each decides membership itself -- the task
+     ! from its own block copy, the master from the gathered global one --
+     ! and the two lists agree entry for entry.  Gathered after the data, as
+     ! they used to be, the filter would be a step behind.
+     call gather_global(G_iceTmask  ,     L_iceTmask  ,     master_task, distrb_info, grid_ext=.true.)
+     call gather_global(G_iceUmask  ,     L_iceUmask  ,     master_task, distrb_info, grid_ext=.true.)
+
+     ! evp1d_reorder decides what the word "active" means for the wire, the
+     ! same way it decides it for the kernels: off, every ocean slot moves;
+     ! on, only the slots carrying ice.
+     call slot_gather_filter(evp1d_reorder, L_iceTmask, L_iceUmask,        &
+                             G_iceTmask, G_iceUmask, indxTij, nx,          &
+                             master_task, distrb_info)
+
      call gather_slot_r8(strength, strength_slot , nActive)
      call gather_slot_r8(cdn_ocn , cdn_ocnU_slot , nActive)
      call gather_slot_r8(aiu     , aiU_slot      , nActive)
@@ -1120,8 +1144,6 @@ module ice_dyn_evp1d
         call gather_globalR8_compressed(G_taubyU    , taubyU_slot, dynMap, dynOff, &
              master_task, distrb_info, c0, grid_ext=.true.)
      endif
-     call gather_global(G_iceTmask  ,     L_iceTmask  ,     master_task, distrb_info, grid_ext=.true.)
-     call gather_global(G_iceUmask  ,     L_iceUmask  ,     master_task, distrb_info, grid_ext=.true.)
   end subroutine gather_dyn
 
 
