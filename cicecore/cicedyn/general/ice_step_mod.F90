@@ -885,7 +885,7 @@
                            aice,  trcr,  vice,  vsno, aice0, trcr_depend, &
                            trcr_base, nt_strata, n_trcr_strata , &
                              aice_slot, vice_slot, vsno_slot, aice0_slot
-        use ice_grid,  only: dynMap, dynOff
+        use ice_grid,  only: dynMap, dynOff, dynCnt, dynIJ
       use ice_bound_state, only: bound_state
       use ice_flux,  only: Tf
       use ice_timers, only: ice_timer_start, ice_timer_stop, timer_bound, timer_updstate
@@ -905,9 +905,10 @@
       integer (kind=int_kind) :: &
          iblk,  & ! block index
          i,j,   & ! horizontal indices
+         is, ij, & ! slot, and its flattened cell index
          ntrcr, & !
          nt_iage, & !
-         ms       ! slot of this cell, 0 if none
+         ms       ! global slot of this cell
 
       logical (kind=log_kind) :: &
          tr_iage  !
@@ -932,10 +933,19 @@
                         ntrcr, trcrn)
       call ice_timer_stop(timer_bound)
 
-      !$OMP PARALLEL DO PRIVATE(iblk,i,j,ms) SCHEDULE(runtime)
+      !$OMP PARALLEL DO PRIVATE(iblk,i,j,is,ij,ms) SCHEDULE(runtime)
       do iblk = 1, nblocks
-         do j = 1, ny_block
-         do i = 1, nx_block
+         ! Slot-driven.  ⚠ This drops the interior LAND cells the block loop
+         ! used to visit: dynMap covers every ocean cell plus the forced
+         ! ghost rim, so the ghost cells the comment below depends on are
+         ! still aggregated, but land inside the physical domain is not.
+         ! icepack_aggregate at a land cell returns aice=0 and aice0=1 from
+         ! aicen=0, so skipping it is only correct if the block arrays
+         ! already hold that -- which the bit-for-bit suite is what decides.
+         do is = 1, dynCnt(iblk)
+            ij = dynIJ(dynOff(iblk)+is)
+            j  = (ij-1)/nx_block + 1
+            i  = ij - (j-1)*nx_block
 
       !-----------------------------------------------------------------
       ! Aggregate the updated state variables (includes ghost cells).
@@ -967,14 +977,11 @@
               ! ⚠ Both layouts are written while the conversion is in
               ! progress.  The block forms stay authoritative for every
               ! consumer that has not moved yet.
-              ms = dynMap((j-1)*nx_block + i, iblk)
-              if (ms > 0) then
-                 ms = dynOff(iblk) + ms
-                 aice_slot (ms) = aice (i,j,iblk)
-                 vice_slot (ms) = vice (i,j,iblk)
-                 vsno_slot (ms) = vsno (i,j,iblk)
-                 aice0_slot(ms) = aice0(i,j,iblk)
-              endif
+              ms = dynOff(iblk) + is
+              aice_slot (ms) = aice (i,j,iblk)
+              vice_slot (ms) = vice (i,j,iblk)
+              vsno_slot (ms) = vsno (i,j,iblk)
+              aice0_slot(ms) = aice0(i,j,iblk)
 
 
             if (present(offset)) then
@@ -998,8 +1005,7 @@
                endif ! tr_iage
             endif ! present(offset)
 
-         enddo ! i
-         enddo ! j
+         enddo ! is
       enddo    ! iblk
       !$OMP END PARALLEL DO
 

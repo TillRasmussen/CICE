@@ -382,6 +382,7 @@
           grid_ice, grid_atm_dynu, grid_atm_dynv, grid_ocn_dynu, grid_ocn_dynv
       use ice_restoring, only: ice_restoring_halo, restore_ice
       use ice_state, only: aice, aiU, vice, vsno, aice_slot, vice_slot, vsno_slot, uvel, vvel, uvelN, vvelN, &
+          aicen_slot, vicen_slot, &
           uvelE, vvelE, divu, shear, vort, &
           aice_init, aice0, aicen, vicen, strength
       use ice_timers, only: timer_dynamics, timer_bound, &
@@ -440,6 +441,8 @@
       ! local variables
 
       integer (kind=int_kind) :: &
+         ms               , & ! slot of this cell
+         is               , & ! slot within this block
          ksub           , & ! subcycle step
          iblk           , & ! block index
          ilo,ihi,jlo,jhi, & ! beginning and end of physical domain
@@ -640,7 +643,7 @@
       endif
 
       if (trim(grid_ice) == 'B') then
-         !$OMP PARALLEL DO PRIVATE(iblk,ilo,ihi,jlo,jhi,this_block,ij,i,j) SCHEDULE(runtime)
+         !$OMP PARALLEL DO PRIVATE(iblk,ilo,ihi,jlo,jhi,this_block,ij,i,j,is,ms) SCHEDULE(runtime)
          do iblk = 1, nblocks
 
             !-----------------------------------------------------------------
@@ -698,21 +701,30 @@
             !-----------------------------------------------------------------
 
             strength(:,:,iblk) = c0  ! initialize
-            do ij = 1, icellT(iblk)
-               i = indxTi(ij, iblk)
-               j = indxTj(ij, iblk)
+            ! ⚠ skipT, not skipPhys.  icellT is built over jlo..jhi+1 x
+            ! ilo..ihi+1 -- the physical domain PLUS one north and east ghost
+            ! row, deliberately, because stresses are needed there -- and it
+            ! selects on iceTmask.  dyn_prep1 records exactly that set in
+            ! skipT, the same mask the stress kernel walks, so the slot loop
+            ! reproduces icellT cell for cell with no dynMap lookup.
+            do is = 1, dynCnt(iblk)
+               if (skipT(dynOff(iblk)+is)) cycle
+               ms = dynOff(iblk) + is
+               ij = dynIJ(ms)
+               j  = (ij-1)/nx_block + 1
+               i  = ij - (j-1)*nx_block
                call icepack_ice_strength(aice     = aice    (i,j,  iblk), &
                                          vice     = vice    (i,j,  iblk), &
                                          aice0    = aice0   (i,j,  iblk), &
-                                         aicen    = aicen   (i,j,:,iblk), &
-                                         vicen    = vicen   (i,j,:,iblk), &
+                                         aicen    = aicen_slot   (ms,:), &
+                                         vicen    = vicen_slot   (ms,:), &
                                          strength = strength(i,j,  iblk))
-            enddo  ! ij
+            enddo  ! is
 
          enddo  ! iblk
          !$OMP END PARALLEL DO
       elseif (trim(grid_ice) == 'CD' .or. grid_ice == 'C') then
-         !$OMP PARALLEL DO PRIVATE(iblk,ilo,ihi,jlo,jhi,this_block,ij,i,j) SCHEDULE(runtime)
+         !$OMP PARALLEL DO PRIVATE(iblk,ilo,ihi,jlo,jhi,this_block,ij,i,j,is,ms) SCHEDULE(runtime)
          do iblk = 1, nblocks
 
             this_block = get_block(blocks_ice(iblk),iblk)
@@ -760,16 +772,25 @@
             !-----------------------------------------------------------------
 
             strength(:,:,iblk) = c0  ! initialize
-            do ij = 1, icellT(iblk)
-               i = indxTi(ij, iblk)
-               j = indxTj(ij, iblk)
+            ! ⚠ skipT, not skipPhys.  icellT is built over jlo..jhi+1 x
+            ! ilo..ihi+1 -- the physical domain PLUS one north and east ghost
+            ! row, deliberately, because stresses are needed there -- and it
+            ! selects on iceTmask.  dyn_prep1 records exactly that set in
+            ! skipT, the same mask the stress kernel walks, so the slot loop
+            ! reproduces icellT cell for cell with no dynMap lookup.
+            do is = 1, dynCnt(iblk)
+               if (skipT(dynOff(iblk)+is)) cycle
+               ms = dynOff(iblk) + is
+               ij = dynIJ(ms)
+               j  = (ij-1)/nx_block + 1
+               i  = ij - (j-1)*nx_block
                call icepack_ice_strength(aice     = aice    (i,j,  iblk), &
                                          vice     = vice    (i,j,  iblk), &
                                          aice0    = aice0   (i,j,  iblk), &
-                                         aicen    = aicen   (i,j,:,iblk), &
-                                         vicen    = vicen   (i,j,:,iblk), &
+                                         aicen    = aicen_slot   (ms,:), &
+                                         vicen    = vicen_slot   (ms,:), &
                                          strength = strength(i,j,  iblk) )
-            enddo  ! ij
+            enddo  ! is
 
 
             !-----------------------------------------------------------------
