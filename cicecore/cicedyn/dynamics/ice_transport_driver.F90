@@ -257,10 +257,12 @@
       use ice_domain_size, only: ncat, max_blocks
       use ice_blocks, only: nx_block, ny_block, block, get_block, nghost
       use ice_state, only: aice0, aice0_slot, aicen, vicen, vsnon, trcrn, &
+           aicen_slot, vicen_slot, vsnon_slot, trcrn_slot, &
           uvel, vvel, uvelE, vvelN
       use ice_bound_state, only: bound_state
       use ice_grid, only: tarea, grid_ice, &
-          dynMap, dynOff, dynCnt, dynTot, unpack_from_slots
+          dynMap, dynOff, dynCnt, dynTot, unpack_from_slots, &
+          unpack_cat_from_slots, unpack_trc_from_slots
       use ice_calendar, only: istep1
       use ice_timers, only: ice_timer_start, ice_timer_stop, &
           timer_advect, timer_bound
@@ -410,9 +412,9 @@
          call state_to_tracers(nx_block,            ny_block,            &
                                dynMap(:,iblk),                           &
                                ntrcr,               ntrace,              &
-                               aice0_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), aicen(:,:,:,  iblk), &
-                               trcrn(:,:,:,:,iblk),                      &
-                               vicen(:,:,:,  iblk), vsnon(:,:,:,  iblk), &
+                               aice0_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
+                               trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:),                      &
+                               vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
                                aim(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),  &
                                trm(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:))
 
@@ -606,9 +608,20 @@
                                 ntrcr,               ntrace,              &
                                 aim(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),  &
                                 trm(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:),&
-                               aice0(:,:,    iblk), aice0_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), aicen(:,:,:,  iblk), &
-                                trcrn(:,:,:,:,iblk),                      &
-                                vicen(:,:,:,  iblk), vsnon(:,:,  :,iblk))
+                               aice0(:,:,    iblk), aice0_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
+                                trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:),                      &
+                                vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
+
+         ! ⚠ Transport writes the state in slot form, so the block copies it
+         ! left behind are stale.  Refresh them here: restart, history,
+         ! restoring, diagnostics and the ridge/therm islands downstream all
+         ! still read the block forms, and an island that packs block->slot
+         ! would otherwise clobber what transport just computed.  This goes
+         ! away with the last of those consumers.
+         call unpack_cat_from_slots(aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), aicen(:,:,:,iblk))
+         call unpack_cat_from_slots(vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), vicen(:,:,:,iblk))
+         call unpack_cat_from_slots(vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), vsnon(:,:,:,iblk))
+         call unpack_trc_from_slots(trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:), dynMap(:,iblk), trcrn(:,:,:,:,iblk))
 
       enddo                     ! iblk
       !$OMP END PARALLEL DO
@@ -770,7 +783,8 @@
       subroutine expand_slot_field (comp, work)
 
       use ice_domain, only: nblocks
-      use ice_grid, only: dynMap, dynOff, dynCnt, unpack_from_slots
+      use ice_grid, only: dynMap, dynOff, dynCnt, unpack_from_slots, &
+           unpack_cat_from_slots, unpack_trc_from_slots
 
       real (kind=dbl_kind), dimension (:), intent(in) :: &
          comp         ! compressed field, all local blocks
@@ -804,6 +818,7 @@
       use ice_domain, only: blocks_ice, halo_info, nblocks, distrb_info
       use ice_domain_size, only: ncat, max_blocks
       use ice_state, only: aice0, aice0_slot, aicen, vicen, vsnon, trcrn, &
+           aicen_slot, vicen_slot, vsnon_slot, trcrn_slot, &
           uvel, vvel, trcr_depend, trcr_base, &
           n_trcr_strata, nt_strata, uvelE, vvelN
       use ice_bound_state, only: bound_state
@@ -1073,13 +1088,17 @@
       real (kind=dbl_kind), dimension (:), intent(in) :: &
          aice0       ! fractional open water area, this block's slots
 
-      real (kind=dbl_kind), dimension (nx_block,ny_block,ncat), intent(in) :: &
-         aicen   , & ! fractional ice area
-         vicen   , & ! volume per unit area of ice          (m)
-         vsnon       ! volume per unit area of snow         (m)
+      ! ⚠ Compressed, like aice0 above.  ice_step_mod's icepack loops work
+      ! on these directly now, so the state arrives already in slot form and
+      ! this routine no longer walks the block to find it.  The slices are
+      ! cnt+1 long -- real cells then the dead slot -- matching aim.
+      real (kind=dbl_kind), dimension (:,:), intent(in) :: &
+         aicen   , & ! fractional ice area,         this block's slots
+         vicen   , & ! volume per unit area of ice  (m)
+         vsnon       ! volume per unit area of snow (m)
 
-      real (kind=dbl_kind), dimension (nx_block,ny_block,ntrcr,ncat), intent(in) :: &
-         trcrn       ! ice area tracers
+      real (kind=dbl_kind), dimension (:,:,:), intent(in) :: &
+         trcrn       ! ice area tracers,            this block's slots
 
       real (kind=dbl_kind), dimension (:,0:), intent(out) :: &
          aim         ! mean ice area in each grid cell
@@ -1126,12 +1145,8 @@
          ! Find grid cells where ice is present and fill area array.
          !-------------------------------------------------------------------
 
-         do j = 1, ny_block
-         do i = 1, nx_block
-            ms = map((j-1)*nx_block + i)
-            if (ms < 1) cycle
-            aim(ms,n) = aicen(i,j,n)
-         enddo
+         do ms = 1, size(aim,dim=1) - 1
+            aim(ms,n) = aicen(ms,n)
          enddo
 
          !-------------------------------------------------------------------
@@ -1146,24 +1161,20 @@
 
          kt = 2
 
-         do j = 1, ny_block
-         do i = 1, nx_block
-            ms = map((j-1)*nx_block + i)
-            if (ms < 1) cycle
+         do ms = 1, size(aim,dim=1) - 1
             if (aim(ms,n) <= puny) cycle
 
             w1 = c1 / aim(ms,n)
-            trm(ms,1,n) = vicen(i,j,n) * w1 ! hice
-            trm(ms,2,n) = vsnon(i,j,n) * w1 ! hsno
+            trm(ms,1,n) = vicen(ms,n) * w1 ! hice
+            trm(ms,2,n) = vsnon(ms,n) * w1 ! hsno
 
             do it = 1, ntrcr
                if (it >= nt_qsno .and. it < nt_qsno+nslyr) then
-                  trm(ms,kt+it,n) = trcrn(i,j,it,n) + rhos*Lfresh ! snow enthalpy
+                  trm(ms,kt+it,n) = trcrn(ms,it,n) + rhos*Lfresh ! snow enthalpy
                else
-                  trm(ms,kt+it,n) = trcrn(i,j,it,n) ! other tracers
+                  trm(ms,kt+it,n) = trcrn(ms,it,n) ! other tracers
                endif
             enddo
-         enddo
          enddo
       enddo                     ! ncat
 
@@ -1210,12 +1221,15 @@
       real (kind=dbl_kind), dimension (:), intent(inout) :: &
          aice0_s   ! the same, this block's slots
 
-      real (kind=dbl_kind), dimension (nx_block,ny_block,ncat), intent(inout) :: &
+      ! ⚠ Compressed.  The icepack loops downstream read these as slots,
+      ! so transport writes them back in slot form; the block copies are
+      ! refreshed by ice_step_mod's transitional islands, not here.
+      real (kind=dbl_kind), dimension (:,:), intent(inout) :: &
          aicen , & ! fractional ice area
          vicen , & ! volume per unit area of ice          (m)
          vsnon     ! volume per unit area of snow         (m)
 
-      real (kind=dbl_kind), dimension (nx_block,ny_block,ntrcr,ncat), intent(inout) :: &
+      real (kind=dbl_kind), dimension (:,:,:), intent(inout) :: &
          trcrn     ! tracers
 
       ! local variables
@@ -1263,24 +1277,20 @@
 
          kt = 2
 
-         do j = 1, ny_block
-         do i = 1, nx_block
-            ms = map((j-1)*nx_block + i)
-            if (ms < 1) cycle
+         do ms = 1, size(aim,dim=1) - 1
             if (aim(ms,n) <= c0) cycle
 
-            aicen(i,j,n) = aim(ms,n)
-            vicen(i,j,n) = aim(ms,n)*trm(ms,1,n) ! aice*hice
-            vsnon(i,j,n) = aim(ms,n)*trm(ms,2,n) ! aice*hsno
+            aicen(ms,n) = aim(ms,n)
+            vicen(ms,n) = aim(ms,n)*trm(ms,1,n) ! aice*hice
+            vsnon(ms,n) = aim(ms,n)*trm(ms,2,n) ! aice*hsno
 
             do it = 1, ntrcr
                if (it >= nt_qsno .and. it < nt_qsno+nslyr) then
-                  trcrn(i,j,it,n) = trm(ms,kt+it,n) - rhos*Lfresh ! snow enthalpy
+                  trcrn(ms,it,n) = trm(ms,kt+it,n) - rhos*Lfresh ! snow enthalpy
                else
-                  trcrn(i,j,it,n) = trm(ms,kt+it,n)  ! other tracers
+                  trcrn(ms,it,n) = trm(ms,kt+it,n)  ! other tracers
                endif
             enddo
-         enddo
          enddo
       enddo                     ! ncat
 

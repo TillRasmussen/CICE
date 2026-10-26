@@ -149,7 +149,8 @@
       use ice_state, only: aice, aicen
         use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys, dynMap, &
            pack_cat_to_slots, unpack_cat_from_slots, &
-           pack_trc_to_slots, unpack_trc_from_slots
+           pack_trc_to_slots, unpack_trc_from_slots, &
+           pack_to_slots, unpack_from_slots
       use ice_timers, only: ice_timer_start, ice_timer_stop, timer_sw
 
       integer (kind=int_kind), intent(in) :: &
@@ -252,7 +253,8 @@
 
         use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys, dynMap, &
            pack_cat_to_slots, unpack_cat_from_slots, &
-           pack_trc_to_slots, unpack_trc_from_slots
+           pack_trc_to_slots, unpack_trc_from_slots, &
+           pack_to_slots, unpack_from_slots
       use ice_arrays_column, only: ffracn, dhsn, &
           Cdn_ocn, Cdn_ocn_skin, Cdn_ocn_floe, Cdn_ocn_keel, Cdn_atm_ratio, &
           Cdn_atm, Cdn_atm_skin, Cdn_atm_floe, Cdn_atm_rdg, Cdn_atm_pond, &
@@ -707,11 +709,12 @@
 !          Elizabeth C. Hunke, LANL
 
       subroutine step_therm2 (dt, iblk)
-         use ice_state, only: aicen_slot, vicen_slot, vsnon_slot, trcrn_slot
+         use ice_state, only: aicen_slot, vicen_slot, vsnon_slot, trcrn_slot, aice0_slot
 
         use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys, dynMap, &
            pack_cat_to_slots, unpack_cat_from_slots, &
-           pack_trc_to_slots, unpack_trc_from_slots
+           pack_trc_to_slots, unpack_trc_from_slots, &
+           pack_to_slots, unpack_from_slots
       use ice_arrays_column, only: hin_max, ocean_bio, wave_sig_ht, &
           wave_spectrum, wavefreq, dwavefreq, &
           first_ice, &
@@ -785,10 +788,10 @@
       ! writes through intent(inout), so only one layout can be
       ! authoritative at a time.  Pack in, unpack out.  Each pair goes
       ! away when the neighbouring code converts.
-      call pack_cat_to_slots(aicen(:,:,:,iblk), dynMap(:,iblk), aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
-      call pack_cat_to_slots(vicen(:,:,:,iblk), dynMap(:,iblk), vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
-      call pack_cat_to_slots(vsnon(:,:,:,iblk), dynMap(:,iblk), vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
-      call pack_trc_to_slots(trcrn(:,:,:,:,iblk), dynMap(:,iblk), trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:))
+      call pack_to_slots(aice0(:,:,iblk), dynMap(:,iblk), aice0_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+      ! ⚠ No pack on entry: biogeochemistry runs immediately before and unpacks, so both layouts are current.
+      ! The unpack at the end stays -- restart, history, restoring,
+      ! diagnostics and ice_dyn_evp/eap still read the block forms.
 
       do is = 1, dynCnt(iblk)
          if (skipPhys(dynOff(iblk)+is)) cycle
@@ -813,7 +816,7 @@
                       aicen_init  = aicen_init (i,j,:,iblk), &
                       vicen_init  = vicen_init (i,j,:,iblk), &
                       trcrn       = trcrn_slot      (ms, :,:), &
-                      aice0       = aice0      (i,j,  iblk), &
+                      aice0       = aice0_slot      (ms), &
                       aice        = aice       (i,j,  iblk), &
                       trcr_depend = trcr_depend(:),          &
                       trcr_base   = trcr_base  (:,:),        &
@@ -862,6 +865,7 @@
 
       ! close the transitional island -- see the pack above
       call unpack_cat_from_slots(aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), aicen(:,:,:,iblk))
+      call unpack_from_slots(aice0_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), aice0(:,:,iblk))
       call unpack_cat_from_slots(vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), vicen(:,:,:,iblk))
       call unpack_cat_from_slots(vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), vsnon(:,:,:,iblk))
       call unpack_trc_from_slots(trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:), dynMap(:,iblk), trcrn(:,:,:,:,iblk))
@@ -1018,7 +1022,8 @@
 
         use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys, dynMap, &
            pack_cat_to_slots, unpack_cat_from_slots, &
-           pack_trc_to_slots, unpack_trc_from_slots
+           pack_trc_to_slots, unpack_trc_from_slots, &
+           pack_to_slots, unpack_from_slots
       use ice_arrays_column, only: wave_spectrum, wave_sig_ht, &
           d_afsd_wave, wavefreq, dwavefreq
       use ice_domain_size, only: nfreq
@@ -1058,17 +1063,9 @@
          jlo = this_block%jlo
          jhi = this_block%jhi
 
-         ! Slot-driven: the land inside the physical domain is not visited.
-         ! Every array below is still block-shaped, reached through the (i,j)
-         ! recovered from the slot.  See prep_radiation for why this is the
-         ! step that comes before converting the arrays.
-         ! ⚠ Transitional island.  This routine works on the slot forms;
-         ! everything around it still works on the block forms, and icepack
-         ! writes through intent(inout), so only one layout can be
-         ! authoritative at a time.  Pack in, unpack out.  Each pair goes
-         ! away when the neighbouring code converts.
-         call pack_cat_to_slots(aicen(:,:,:,iblk), dynMap(:,iblk), aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
-         call pack_trc_to_slots(trcrn(:,:,:,:,iblk), dynMap(:,iblk), trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:))
+         ! ⚠ No pack on entry: update_state runs before it, and bound_state packs the slots at its end.
+         ! The unpack at the end stays -- restart, history, restoring,
+         ! diagnostics and ice_dyn_evp/eap still read the block forms.
 
          do is = 1, dynCnt(iblk)
             if (skipPhys(dynOff(iblk)+is)) cycle
@@ -1114,7 +1111,8 @@
 
         use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys, dynMap, &
            pack_cat_to_slots, unpack_cat_from_slots, &
-           pack_trc_to_slots, unpack_trc_from_slots
+           pack_trc_to_slots, unpack_trc_from_slots, &
+           pack_to_slots, unpack_from_slots
       use ice_boundary, only: ice_HaloUpdate
       use ice_dyn_evp, only: evp
       use ice_dyn_eap, only: eap
@@ -1215,11 +1213,12 @@
 !          Elizabeth C. Hunke, LANL
 
       subroutine step_dyn_ridge (dt, ndtd, iblk)
-         use ice_state, only: aicen_slot, vicen_slot, vsnon_slot, trcrn_slot
+         use ice_state, only: aicen_slot, vicen_slot, vsnon_slot, trcrn_slot, aice0_slot
 
         use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys, dynMap, &
            pack_cat_to_slots, unpack_cat_from_slots, &
-           pack_trc_to_slots, unpack_trc_from_slots
+           pack_trc_to_slots, unpack_trc_from_slots, &
+           pack_to_slots, unpack_from_slots
       use ice_arrays_column, only: hin_max, first_ice
       use ice_domain_size, only: ncat
       use ice_flux, only: &
@@ -1283,10 +1282,15 @@
       ! writes through intent(inout), so only one layout can be
       ! authoritative at a time.  Pack in, unpack out.  Each pair goes
       ! away when the neighbouring code converts.
-      call pack_cat_to_slots(aicen(:,:,:,iblk), dynMap(:,iblk), aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
-      call pack_cat_to_slots(vicen(:,:,:,iblk), dynMap(:,iblk), vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
-      call pack_cat_to_slots(vsnon(:,:,:,iblk), dynMap(:,iblk), vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
-      call pack_trc_to_slots(trcrn(:,:,:,:,iblk), dynMap(:,iblk), trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:))
+      call pack_to_slots(aice0(:,:,iblk), dynMap(:,iblk), aice0_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+      ! ⚠ No pack here any more.  step_dyn_horiz runs immediately before
+      ! this in the ndtd loop and now writes the state in slot form, then
+      ! unpacks it to the block forms, so both layouts are already
+      ! current on entry.  Packing block->slot again would be redundant
+      ! work, and if transport is ever left as the sole writer it would
+      ! actively clobber what transport computed.
+      ! The unpack at the end stays: restart, history, restoring,
+      ! diagnostics and ice_dyn_evp/eap still read the block forms.
 
       do is = 1, dynCnt(iblk)
          if (skipPhys(dynOff(iblk)+is)) cycle
@@ -1313,7 +1317,7 @@
                          aicen     = aicen_slot    (ms, :), &
                          vicen     = vicen_slot    (ms, :), &
                          vsnon     = vsnon_slot    (ms, :), &
-                         aice0     = aice0    (i,j,  iblk), &
+                         aice0     = aice0_slot    (ms), &
                          dardg1dt  = dardg1dt (i,j,  iblk), &
                          dardg2dt  = dardg2dt (i,j,  iblk), &
                          dvirdgdt  = dvirdgdt (i,j,  iblk), &
@@ -1351,6 +1355,7 @@
 
       ! close the transitional island -- see the pack above
       call unpack_cat_from_slots(aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), aicen(:,:,:,iblk))
+      call unpack_from_slots(aice0_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), aice0(:,:,iblk))
       call unpack_cat_from_slots(vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), vicen(:,:,:,iblk))
       call unpack_cat_from_slots(vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), vsnon(:,:,:,iblk))
       call unpack_trc_from_slots(trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:), dynMap(:,iblk), trcrn(:,:,:,:,iblk))
@@ -1369,7 +1374,8 @@
 
         use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys, dynMap, &
            pack_cat_to_slots, unpack_cat_from_slots, &
-           pack_trc_to_slots, unpack_trc_from_slots
+           pack_trc_to_slots, unpack_trc_from_slots, &
+           pack_to_slots, unpack_from_slots
       use ice_calendar, only: nstreams
       use ice_domain_size, only: nslyr
       use ice_flux, only: snwcnt, wind, fresh, fhocn, fsloss, fsnow
@@ -1430,19 +1436,9 @@
       ! Snow redistribution and metamorphosis
       !-----------------------------------------------------------------
 
-      ! Slot-driven: the land inside the physical domain is not visited.
-      ! Every array below is still block-shaped, reached through the (i,j)
-      ! recovered from the slot.  See prep_radiation for why this is the
-      ! step that comes before converting the arrays.
-      ! ⚠ Transitional island.  This routine works on the slot forms;
-      ! everything around it still works on the block forms, and icepack
-      ! writes through intent(inout), so only one layout can be
-      ! authoritative at a time.  Pack in, unpack out.  Each pair goes
-      ! away when the neighbouring code converts.
-      call pack_cat_to_slots(aicen(:,:,:,iblk), dynMap(:,iblk), aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
-      call pack_cat_to_slots(vicen(:,:,:,iblk), dynMap(:,iblk), vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
-      call pack_cat_to_slots(vsnon(:,:,:,iblk), dynMap(:,iblk), vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
-      call pack_trc_to_slots(trcrn(:,:,:,:,iblk), dynMap(:,iblk), trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:))
+      ! ⚠ No pack on entry: update_state runs before it, and bound_state packs the slots at its end.
+      ! The unpack at the end stays -- restart, history, restoring,
+      ! diagnostics and ice_dyn_evp/eap still read the block forms.
 
       do is = 1, dynCnt(iblk)
          if (skipPhys(dynOff(iblk)+is)) cycle
@@ -1512,7 +1508,8 @@
 
         use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys, dynMap, &
            pack_cat_to_slots, unpack_cat_from_slots, &
-           pack_trc_to_slots, unpack_trc_from_slots
+           pack_trc_to_slots, unpack_trc_from_slots, &
+           pack_to_slots, unpack_from_slots
       use ice_arrays_column, only: ffracn, dhsn, &
           fswsfcn, fswintn, fswpenln, Sswabsn, Iswabsn, &
           fswthrun, fswthrun_vdr, fswthrun_vdf, fswthrun_idr, fswthrun_idf, &
@@ -1599,19 +1596,9 @@
       jlo = this_block%jlo
       jhi = this_block%jhi
 
-      ! Slot-driven: the land inside the physical domain is not visited.
-      ! Every array below is still block-shaped, reached through the (i,j)
-      ! recovered from the slot.  See prep_radiation for why this is the
-      ! step that comes before converting the arrays.
-      ! ⚠ Transitional island.  This routine works on the slot forms;
-      ! everything around it still works on the block forms, and icepack
-      ! writes through intent(inout), so only one layout can be
-      ! authoritative at a time.  Pack in, unpack out.  Each pair goes
-      ! away when the neighbouring code converts.
-      call pack_cat_to_slots(aicen(:,:,:,iblk), dynMap(:,iblk), aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
-      call pack_cat_to_slots(vicen(:,:,:,iblk), dynMap(:,iblk), vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
-      call pack_cat_to_slots(vsnon(:,:,:,iblk), dynMap(:,iblk), vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
-      call pack_trc_to_slots(trcrn(:,:,:,:,iblk), dynMap(:,iblk), trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:))
+      ! ⚠ No pack on entry: update_state runs before it, and bound_state packs the slots at its end.
+      ! The unpack at the end stays -- restart, history, restoring,
+      ! diagnostics and ice_dyn_evp/eap still read the block forms.
 
       do is = 1, dynCnt(iblk)
          if (skipPhys(dynOff(iblk)+is)) cycle
@@ -1874,11 +1861,12 @@
 !=======================================================================
 
       subroutine biogeochemistry (dt, iblk)
-         use ice_state, only: aicen_slot, vicen_slot, vsnon_slot, trcrn_slot
+         use ice_state, only: aicen_slot, vicen_slot, vsnon_slot, trcrn_slot, aice0_slot
 
         use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys, dynMap, &
            pack_cat_to_slots, unpack_cat_from_slots, &
-           pack_trc_to_slots, unpack_trc_from_slots
+           pack_trc_to_slots, unpack_trc_from_slots, &
+           pack_to_slots, unpack_from_slots
       use ice_arrays_column, only: upNO, upNH, iDi, iki, zfswin, &
                            darcy_V, grow_net,  &
                            PP_net, hbri,dhbr_bot, dhbr_top, Zoo,&
@@ -1956,10 +1944,10 @@
       ! writes through intent(inout), so only one layout can be
       ! authoritative at a time.  Pack in, unpack out.  Each pair goes
       ! away when the neighbouring code converts.
-      call pack_cat_to_slots(aicen(:,:,:,iblk), dynMap(:,iblk), aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
-      call pack_cat_to_slots(vicen(:,:,:,iblk), dynMap(:,iblk), vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
-      call pack_cat_to_slots(vsnon(:,:,:,iblk), dynMap(:,iblk), vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
-      call pack_trc_to_slots(trcrn(:,:,:,:,iblk), dynMap(:,iblk), trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:))
+      call pack_to_slots(aice0(:,:,iblk), dynMap(:,iblk), aice0_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+      ! ⚠ No pack on entry: step_therm1 runs immediately before and unpacks, so both layouts are current.
+      ! The unpack at the end stays -- restart, history, restoring,
+      ! diagnostics and ice_dyn_evp/eap still read the block forms.
 
       do is = 1, dynCnt(iblk)
          if (skipPhys(dynOff(iblk)+is)) cycle
@@ -2027,7 +2015,7 @@
                               aicen        = aicen_slot       (ms, :), &
                               vicen        = vicen_slot       (ms, :), &
                               vsnon        = vsnon_slot       (ms, :), &
-                              aice0        = aice0       (i,j,          iblk), &
+                              aice0        = aice0_slot       (ms), &
                               trcrn        = trcrn_slot       (ms, :,:), &
                               vsnon_init   = vsnon_init  (i,j,:,        iblk))
 
@@ -2043,6 +2031,7 @@
 
       ! close the transitional island -- see the pack above
       call unpack_cat_from_slots(aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), aicen(:,:,:,iblk))
+      call unpack_from_slots(aice0_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), aice0(:,:,iblk))
       call unpack_cat_from_slots(vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), vicen(:,:,:,iblk))
       call unpack_cat_from_slots(vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), vsnon(:,:,:,iblk))
       call unpack_trc_from_slots(trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:), dynMap(:,iblk), trcrn(:,:,:,:,iblk))

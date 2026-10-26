@@ -67,6 +67,9 @@
       use ice_domain_size, only: max_blocks, ncat
       use ice_blocks, only: nx_block, ny_block
       use ice_domain, only: halo_info, maskhalo_bound, nblocks
+      use ice_grid, only: dynMap, dynOff, dynCnt, &
+          pack_cat_to_slots, pack_trc_to_slots
+      use ice_state, only: aicen_slot, vicen_slot, vsnon_slot, trcrn_slot
       use ice_restoring, only: ice_restoring_halo
 
       integer (kind=int_kind), intent(in) :: &
@@ -142,6 +145,30 @@
       if (lrestore) then
          call ice_restoring_halo(setfld='state')
       endif
+
+      ! ⚠ The halo above touched the BLOCK forms only.  The compressed
+      ! copies carry the same state for every consumer that has converted
+      ! -- transport reads aicen_slot and its remap is a +/-1 stencil, so a
+      ! stale ghost slot is a wrong answer, not a rounding difference -- so
+      ! they are refreshed here rather than at each call site.
+      !
+      ! Transitional.  The end state is to halo the slot forms directly:
+      ! ice_HaloUpdate3DR8_compressed takes (slot,bundle), so ncat levels
+      ! go in ONE call and trcrn through its trcrn_flat view.  That needs
+      ! every reader of the block forms converted first, and the
+      ! maskhalo_bound branch needs its mask built from the slots.
+      !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
+      do iblk = 1, nblocks
+         call pack_cat_to_slots(aicen(:,:,:,iblk), dynMap(:,iblk), &
+              aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
+         call pack_cat_to_slots(vicen(:,:,:,iblk), dynMap(:,iblk), &
+              vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
+         call pack_cat_to_slots(vsnon(:,:,:,iblk), dynMap(:,iblk), &
+              vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
+         call pack_trc_to_slots(trcrn(:,:,:,:,iblk), dynMap(:,iblk), &
+              trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:))
+      enddo
+      !$OMP END PARALLEL DO
 
       end subroutine bound_state
 
