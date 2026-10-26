@@ -54,6 +54,8 @@
       ! ragged (compressed) layout, built here because it is derived from the
       ! grid masks; see the block of declarations further down
       public :: init_ragged_layout, set_ragged_layout, set_neighbours, &
+                pack_cat_to_slots, unpack_cat_from_slots, &
+                pack_trc_to_slots, unpack_trc_from_slots, &
                 set_slot_cells, pack_to_slots, unpack_from_slots
 
       character (len=char_len_long), public :: &
@@ -6937,6 +6939,130 @@
       enddo
 
       end subroutine unpack_from_slots
+
+!=======================================================================
+! The same two, for the per-category and per-tracer state.
+!
+! ⚠ These exist because the category arrays are genuine
+! (nx_block,ny_block,ncat,max_blocks) -- their i and j are NOT flattened,
+! unlike aice and the flux tier -- so pack_to_slots cannot be reused on a
+! rank-3 slice.
+!
+! ⚠ A BOUNDARY SHIM for a conversion in progress, not a permanent part of
+! the layout.  icepack updates aicen/vicen/vsnon/trcrn through
+! intent(inout) dummies, so the two layouts cannot both be authoritative:
+! whichever side a routine writes is the one that is current.  Every call
+! marks a place where converted code hands state to code that has not
+! moved yet -- restart, history, restoring, the unittest drivers -- and
+! each should disappear as its consumer is converted.
+
+      subroutine pack_cat_to_slots(arr, map, comp)
+
+      real (kind=dbl_kind), dimension(:,:,:), intent(in) :: &
+         arr                ! one block, (nx_block,ny_block,ncat)
+      integer (kind=int_kind), dimension(:), intent(in) :: &
+         map                ! block-local slot of each cell, 0 if not stored
+      real (kind=dbl_kind), dimension(:,:), intent(inout) :: &
+         comp               ! compressed values, (slot,ncat)
+
+      integer (kind=int_kind) :: i, j, m, n
+
+      character(len=*), parameter :: subname = '(pack_cat_to_slots)'
+
+      comp(size(comp,dim=1),:) = c0   ! the dead slot
+      do n = 1, size(arr,dim=3)
+         do j = 1, ny_block
+         do i = 1, nx_block
+            m = map((j-1)*nx_block + i)
+            if (m > 0) comp(m,n) = arr(i,j,n)
+         enddo
+         enddo
+      enddo
+
+      end subroutine pack_cat_to_slots
+
+!=======================================================================
+
+      subroutine unpack_cat_from_slots(comp, map, arr)
+
+      real (kind=dbl_kind), dimension(:,:), intent(in) :: &
+         comp               ! compressed values, (slot,ncat)
+      integer (kind=int_kind), dimension(:), intent(in) :: &
+         map
+      real (kind=dbl_kind), dimension(:,:,:), intent(inout) :: &
+         arr                ! one block, (nx_block,ny_block,ncat)
+
+      integer (kind=int_kind) :: i, j, m, n
+
+      character(len=*), parameter :: subname = '(unpack_cat_from_slots)'
+
+      do n = 1, size(arr,dim=3)
+         do j = 1, ny_block
+         do i = 1, nx_block
+            m = map((j-1)*nx_block + i)
+            if (m > 0) arr(i,j,n) = comp(m,n)
+         enddo
+         enddo
+      enddo
+
+      end subroutine unpack_cat_from_slots
+
+!=======================================================================
+
+      subroutine pack_trc_to_slots(arr, map, comp)
+
+      real (kind=dbl_kind), dimension(:,:,:,:), intent(in) :: &
+         arr                ! one block, (nx_block,ny_block,ntrcr,ncat)
+      integer (kind=int_kind), dimension(:), intent(in) :: &
+         map
+      real (kind=dbl_kind), dimension(:,:,:), intent(inout) :: &
+         comp               ! compressed values, (slot,ntrcr,ncat)
+
+      integer (kind=int_kind) :: i, j, m, n, it
+
+      character(len=*), parameter :: subname = '(pack_trc_to_slots)'
+
+      comp(size(comp,dim=1),:,:) = c0   ! the dead slot
+      do n = 1, size(arr,dim=4)
+         do it = 1, size(arr,dim=3)
+            do j = 1, ny_block
+            do i = 1, nx_block
+               m = map((j-1)*nx_block + i)
+               if (m > 0) comp(m,it,n) = arr(i,j,it,n)
+            enddo
+            enddo
+         enddo
+      enddo
+
+      end subroutine pack_trc_to_slots
+
+!=======================================================================
+
+      subroutine unpack_trc_from_slots(comp, map, arr)
+
+      real (kind=dbl_kind), dimension(:,:,:), intent(in) :: &
+         comp               ! compressed values, (slot,ntrcr,ncat)
+      integer (kind=int_kind), dimension(:), intent(in) :: &
+         map
+      real (kind=dbl_kind), dimension(:,:,:,:), intent(inout) :: &
+         arr                ! one block, (nx_block,ny_block,ntrcr,ncat)
+
+      integer (kind=int_kind) :: i, j, m, n, it
+
+      character(len=*), parameter :: subname = '(unpack_trc_from_slots)'
+
+      do n = 1, size(arr,dim=4)
+         do it = 1, size(arr,dim=3)
+            do j = 1, ny_block
+            do i = 1, nx_block
+               m = map((j-1)*nx_block + i)
+               if (m > 0) arr(i,j,it,n) = comp(m,it,n)
+            enddo
+            enddo
+         enddo
+      enddo
+
+      end subroutine unpack_trc_from_slots
 
 
 !=======================================================================

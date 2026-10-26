@@ -85,8 +85,35 @@
       !-----------------------------------------------------------------
       ! The same state in the compressed layout.
       !
-      ! Slot first, then category and tracer -- the order aim(ms,n) and
-      ! trm(ms,it,n) already use in the transport, so the two agree.
+      ! ⚠ SLOT FIRST, then category and tracer.  Three separate pieces of
+      ! infrastructure require it, which is a stronger reason than the one
+      ! this comment used to give:
+      !
+      !   - ice_HaloUpdate3DR8_compressed takes array(:,:) with the SLOT in
+      !     dimension 1 and a BUNDLE index in dimension 2.  bound_state
+      !     halo-updates aicen/vicen/vsnon/trcrn every timestep, so this is
+      !     a per-step requirement, not a corner case -- and slot-first lets
+      !     all ncat levels go in ONE bundled call.
+      !   - aim(dynTot,0:ncat) and trm(dynTot,ntrace,ncat), the transport
+      !     driver's work arrays, are slot-first, so state_to_tracers copies
+      !     run contiguous on both sides.
+      !   - the aggregate slot arrays above are already slot-indexed.
+      !
+      ! ⚠ The cost this pays is icepack's, and it is cache locality rather
+      ! than copying.  icepack takes a whole cell's categories as one
+      ! assumed-shape dummy, so with slot first those ncat (or ntrcr*ncat)
+      ! values lie dynTot apart -- a separate cache line each.  It is NOT a
+      ! copy: icepack's dummies are dimension(:) with no CONTIGUOUS
+      ! attribute anywhere in it (282 assumed-shape against 25
+      ! explicit-shape, and the one explicit dimension(0:ncat) is hin_max,
+      ! not state), so a strided actual is passed by descriptor.  An earlier
+      ! version of this comment claimed a copy-in/copy-out per call; that
+      ! was wrong, and -check noarg_temp_created in the ifx flags is
+      ! unrelated to it.
+      !
+      ! Category-first was tried on paper and rejected: it would make the
+      ! halo need a transpose into scratch every step, so it trades one
+      ! per-cell locality cost for two per-step whole-state costs.
       !
       ! ⚠ These are NOT yet the live copy.  They are the storage the
       ! loop-by-loop conversion needs before it can start: a loop that calls
@@ -112,8 +139,14 @@
          vicen_slot , & ! volume per unit area of ice  (m) (slot,ncat)
          vsnon_slot     ! volume per unit area of snow (m) (slot,ncat)
 
-      real (kind=dbl_kind), dimension(:,:,:), allocatable, public :: &
+      ! ⚠ target: ice_HaloUpdate3DR8_compressed takes rank-2 (slot,bundle),
+      ! so trcrn_slot is halo-updated through trcrn_flat, a contiguous
+      ! rank-remapped view of it -- one bundled call instead of ncat.
+      real (kind=dbl_kind), dimension(:,:,:), allocatable, target, public :: &
          trcrn_slot     ! tracers                  (slot,ntrcr,ncat)
+
+      real (kind=dbl_kind), dimension(:,:), pointer, public :: &
+         trcrn_flat => null()   ! trcrn_slot viewed as (slot, ntrcr*ncat)
 
 
       !-----------------------------------------------------------------
@@ -195,7 +228,7 @@
 
       integer (int_kind), intent(in) :: nslot   ! dynTot
 
-      integer (int_kind) :: ierr
+      integer (int_kind) :: ierr, ntrcr
       character(len=*),parameter :: subname='(alloc_state_slots)'
 
       ! ⚠ Only the aggregates, deliberately.  Holding both layouts is a
@@ -208,11 +241,22 @@
       ! which first reads it, not up front.  The declarations above are
       ! complete; this list grows as the conversion proceeds and the block
       ! forms it replaces are retired.
+      ! ntrcr is a runtime size, so it is queried here exactly as
+      ! alloc_state does rather than threaded through the caller.
+      call icepack_query_tracer_sizes(ntrcr_out=ntrcr)
+      call icepack_warnings_flush(nu_diag)
+      if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
+          file=__FILE__, line=__LINE__)
+
       allocate ( &
          aice_slot (nslot) , & ! concentration of ice on T grid
          vice_slot (nslot) , & ! volume per unit area of ice  (m)
          vsno_slot (nslot) , & ! volume per unit area of snow (m)
          aice0_slot(nslot) , & ! concentration of open water
+         aicen_slot(nslot,ncat)       , & ! concentration of ice, by category
+         vicen_slot(nslot,ncat)       , & ! ice volume  (m), by category
+         vsnon_slot(nslot,ncat)       , & ! snow volume (m), by category
+         trcrn_slot(nslot,ntrcr,ncat) , & ! tracers
          stat=ierr)
       if (ierr/=0) call abort_ice(error_message=trim(subname)//' ERROR: Out of memory', &
          file=__FILE__, line=__LINE__)
@@ -221,6 +265,14 @@
       vice_slot  = c0
       vsno_slot  = c0
       aice0_slot = c0
+      aicen_slot = c0
+      vicen_slot = c0
+      vsnon_slot = c0
+      trcrn_slot = c0
+
+      ! A contiguous rank-2 view for the bundled compressed halo.  Rank
+      ! remapping needs the target contiguous, which an allocatable is.
+      trcrn_flat(1:nslot,1:ntrcr*ncat) => trcrn_slot
 
       end subroutine alloc_state_slots
 

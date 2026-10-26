@@ -138,6 +138,7 @@
 ! authors: Elizabeth Hunke, LANL
 
       subroutine prep_radiation (iblk)
+         use ice_state, only: aicen_slot
 
       use ice_flux, only: scale_factor, swvdr, swvdf, swidr, swidf, &
           alvdr_ai, alvdf_ai, alidr_ai, alidf_ai, &
@@ -146,7 +147,9 @@
            fswthrun, fswthrun_vdr, fswthrun_vdf, fswthrun_idr, fswthrun_idf, &
            fswpenln, Sswabsn, Iswabsn
       use ice_state, only: aice, aicen
-        use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys
+        use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys, dynMap, &
+           pack_cat_to_slots, unpack_cat_from_slots, &
+           pack_trc_to_slots, unpack_trc_from_slots
       use ice_timers, only: ice_timer_start, ice_timer_stop, timer_sw
 
       integer (kind=int_kind), intent(in) :: &
@@ -157,7 +160,7 @@
       integer (kind=int_kind) :: &
          ilo,ihi,jlo,jhi, & ! beginning and end of physical domain
          i, j,            & ! horizontal indices
-         is, ij             ! slot, and its flattened cell index
+         is, ij, ms             ! slot, and its flattened cell index
 
       type (block) :: &
          this_block      ! block information for current block
@@ -190,11 +193,19 @@
            ! ⚠ Bit-for-bit only if icepack_prep_radiation at a land cell
            ! leaves exactly what is already there.  That is a question for
            ! the suite, not for inspection.
+           ! ⚠ Transitional island.  This routine works on the slot forms;
+           ! everything around it still works on the block forms, and icepack
+           ! writes through intent(inout), so only one layout can be
+           ! authoritative at a time.  Pack in, unpack out.  Each pair goes
+           ! away when the neighbouring code converts.
+           call pack_cat_to_slots(aicen(:,:,:,iblk), dynMap(:,iblk), aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
+
            do is = 1, dynCnt(iblk)
               if (skipPhys(dynOff(iblk)+is)) cycle
               ij = dynIJ(dynOff(iblk)+is)
               j  = (ij-1)/nx_block + 1
               i  = ij - (j-1)*nx_block
+              ms = dynOff(iblk) + is
 
             alvdr_init(i,j,iblk) = alvdr_ai(i,j,iblk)
             alvdf_init(i,j,iblk) = alvdf_ai(i,j,iblk)
@@ -202,7 +213,7 @@
             alidf_init(i,j,iblk) = alidf_ai(i,j,iblk)
 
             call icepack_prep_radiation (scale_factor=scale_factor(i,j,iblk),                 &
-                        aice     = aice    (i,j,    iblk), aicen    = aicen   (i,j,  :,iblk), &
+                        aice     = aice    (i,j,    iblk), aicen    = aicen_slot   (ms, :), &
                         swvdr    = swvdr   (i,j,    iblk), swvdf    = swvdf   (i,j,    iblk), &
                         swidr    = swidr   (i,j,    iblk), swidf    = swidf   (i,j,    iblk), &
                         alvdr_ai = alvdr_ai(i,j,    iblk), alvdf_ai = alvdf_ai(i,j,    iblk), &
@@ -224,6 +235,9 @@
 
       call ice_timer_stop(timer_sw,iblk)     ! shortwave
 
+           ! close the transitional island -- see the pack above
+           call unpack_cat_from_slots(aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), aicen(:,:,:,iblk))
+
       end subroutine prep_radiation
 
 !=======================================================================
@@ -234,8 +248,11 @@
 ! authors: William H. Lipscomb, LANL
 
       subroutine step_therm1 (dt, iblk)
+         use ice_state, only: aicen_slot, vicen_slot, vsnon_slot, trcrn_slot
 
-        use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys
+        use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys, dynMap, &
+           pack_cat_to_slots, unpack_cat_from_slots, &
+           pack_trc_to_slots, unpack_trc_from_slots
       use ice_arrays_column, only: ffracn, dhsn, &
           Cdn_ocn, Cdn_ocn_skin, Cdn_ocn_floe, Cdn_ocn_keel, Cdn_atm_ratio, &
           Cdn_atm, Cdn_atm_skin, Cdn_atm_floe, Cdn_atm_rdg, Cdn_atm_pond, &
@@ -265,7 +282,7 @@
       use ice_state, only: aice, aicen, aicen_init, vicen_init, &
           vice, vicen, vsno, vsnon, trcrn, vsnon_init
 #ifdef CICE_IN_NEMO
-      use ice_state, only: aice_init3d
+      use ice_state, only: aice_init
 #endif
 
 #ifdef CESMCOUPLED
@@ -286,7 +303,7 @@
          raice              ! reciprocal of ice concentration
 #endif
       integer (kind=int_kind) :: &
-         is, ij, & ! slot, and its flattened cell index
+         is, ij, ms, & ! slot, and its flattened cell index
          ilo,ihi,jlo,jhi, & ! beginning and end of physical domain
          i, j           , & ! horizontal indices
          n              , & ! thickness category index
@@ -348,25 +365,51 @@
       aeroice(:,:,:) = c0
 
 #ifdef CICE_IN_NEMO
-      do j = 1, ny_block
-      do i = 1, nx_block
 
       !---------------------------------------------------------------
       ! Scale frain and fsnow by ice concentration as these fields
       ! are supplied by NEMO multiplied by ice concentration
       !---------------------------------------------------------------
 
-         if (aice_init3d(i,j,iblk) > puny) then
-            raice           = c1 / aice_init3d(i,j,iblk)
+      ! Slot-driven, like every other loop in this routine.  aice_init is
+      ! read in its compressed form rather than through the aice_init3d
+      ! rank-3 pointer shim; frain and fsnow are still block-shaped coupler
+      ! fields, reached through the (i,j) recovered from the slot.
+      !
+      ! ⚠ This changes which cells are visited.  The block loop walked the
+      ! WHOLE block -- ghost cells and the land inside the physical domain
+      ! included -- and zeroed frain/fsnow wherever aice_init was below
+      ! puny.  The slot loop skips interior land, so such a cell keeps what
+      ! NEMO delivered rather than being zeroed here.  That is the same
+      ! assumption the other converted loops in this routine already make,
+      ! but this one cannot be checked locally: CICE_IN_NEMO is a coupled
+      ! driver path and no configuration in the local harness compiles it.
+
+      ! ⚠ Transitional island.  This routine works on the slot forms;
+      ! everything around it still works on the block forms, and icepack
+      ! writes through intent(inout), so only one layout can be
+      ! authoritative at a time.  Pack in, unpack out.  Each pair goes
+      ! away when the neighbouring code converts.
+      call pack_cat_to_slots(aicen(:,:,:,iblk), dynMap(:,iblk), aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
+      call pack_cat_to_slots(vicen(:,:,:,iblk), dynMap(:,iblk), vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
+      call pack_cat_to_slots(vsnon(:,:,:,iblk), dynMap(:,iblk), vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
+      call pack_trc_to_slots(trcrn(:,:,:,:,iblk), dynMap(:,iblk), trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:))
+
+      do is = 1, dynCnt(iblk)
+         if (skipPhys(dynOff(iblk)+is)) cycle
+         ij = dynIJ(dynOff(iblk)+is)
+         j  = (ij-1)/nx_block + 1
+         i  = ij - (j-1)*nx_block
+         ms = dynOff(iblk) + is
+         if (aice_init(ij,iblk) > puny) then
+            raice           = c1 / aice_init(ij,iblk)
             frain(i,j,iblk) = frain(i,j,iblk)*raice
             fsnow(i,j,iblk) = fsnow(i,j,iblk)*raice
          else
             frain(i,j,iblk) = c0
             fsnow(i,j,iblk) = c0
          endif
-
-      enddo ! i
-      enddo ! j
+      enddo
 #endif
 
       this_block = get_block(blocks_ice(iblk),iblk)
@@ -384,13 +427,14 @@
          ij = dynIJ(dynOff(iblk)+is)
          j  = (ij-1)/nx_block + 1
          i  = ij - (j-1)*nx_block
+         ms = dynOff(iblk) + is
 
          if (snwgrain) then
             do n = 1, ncat
                do k = 1, nslyr
-                  rsnwn (k,n) = trcrn(i,j,nt_rsnw +k-1,n,iblk)
-                  smicen(k,n) = trcrn(i,j,nt_smice+k-1,n,iblk)
-                  smliqn(k,n) = trcrn(i,j,nt_smliq+k-1,n,iblk)
+                  rsnwn (k,n) = trcrn_slot(ms, nt_rsnw +k-1,n)
+                  smicen(k,n) = trcrn_slot(ms, nt_smice+k-1,n)
+                  smliqn(k,n) = trcrn_slot(ms, nt_smliq+k-1,n)
                enddo
             enddo
          endif ! snwgrain
@@ -398,8 +442,8 @@
          if (tr_iso) then ! trcrn(nt_iso*) has units kg/m^3
             do n=1,ncat
                do k=1,n_iso
-                  isosno(k,n) = trcrn(i,j,nt_isosno+k-1,n,iblk) * vsnon_init(i,j,n,iblk)
-                  isoice(k,n) = trcrn(i,j,nt_isoice+k-1,n,iblk) * vicen_init(i,j,n,iblk)
+                  isosno(k,n) = trcrn_slot(ms, nt_isosno+k-1,n) * vsnon_init(i,j,n,iblk)
+                  isoice(k,n) = trcrn_slot(ms, nt_isoice+k-1,n) * vicen_init(i,j,n,iblk)
                enddo
             enddo
          endif ! tr_iso
@@ -408,10 +452,10 @@
             do n=1,ncat
                do k=1,n_aero
                   aerosno (k,:,n) = &
-                     trcrn(i,j,nt_aero+(k-1)*4  :nt_aero+(k-1)*4+1,n,iblk) &
+                     trcrn_slot(ms, nt_aero+(k-1)*4  :nt_aero+(k-1)*4+1,n) &
                                   * vsnon_init(i,j,n,iblk)
                   aeroice (k,:,n) = &
-                     trcrn(i,j,nt_aero+(k-1)*4+2:nt_aero+(k-1)*4+3,n,iblk) &
+                     trcrn_slot(ms, nt_aero+(k-1)*4+2:nt_aero+(k-1)*4+3,n) &
                                   * vicen_init(i,j,n,iblk)
                enddo
             enddo
@@ -424,25 +468,25 @@
                       vicen_init   = vicen_init  (i,j,:,iblk), &
                       vsnon_init   = vsnon_init  (i,j,:,iblk), &
                       aice         = aice        (i,j,  iblk), &
-                      aicen        = aicen       (i,j,:,iblk), &
+                      aicen        = aicen_slot       (ms, :), &
                       vice         = vice        (i,j,  iblk), &
-                      vicen        = vicen       (i,j,:,iblk), &
+                      vicen        = vicen_slot       (ms, :), &
                       vsno         = vsno        (i,j,  iblk), &
-                      vsnon        = vsnon       (i,j,:,iblk), &
+                      vsnon        = vsnon_slot       (ms, :), &
                       uvel         = uvelT_icep  (i,j,  iblk), &
                       vvel         = vvelT_icep  (i,j,  iblk), &
-                      Tsfc         = trcrn       (i,j,nt_Tsfc,:,iblk),                   &
-                      zqsn         = trcrn       (i,j,nt_qsno:nt_qsno+nslyr-1,:,iblk),   &
-                      zqin         = trcrn       (i,j,nt_qice:nt_qice+nilyr-1,:,iblk),   &
-                      zSin         = trcrn       (i,j,nt_sice:nt_sice+nilyr-1,:,iblk),   &
-                      alvl         = trcrn       (i,j,nt_alvl,:,iblk),                   &
-                      vlvl         = trcrn       (i,j,nt_vlvl,:,iblk),                   &
-                      apnd         = trcrn       (i,j,nt_apnd,:,iblk),                   &
-                      hpnd         = trcrn       (i,j,nt_hpnd,:,iblk),                   &
-                      ipnd         = trcrn       (i,j,nt_ipnd,:,iblk),                   &
-                      iage         = trcrn       (i,j,nt_iage,:,iblk),                   &
-                      FY           = trcrn       (i,j,nt_FY  ,:,iblk),                   &
-                      afsdn        = trcrn       (i,j,nt_fsd:nt_fsd+nfsd-1,:,iblk),      &
+                      Tsfc         = trcrn_slot       (ms, nt_Tsfc,:),                   &
+                      zqsn         = trcrn_slot       (ms, nt_qsno:nt_qsno+nslyr-1,:),   &
+                      zqin         = trcrn_slot       (ms, nt_qice:nt_qice+nilyr-1,:),   &
+                      zSin         = trcrn_slot       (ms, nt_sice:nt_sice+nilyr-1,:),   &
+                      alvl         = trcrn_slot       (ms, nt_alvl,:),                   &
+                      vlvl         = trcrn_slot       (ms, nt_vlvl,:),                   &
+                      apnd         = trcrn_slot       (ms, nt_apnd,:),                   &
+                      hpnd         = trcrn_slot       (ms, nt_hpnd,:),                   &
+                      ipnd         = trcrn_slot       (ms, nt_ipnd,:),                   &
+                      iage         = trcrn_slot       (ms, nt_iage,:),                   &
+                      FY           = trcrn_slot       (ms, nt_FY  ,:),                   &
+                      afsdn        = trcrn_slot       (ms, nt_fsd:nt_fsd+nfsd-1,:),      &
                       rsnwn        = rsnwn       (:,:),        &
                       smicen       = smicen      (:,:),        &
                       smliqn       = smliqn      (:,:),        &
@@ -606,36 +650,36 @@
          if (snwgrain) then
             do n = 1, ncat
                do k = 1, nslyr
-                  trcrn(i,j,nt_rsnw +k-1,n,iblk) = rsnwn (k,n)
-                  trcrn(i,j,nt_smice+k-1,n,iblk) = smicen(k,n)
-                  trcrn(i,j,nt_smliq+k-1,n,iblk) = smliqn(k,n)
+                  trcrn_slot(ms, nt_rsnw +k-1,n) = rsnwn (k,n)
+                  trcrn_slot(ms, nt_smice+k-1,n) = smicen(k,n)
+                  trcrn_slot(ms, nt_smliq+k-1,n) = smliqn(k,n)
                enddo
             enddo
          endif ! snwgrain
 
          if (tr_iso) then
             do n = 1, ncat
-               if (vicen(i,j,n,iblk) > puny) &
-                  isoice(:,n) = isoice(:,n)/vicen(i,j,n,iblk)
-               if (vsnon(i,j,n,iblk) > puny) &
-                  isosno(:,n) = isosno(:,n)/vsnon(i,j,n,iblk)
+               if (vicen_slot(ms, n) > puny) &
+                  isoice(:,n) = isoice(:,n)/vicen_slot(ms, n)
+               if (vsnon_slot(ms, n) > puny) &
+                  isosno(:,n) = isosno(:,n)/vsnon_slot(ms, n)
                do k = 1, n_iso
-                  trcrn(i,j,nt_isosno+k-1,n,iblk) = isosno(k,n)
-                  trcrn(i,j,nt_isoice+k-1,n,iblk) = isoice(k,n)
+                  trcrn_slot(ms, nt_isosno+k-1,n) = isosno(k,n)
+                  trcrn_slot(ms, nt_isoice+k-1,n) = isoice(k,n)
                enddo
             enddo
          endif ! tr_iso
 
          if (tr_aero) then
             do n = 1, ncat
-               if (vicen(i,j,n,iblk) > puny) &
-                  aeroice(:,:,n) = aeroice(:,:,n)/vicen(i,j,n,iblk)
-               if (vsnon(i,j,n,iblk) > puny) &
-                  aerosno(:,:,n) = aerosno(:,:,n)/vsnon(i,j,n,iblk)
+               if (vicen_slot(ms, n) > puny) &
+                  aeroice(:,:,n) = aeroice(:,:,n)/vicen_slot(ms, n)
+               if (vsnon_slot(ms, n) > puny) &
+                  aerosno(:,:,n) = aerosno(:,:,n)/vsnon_slot(ms, n)
                do k = 1, n_aero
                   do kk = 1, 2
-                     trcrn(i,j,nt_aero+(k-1)*4+kk-1,n,iblk)=aerosno(k,kk,n)
-                     trcrn(i,j,nt_aero+(k-1)*4+kk+1,n,iblk)=aeroice(k,kk,n)
+                     trcrn_slot(ms, nt_aero+(k-1)*4+kk-1,n)=aerosno(k,kk,n)
+                     trcrn_slot(ms, nt_aero+(k-1)*4+kk+1,n)=aeroice(k,kk,n)
                   enddo
                enddo
             enddo
@@ -647,6 +691,12 @@
       if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
          file=__FILE__, line=__LINE__)
 
+      ! close the transitional island -- see the pack above
+      call unpack_cat_from_slots(aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), aicen(:,:,:,iblk))
+      call unpack_cat_from_slots(vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), vicen(:,:,:,iblk))
+      call unpack_cat_from_slots(vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), vsnon(:,:,:,iblk))
+      call unpack_trc_from_slots(trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:), dynMap(:,iblk), trcrn(:,:,:,:,iblk))
+
       end subroutine step_therm1
 
 !=======================================================================
@@ -657,8 +707,11 @@
 !          Elizabeth C. Hunke, LANL
 
       subroutine step_therm2 (dt, iblk)
+         use ice_state, only: aicen_slot, vicen_slot, vsnon_slot, trcrn_slot
 
-        use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys
+        use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys, dynMap, &
+           pack_cat_to_slots, unpack_cat_from_slots, &
+           pack_trc_to_slots, unpack_trc_from_slots
       use ice_arrays_column, only: hin_max, ocean_bio, wave_sig_ht, &
           wave_spectrum, wavefreq, dwavefreq, &
           first_ice, &
@@ -683,7 +736,7 @@
       ! local variables
 
       integer (kind=int_kind) :: &
-         is, ij, & ! slot, and its flattened cell index
+         is, ij, ms, & ! slot, and its flattened cell index
          ilo,ihi,jlo,jhi, & ! beginning and end of physical domain
          i, j               ! horizontal indices
 
@@ -727,11 +780,22 @@
       ! Every array below is still block-shaped, reached through the (i,j)
       ! recovered from the slot.  See prep_radiation for why this is the
       ! step that comes before converting the arrays.
+      ! ⚠ Transitional island.  This routine works on the slot forms;
+      ! everything around it still works on the block forms, and icepack
+      ! writes through intent(inout), so only one layout can be
+      ! authoritative at a time.  Pack in, unpack out.  Each pair goes
+      ! away when the neighbouring code converts.
+      call pack_cat_to_slots(aicen(:,:,:,iblk), dynMap(:,iblk), aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
+      call pack_cat_to_slots(vicen(:,:,:,iblk), dynMap(:,iblk), vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
+      call pack_cat_to_slots(vsnon(:,:,:,iblk), dynMap(:,iblk), vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
+      call pack_trc_to_slots(trcrn(:,:,:,:,iblk), dynMap(:,iblk), trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:))
+
       do is = 1, dynCnt(iblk)
          if (skipPhys(dynOff(iblk)+is)) cycle
          ij = dynIJ(dynOff(iblk)+is)
          j  = (ij-1)/nx_block + 1
          i  = ij - (j-1)*nx_block
+         ms = dynOff(iblk) + is
 
          if (tmask((j-1)*nx_block+i,iblk) .or. opmask((j-1)*nx_block+i,iblk)) then
 
@@ -743,12 +807,12 @@
 
          call icepack_step_therm2(dt=dt,                     &
                       hin_max     = hin_max    (:),          &
-                      aicen       = aicen      (i,j,:,iblk), &
-                      vicen       = vicen      (i,j,:,iblk), &
-                      vsnon       = vsnon      (i,j,:,iblk), &
+                      aicen       = aicen_slot      (ms, :), &
+                      vicen       = vicen_slot      (ms, :), &
+                      vsnon       = vsnon_slot      (ms, :), &
                       aicen_init  = aicen_init (i,j,:,iblk), &
                       vicen_init  = vicen_init (i,j,:,iblk), &
-                      trcrn       = trcrn      (i,j,:,:,iblk), &
+                      trcrn       = trcrn_slot      (ms, :,:), &
                       aice0       = aice0      (i,j,  iblk), &
                       aice        = aice       (i,j,  iblk), &
                       trcr_depend = trcr_depend(:),          &
@@ -795,6 +859,12 @@
       call icepack_warnings_flush(nu_diag)
       if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
          file=__FILE__, line=__LINE__)
+
+      ! close the transitional island -- see the pack above
+      call unpack_cat_from_slots(aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), aicen(:,:,:,iblk))
+      call unpack_cat_from_slots(vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), vicen(:,:,:,iblk))
+      call unpack_cat_from_slots(vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), vsnon(:,:,:,iblk))
+      call unpack_trc_from_slots(trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:), dynMap(:,iblk), trcrn(:,:,:,:,iblk))
 
       end subroutine step_therm2
 
@@ -944,8 +1014,11 @@
 !          Elizabeth C. Hunke, LANL
 
       subroutine step_dyn_wave (dt)
+         use ice_state, only: aicen_slot, trcrn_slot
 
-        use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys
+        use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys, dynMap, &
+           pack_cat_to_slots, unpack_cat_from_slots, &
+           pack_trc_to_slots, unpack_trc_from_slots
       use ice_arrays_column, only: wave_spectrum, wave_sig_ht, &
           d_afsd_wave, wavefreq, dwavefreq
       use ice_domain_size, only: nfreq
@@ -962,7 +1035,7 @@
          this_block      ! block information for current block
 
       integer (kind=int_kind) :: &
-         is, ij, & ! slot, and its flattened cell index
+         is, ij, ms, & ! slot, and its flattened cell index
          ilo,ihi,jlo,jhi, & ! beginning and end of physical domain
          iblk,            & ! block index
          i, j               ! horizontal indices
@@ -976,7 +1049,7 @@
       if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
          file=__FILE__, line=__LINE__)
 
-      !$OMP PARALLEL DO PRIVATE(iblk,i,j,is,ij,ilo,ihi,jlo,jhi,this_block)
+      !$OMP PARALLEL DO PRIVATE(iblk,i,j,is,ij,ms,ilo,ihi,jlo,jhi,this_block)
       do iblk = 1, nblocks
 
          this_block = get_block(blocks_ice(iblk),iblk)
@@ -989,28 +1062,42 @@
          ! Every array below is still block-shaped, reached through the (i,j)
          ! recovered from the slot.  See prep_radiation for why this is the
          ! step that comes before converting the arrays.
+         ! ⚠ Transitional island.  This routine works on the slot forms;
+         ! everything around it still works on the block forms, and icepack
+         ! writes through intent(inout), so only one layout can be
+         ! authoritative at a time.  Pack in, unpack out.  Each pair goes
+         ! away when the neighbouring code converts.
+         call pack_cat_to_slots(aicen(:,:,:,iblk), dynMap(:,iblk), aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
+         call pack_trc_to_slots(trcrn(:,:,:,:,iblk), dynMap(:,iblk), trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:))
+
          do is = 1, dynCnt(iblk)
             if (skipPhys(dynOff(iblk)+is)) cycle
             ij = dynIJ(dynOff(iblk)+is)
             j  = (ij-1)/nx_block + 1
             i  = ij - (j-1)*nx_block
+            ms = dynOff(iblk) + is
             d_afsd_wave(i,j,:,iblk) = c0
             call icepack_step_wavefracture(dt = dt, nfreq = nfreq,                      &
                                            aice        = aice           (i,j,    iblk), &
                                            vice        = vice           (i,j,    iblk), &
-                                           aicen       = aicen          (i,j,:,  iblk), &
+                                           aicen       = aicen_slot          (ms, :), &
                                            wave_spectrum = wave_spectrum(i,j,:,  iblk), &
                                            wavefreq    = wavefreq       (:),            &
                                            dwavefreq   = dwavefreq      (:),            &
-                                           trcrn       = trcrn          (i,j,:,:,iblk), &
+                                           trcrn       = trcrn_slot          (ms, :,:), &
                                            d_afsd_wave = d_afsd_wave    (i,j,:,  iblk), &
                                            wave_height = wave_sig_ht    (i,j,    iblk))
          enddo   ! is
+         ! close the transitional island -- INSIDE the iblk loop, because
+         ! this routine loops over blocks itself rather than taking iblk.
+         call unpack_cat_from_slots(aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), aicen(:,:,:,iblk))
+         call unpack_trc_from_slots(trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:), dynMap(:,iblk), trcrn(:,:,:,:,iblk))
       end do    ! iblk
       !$OMP END PARALLEL DO
 
       call ice_timer_stop(timer_fsd)
       call ice_timer_stop(timer_column)
+
 
       end subroutine step_dyn_wave
 
@@ -1025,7 +1112,9 @@
 
       subroutine step_dyn_horiz (dt)
 
-        use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys
+        use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys, dynMap, &
+           pack_cat_to_slots, unpack_cat_from_slots, &
+           pack_trc_to_slots, unpack_trc_from_slots
       use ice_boundary, only: ice_HaloUpdate
       use ice_dyn_evp, only: evp
       use ice_dyn_eap, only: eap
@@ -1126,8 +1215,11 @@
 !          Elizabeth C. Hunke, LANL
 
       subroutine step_dyn_ridge (dt, ndtd, iblk)
+         use ice_state, only: aicen_slot, vicen_slot, vsnon_slot, trcrn_slot
 
-        use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys
+        use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys, dynMap, &
+           pack_cat_to_slots, unpack_cat_from_slots, &
+           pack_trc_to_slots, unpack_trc_from_slots
       use ice_arrays_column, only: hin_max, first_ice
       use ice_domain_size, only: ncat
       use ice_flux, only: &
@@ -1156,7 +1248,7 @@
          this_block      ! block information for current block
 
       integer (kind=int_kind) :: &
-         is, ij, & ! slot, and its flattened cell index
+         is, ij, ms, & ! slot, and its flattened cell index
          ilo,ihi,jlo,jhi, & ! beginning and end of physical domain
          i, j,            & ! horizontal indices
          ntrcr,           & !
@@ -1186,14 +1278,25 @@
       ! Every array below is still block-shaped, reached through the (i,j)
       ! recovered from the slot.  See prep_radiation for why this is the
       ! step that comes before converting the arrays.
+      ! ⚠ Transitional island.  This routine works on the slot forms;
+      ! everything around it still works on the block forms, and icepack
+      ! writes through intent(inout), so only one layout can be
+      ! authoritative at a time.  Pack in, unpack out.  Each pair goes
+      ! away when the neighbouring code converts.
+      call pack_cat_to_slots(aicen(:,:,:,iblk), dynMap(:,iblk), aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
+      call pack_cat_to_slots(vicen(:,:,:,iblk), dynMap(:,iblk), vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
+      call pack_cat_to_slots(vsnon(:,:,:,iblk), dynMap(:,iblk), vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
+      call pack_trc_to_slots(trcrn(:,:,:,:,iblk), dynMap(:,iblk), trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:))
+
       do is = 1, dynCnt(iblk)
          if (skipPhys(dynOff(iblk)+is)) cycle
          ij = dynIJ(dynOff(iblk)+is)
          j  = (ij-1)/nx_block + 1
          i  = ij - (j-1)*nx_block
+         ms = dynOff(iblk) + is
 
 !echmod: this changes the answers, continue using tmask for now
-!      call aggregate_area (ncat, aicen(i,j,:,iblk), atmp, atmp0)
+!      call aggregate_area (ncat, aicen_slot(ms, :), atmp, atmp0)
 !      if (atmp > c0) then
 
          if (tmask((j-1)*nx_block+i,iblk)) then
@@ -1204,12 +1307,12 @@
                          trcr_base     = trcr_base    (:,:),&
                          n_trcr_strata = n_trcr_strata(:),  &
                          nt_strata     = nt_strata    (:,:),&
-                         trcrn     = trcrn    (i,j,:,:,iblk), &
+                         trcrn     = trcrn_slot    (ms, :,:), &
                          rdg_conv  = rdg_conv ((j-1)*nx_block+i,iblk), &
                          rdg_shear = rdg_shear((j-1)*nx_block+i,iblk), &
-                         aicen     = aicen    (i,j,:,iblk), &
-                         vicen     = vicen    (i,j,:,iblk), &
-                         vsnon     = vsnon    (i,j,:,iblk), &
+                         aicen     = aicen_slot    (ms, :), &
+                         vicen     = vicen_slot    (ms, :), &
+                         vsnon     = vsnon_slot    (ms, :), &
                          aice0     = aice0    (i,j,  iblk), &
                          dardg1dt  = dardg1dt (i,j,  iblk), &
                          dardg2dt  = dardg2dt (i,j,  iblk), &
@@ -1246,6 +1349,12 @@
       call ice_timer_stop(timer_ridge,iblk)
       call ice_timer_stop(timer_column,iblk)
 
+      ! close the transitional island -- see the pack above
+      call unpack_cat_from_slots(aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), aicen(:,:,:,iblk))
+      call unpack_cat_from_slots(vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), vicen(:,:,:,iblk))
+      call unpack_cat_from_slots(vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), vsnon(:,:,:,iblk))
+      call unpack_trc_from_slots(trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:), dynMap(:,iblk), trcrn(:,:,:,:,iblk))
+
       end subroutine step_dyn_ridge
 
 !=======================================================================
@@ -1256,8 +1365,11 @@
 !          Nicole Jeffery, LANL
 
       subroutine step_snow (dt, iblk)
+         use ice_state, only: aicen_slot, vicen_slot, vsnon_slot, trcrn_slot
 
-        use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys
+        use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys, dynMap, &
+           pack_cat_to_slots, unpack_cat_from_slots, &
+           pack_trc_to_slots, unpack_trc_from_slots
       use ice_calendar, only: nstreams
       use ice_domain_size, only: nslyr
       use ice_flux, only: snwcnt, wind, fresh, fhocn, fsloss, fsnow
@@ -1273,7 +1385,7 @@
       ! local variables
 
       integer (kind=int_kind) :: &
-         is, ij, & ! slot, and its flattened cell index
+         is, ij, ms, & ! slot, and its flattened cell index
          nt_smice, nt_smliq, nt_rsnw, &
          nt_Tsfc, nt_qice, nt_sice, nt_qsno, &
          nt_alvl, nt_vlvl, nt_rhos
@@ -1322,28 +1434,39 @@
       ! Every array below is still block-shaped, reached through the (i,j)
       ! recovered from the slot.  See prep_radiation for why this is the
       ! step that comes before converting the arrays.
+      ! ⚠ Transitional island.  This routine works on the slot forms;
+      ! everything around it still works on the block forms, and icepack
+      ! writes through intent(inout), so only one layout can be
+      ! authoritative at a time.  Pack in, unpack out.  Each pair goes
+      ! away when the neighbouring code converts.
+      call pack_cat_to_slots(aicen(:,:,:,iblk), dynMap(:,iblk), aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
+      call pack_cat_to_slots(vicen(:,:,:,iblk), dynMap(:,iblk), vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
+      call pack_cat_to_slots(vsnon(:,:,:,iblk), dynMap(:,iblk), vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
+      call pack_trc_to_slots(trcrn(:,:,:,:,iblk), dynMap(:,iblk), trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:))
+
       do is = 1, dynCnt(iblk)
          if (skipPhys(dynOff(iblk)+is)) cycle
          ij = dynIJ(dynOff(iblk)+is)
          j  = (ij-1)/nx_block + 1
          i  = ij - (j-1)*nx_block
+         ms = dynOff(iblk) + is
 
          call icepack_step_snow (dt = dt,                &
                      wind   = wind (i,j,  iblk),         &
                      aice   = aice (i,j,  iblk),         &
-                     aicen  = aicen(i,j,:,iblk),         &
-                     vicen  = vicen(i,j,:,iblk),         &
-                     vsnon  = vsnon(i,j,:,iblk),         &
-                     Tsfc   = trcrn(i,j,nt_Tsfc,:,iblk), &
-                     zqin1  = trcrn(i,j,nt_qice,:,iblk), & ! top layer only
-                     zSin1  = trcrn(i,j,nt_sice,:,iblk), & ! top layer only
-                     zqsn   = trcrn(i,j,nt_qsno:nt_qsno+nslyr-1,:,iblk),   &
-                     alvl   = trcrn(i,j,nt_alvl,:,iblk), &
-                     vlvl   = trcrn(i,j,nt_vlvl,:,iblk), &
-                     smice  = trcrn(i,j,nt_smice:nt_smice+nslyr-1,:,iblk), &
-                     smliq  = trcrn(i,j,nt_smliq:nt_smliq+nslyr-1,:,iblk), &
-                     rsnw   = trcrn(i,j,nt_rsnw:nt_rsnw+nslyr-1,:,iblk),   &
-                     rhos_cmpn = trcrn(i,j,nt_rhos:nt_rhos+nslyr-1,:,iblk),&
+                     aicen  = aicen_slot(ms, :),         &
+                     vicen  = vicen_slot(ms, :),         &
+                     vsnon  = vsnon_slot(ms, :),         &
+                     Tsfc   = trcrn_slot(ms, nt_Tsfc,:), &
+                     zqin1  = trcrn_slot(ms, nt_qice,:), & ! top layer only
+                     zSin1  = trcrn_slot(ms, nt_sice,:), & ! top layer only
+                     zqsn   = trcrn_slot(ms, nt_qsno:nt_qsno+nslyr-1,:),   &
+                     alvl   = trcrn_slot(ms, nt_alvl,:), &
+                     vlvl   = trcrn_slot(ms, nt_vlvl,:), &
+                     smice  = trcrn_slot(ms, nt_smice:nt_smice+nslyr-1,:), &
+                     smliq  = trcrn_slot(ms, nt_smliq:nt_smliq+nslyr-1,:), &
+                     rsnw   = trcrn_slot(ms, nt_rsnw:nt_rsnw+nslyr-1,:),   &
+                     rhos_cmpn = trcrn_slot(ms, nt_rhos:nt_rhos+nslyr-1,:),&
                      fresh  = fresh   (i,j,iblk),        &
                      fhocn  = fhocn   (i,j,iblk),        &
                      fsloss = fsloss  (i,j,iblk),        &
@@ -1360,12 +1483,19 @@
          ij = dynIJ(dynOff(iblk)+is)
          j  = (ij-1)/nx_block + 1
          i  = ij - (j-1)*nx_block
+         ms = dynOff(iblk) + is
          fhs = c0
          if (vsno(i,j,iblk) > puny) fhs = c1
          do ns = 1, nstreams
             snwcnt(i,j,iblk,ns) = snwcnt(i,j,iblk,ns) + fhs
          enddo
       enddo   ! is
+
+      ! close the transitional island -- see the pack above
+      call unpack_cat_from_slots(aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), aicen(:,:,:,iblk))
+      call unpack_cat_from_slots(vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), vicen(:,:,:,iblk))
+      call unpack_cat_from_slots(vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), vsnon(:,:,:,iblk))
+      call unpack_trc_from_slots(trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:), dynMap(:,iblk), trcrn(:,:,:,:,iblk))
 
       end subroutine step_snow
 
@@ -1378,8 +1508,11 @@
 !          Elizabeth C. Hunke, LANL
 
       subroutine step_radiation (dt, iblk)
+         use ice_state, only: aicen_slot, vicen_slot, vsnon_slot, trcrn_slot
 
-        use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys
+        use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys, dynMap, &
+           pack_cat_to_slots, unpack_cat_from_slots, &
+           pack_trc_to_slots, unpack_trc_from_slots
       use ice_arrays_column, only: ffracn, dhsn, &
           fswsfcn, fswintn, fswpenln, Sswabsn, Iswabsn, &
           fswthrun, fswthrun_vdr, fswthrun_vdf, fswthrun_idr, fswthrun_idf, &
@@ -1405,7 +1538,7 @@
       ! local variables
 
       integer (kind=int_kind) :: &
-         is, ij, & ! slot, and its flattened cell index
+         is, ij, ms, & ! slot, and its flattened cell index
          ilo,ihi,jlo,jhi, & ! beginning and end of physical domain
          i, j, n,   k,    & ! horizontal indices
          ipoint             ! index for print diagnostic
@@ -1470,11 +1603,22 @@
       ! Every array below is still block-shaped, reached through the (i,j)
       ! recovered from the slot.  See prep_radiation for why this is the
       ! step that comes before converting the arrays.
+      ! ⚠ Transitional island.  This routine works on the slot forms;
+      ! everything around it still works on the block forms, and icepack
+      ! writes through intent(inout), so only one layout can be
+      ! authoritative at a time.  Pack in, unpack out.  Each pair goes
+      ! away when the neighbouring code converts.
+      call pack_cat_to_slots(aicen(:,:,:,iblk), dynMap(:,iblk), aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
+      call pack_cat_to_slots(vicen(:,:,:,iblk), dynMap(:,iblk), vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
+      call pack_cat_to_slots(vsnon(:,:,:,iblk), dynMap(:,iblk), vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
+      call pack_trc_to_slots(trcrn(:,:,:,:,iblk), dynMap(:,iblk), trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:))
+
       do is = 1, dynCnt(iblk)
          if (skipPhys(dynOff(iblk)+is)) cycle
          ij = dynIJ(dynOff(iblk)+is)
          j  = (ij-1)/nx_block + 1
          i  = ij - (j-1)*nx_block
+         ms = dynOff(iblk) + is
 
          l_print_point = .false.
          debug = .false.
@@ -1491,10 +1635,10 @@
          ztrcr_sw(:,:) = c0
          rsnow   (:,:) = c0
          do n = 1, ncat
-            if (tr_brine) fbri(n) = trcrn(i,j,nt_fbri,n,iblk)
+            if (tr_brine) fbri(n) = trcrn_slot(ms, nt_fbri,n)
             if (snwgrain) then
                do k = 1, nslyr
-                  rsnow(k,n) = trcrn(i,j,nt_rsnw+k-1,n,iblk)
+                  rsnow(k,n) = trcrn_slot(ms, nt_rsnw+k-1,n)
                enddo
             endif
          enddo
@@ -1503,17 +1647,17 @@
 
             call icepack_step_radiation (dt=dt,                               &
                          fbri=fbri(:),                                        &
-                         aicen=aicen(i,j,        :,iblk),                     &
-                         vicen=vicen(i,j,        :,iblk),                     &
-                         vsnon=vsnon(i,j,        :,iblk),                     &
-                         Tsfcn=trcrn(i,j,nt_Tsfc,:,iblk),                     &
-                         alvln=trcrn(i,j,nt_alvl,:,iblk),                     &
-                         apndn=trcrn(i,j,nt_apnd,:,iblk),                     &
-                         hpndn=trcrn(i,j,nt_hpnd,:,iblk),                     &
-                         ipndn=trcrn(i,j,nt_ipnd,:,iblk),                     &
-                         aeron=trcrn(i,j,nt_aero:nt_aero+4*n_aero-1,:,iblk),  &
-                         bgcNn=trcrn(i,j,nt_bgc_N(1):nt_bgc_N(1)+n_algae*(nblyr+3)-1,:,iblk), &
-                         zaeron=trcrn(i,j,nt_zaero(1):nt_zaero(1)+n_zaero*(nblyr+3)-1,:,iblk), &
+                         aicen=aicen_slot(ms, :),                     &
+                         vicen=vicen_slot(ms, :),                     &
+                         vsnon=vsnon_slot(ms, :),                     &
+                         Tsfcn=trcrn_slot(ms, nt_Tsfc,:),                     &
+                         alvln=trcrn_slot(ms, nt_alvl,:),                     &
+                         apndn=trcrn_slot(ms, nt_apnd,:),                     &
+                         hpndn=trcrn_slot(ms, nt_hpnd,:),                     &
+                         ipndn=trcrn_slot(ms, nt_ipnd,:),                     &
+                         aeron=trcrn_slot(ms, nt_aero:nt_aero+4*n_aero-1,:),  &
+                         bgcNn=trcrn_slot(ms, nt_bgc_N(1):nt_bgc_N(1)+n_algae*(nblyr+3)-1,:), &
+                         zaeron=trcrn_slot(ms, nt_zaero(1):nt_zaero(1)+n_zaero*(nblyr+3)-1,:), &
                          trcrn_bgcsw=ztrcr_sw,                                &
                          TLAT=TLAT((j-1)*nx_block+i,iblk),     TLON=TLON((j-1)*nx_block+i,iblk),        &
                          calendar_type=calendar_type,                         &
@@ -1564,6 +1708,12 @@
       deallocate(rsnow)
 
       call ice_timer_stop(timer_sw,iblk)     ! shortwave
+
+      ! close the transitional island -- see the pack above
+      call unpack_cat_from_slots(aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), aicen(:,:,:,iblk))
+      call unpack_cat_from_slots(vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), vicen(:,:,:,iblk))
+      call unpack_cat_from_slots(vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), vsnon(:,:,:,iblk))
+      call unpack_trc_from_slots(trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:), dynMap(:,iblk), trcrn(:,:,:,:,iblk))
 
       end subroutine step_radiation
 
@@ -1724,8 +1874,11 @@
 !=======================================================================
 
       subroutine biogeochemistry (dt, iblk)
+         use ice_state, only: aicen_slot, vicen_slot, vsnon_slot, trcrn_slot
 
-        use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys
+        use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys, dynMap, &
+           pack_cat_to_slots, unpack_cat_from_slots, &
+           pack_trc_to_slots, unpack_trc_from_slots
       use ice_arrays_column, only: upNO, upNH, iDi, iki, zfswin, &
                            darcy_V, grow_net,  &
                            PP_net, hbri,dhbr_bot, dhbr_top, Zoo,&
@@ -1751,7 +1904,7 @@
       ! local variables
 
       integer (kind=int_kind) :: &
-         is, ij, & ! slot, and its flattened cell index
+         is, ij, ms, & ! slot, and its flattened cell index
          i, j           , & ! horizontal indices
          ilo,ihi,jlo,jhi, & ! beginning and end of physical domain
          mm              ! tracer index
@@ -1798,11 +1951,22 @@
       ! Every array below is still block-shaped, reached through the (i,j)
       ! recovered from the slot.  See prep_radiation for why this is the
       ! step that comes before converting the arrays.
+      ! ⚠ Transitional island.  This routine works on the slot forms;
+      ! everything around it still works on the block forms, and icepack
+      ! writes through intent(inout), so only one layout can be
+      ! authoritative at a time.  Pack in, unpack out.  Each pair goes
+      ! away when the neighbouring code converts.
+      call pack_cat_to_slots(aicen(:,:,:,iblk), dynMap(:,iblk), aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
+      call pack_cat_to_slots(vicen(:,:,:,iblk), dynMap(:,iblk), vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
+      call pack_cat_to_slots(vsnon(:,:,:,iblk), dynMap(:,iblk), vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
+      call pack_trc_to_slots(trcrn(:,:,:,:,iblk), dynMap(:,iblk), trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:))
+
       do is = 1, dynCnt(iblk)
          if (skipPhys(dynOff(iblk)+is)) cycle
          ij = dynIJ(dynOff(iblk)+is)
          j  = (ij-1)/nx_block + 1
          i  = ij - (j-1)*nx_block
+         ms = dynOff(iblk) + is
 
          call icepack_load_ocean_bio_array(                         &
                 nit = nit(i,j,  iblk), amm    = amm   (i,j,  iblk), &
@@ -1860,11 +2024,11 @@
                               flux_bio_atm = flux_bio_atm(i,j,1:nbtrcr, iblk), &
                               aicen_init   = aicen_init  (i,j,:,        iblk), &
                               vicen_init   = vicen_init  (i,j,:,        iblk), &
-                              aicen        = aicen       (i,j,:,        iblk), &
-                              vicen        = vicen       (i,j,:,        iblk), &
-                              vsnon        = vsnon       (i,j,:,        iblk), &
+                              aicen        = aicen_slot       (ms, :), &
+                              vicen        = vicen_slot       (ms, :), &
+                              vsnon        = vsnon_slot       (ms, :), &
                               aice0        = aice0       (i,j,          iblk), &
-                              trcrn        = trcrn       (i,j,:,:,      iblk), &
+                              trcrn        = trcrn_slot       (ms, :,:), &
                               vsnon_init   = vsnon_init  (i,j,:,        iblk))
 
       enddo   ! is
@@ -1876,6 +2040,12 @@
       call ice_timer_stop(timer_bgc,iblk) ! biogeochemistry
 
       endif  ! tr_brine .or. skl_bgc
+
+      ! close the transitional island -- see the pack above
+      call unpack_cat_from_slots(aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), aicen(:,:,:,iblk))
+      call unpack_cat_from_slots(vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), vicen(:,:,:,iblk))
+      call unpack_cat_from_slots(vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), vsnon(:,:,:,iblk))
+      call unpack_trc_from_slots(trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:), dynMap(:,iblk), trcrn(:,:,:,:,iblk))
 
       end subroutine biogeochemistry
 
