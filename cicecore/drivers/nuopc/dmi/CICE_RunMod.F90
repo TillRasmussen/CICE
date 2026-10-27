@@ -289,7 +289,13 @@
 
          ! wave fracture of the floe size distribution
          ! note this is called outside of the dynamics subcycling loop
-         if (tr_fsd .and. wave_spec) call step_dyn_wave(dt)
+         if (tr_fsd .and. wave_spec) then
+            !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
+            do iblk = 1, nblocks
+               call step_dyn_wave(dt, iblk)
+            enddo
+            !$OMP END PARALLEL DO
+         endif
 
          do k = 1, ndtd
 

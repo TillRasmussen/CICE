@@ -884,7 +884,8 @@
       use ice_state, only: aicen, trcrn, vicen, vsnon, &
                            aice,  trcr,  vice,  vsno, aice0, trcr_depend, &
                            trcr_base, nt_strata, n_trcr_strata , &
-                             aice_slot, vice_slot, vsno_slot, aice0_slot
+                             aice_slot, vice_slot, vsno_slot, aice0_slot, &
+                             aicen_slot, vicen_slot, vsnon_slot, trcrn_slot
         use ice_grid,  only: dynMap, dynOff, dynCnt, dynIJ
       use ice_bound_state, only: bound_state
       use ice_flux,  only: Tf
@@ -946,16 +947,17 @@
             ij = dynIJ(dynOff(iblk)+is)
             j  = (ij-1)/nx_block + 1
             i  = ij - (j-1)*nx_block
+            ms = dynOff(iblk) + is
 
       !-----------------------------------------------------------------
       ! Aggregate the updated state variables (includes ghost cells).
       !-----------------------------------------------------------------
 
 !        if (tmask((j-1)*nx_block+i,iblk)) &
-            call icepack_aggregate(aicen = aicen(i,j,:,iblk),     &
-                                   trcrn = trcrn(i,j,:,:,iblk),   &
-                                   vicen = vicen(i,j,:,iblk),     &
-                                   vsnon = vsnon(i,j,:,iblk),     &
+            call icepack_aggregate(aicen = aicen_slot (ms,:)   ,     &
+                                   trcrn = trcrn_slot (ms,:,:) ,   &
+                                   vicen = vicen_slot (ms,:)   ,     &
+                                   vsnon = vsnon_slot (ms,:)   ,     &
                                    aice  = aice (i,j,  iblk),     &
                                    trcr  = trcr (i,j,:,iblk),     &
                                    vice  = vice (i,j,  iblk),     &
@@ -977,7 +979,6 @@
               ! ⚠ Both layouts are written while the conversion is in
               ! progress.  The block forms stay authoritative for every
               ! consumer that has not moved yet.
-              ms = dynOff(iblk) + is
               aice_slot (ms) = aice (i,j,iblk)
               vice_slot (ms) = vice (i,j,iblk)
               vsno_slot (ms) = vsno (i,j,iblk)
@@ -1023,13 +1024,11 @@
 ! authors: Lettie Roach, NIWA
 !          Elizabeth C. Hunke, LANL
 
-      subroutine step_dyn_wave (dt)
-         use ice_state, only: aicen_slot, trcrn_slot
+      subroutine step_dyn_wave (dt, iblk)
 
-        use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys, dynMap, &
-           pack_cat_to_slots, unpack_cat_from_slots, &
-           pack_trc_to_slots, unpack_trc_from_slots, &
-           pack_to_slots, unpack_from_slots
+      use ice_state, only: aicen_slot, trcrn_slot
+      use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys, dynMap, &
+          unpack_cat_from_slots, unpack_trc_from_slots
       use ice_arrays_column, only: wave_spectrum, wave_sig_ht, &
           d_afsd_wave, wavefreq, dwavefreq
       use ice_domain_size, only: nfreq
@@ -1040,16 +1039,14 @@
       real (kind=dbl_kind), intent(in) :: &
          dt      ! time step
 
-      ! local variables
+      integer (kind=int_kind), intent(in) :: &
+         iblk    ! block index
 
-      type (block) :: &
-         this_block      ! block information for current block
+      ! local variables
 
       integer (kind=int_kind) :: &
          is, ij, ms, & ! slot, and its flattened cell index
-         ilo,ihi,jlo,jhi, & ! beginning and end of physical domain
-         iblk,            & ! block index
-         i, j               ! horizontal indices
+         i, j          ! horizontal indices
 
       character(len=*), parameter :: subname = '(step_dyn_wave)'
 
@@ -1060,47 +1057,37 @@
       if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
          file=__FILE__, line=__LINE__)
 
-      !$OMP PARALLEL DO PRIVATE(iblk,i,j,is,ij,ms,ilo,ihi,jlo,jhi,this_block)
-      do iblk = 1, nblocks
+      ! ⚠ No pack on entry: update_state runs before this, and bound_state
+      ! packs the slots at its end.  The unpack below stays -- restart,
+      ! history, restoring, diagnostics and ice_dyn_evp/eap still read the
+      ! block forms.
 
-         this_block = get_block(blocks_ice(iblk),iblk)
-         ilo = this_block%ilo
-         ihi = this_block%ihi
-         jlo = this_block%jlo
-         jhi = this_block%jhi
+      do is = 1, dynCnt(iblk)
+         if (skipPhys(dynOff(iblk)+is)) cycle
+         ij = dynIJ(dynOff(iblk)+is)
+         j  = (ij-1)/nx_block + 1
+         i  = ij - (j-1)*nx_block
+         ms = dynOff(iblk) + is
+         d_afsd_wave(i,j,:,iblk) = c0
+         call icepack_step_wavefracture(dt = dt, nfreq = nfreq,                      &
+                                        aice        = aice           (i,j,    iblk), &
+                                        vice        = vice           (i,j,    iblk), &
+                                        aicen       = aicen_slot          (ms, :), &
+                                        wave_spectrum = wave_spectrum(i,j,:,  iblk), &
+                                        wavefreq    = wavefreq       (:),            &
+                                        dwavefreq   = dwavefreq      (:),            &
+                                        trcrn       = trcrn_slot          (ms, :,:), &
+                                        d_afsd_wave = d_afsd_wave    (i,j,:,  iblk), &
+                                        wave_height = wave_sig_ht    (i,j,    iblk))
+      enddo   ! is
 
-         ! ⚠ No pack on entry: update_state runs before it, and bound_state packs the slots at its end.
-         ! The unpack at the end stays -- restart, history, restoring,
-         ! diagnostics and ice_dyn_evp/eap still read the block forms.
-
-         do is = 1, dynCnt(iblk)
-            if (skipPhys(dynOff(iblk)+is)) cycle
-            ij = dynIJ(dynOff(iblk)+is)
-            j  = (ij-1)/nx_block + 1
-            i  = ij - (j-1)*nx_block
-            ms = dynOff(iblk) + is
-            d_afsd_wave(i,j,:,iblk) = c0
-            call icepack_step_wavefracture(dt = dt, nfreq = nfreq,                      &
-                                           aice        = aice           (i,j,    iblk), &
-                                           vice        = vice           (i,j,    iblk), &
-                                           aicen       = aicen_slot          (ms, :), &
-                                           wave_spectrum = wave_spectrum(i,j,:,  iblk), &
-                                           wavefreq    = wavefreq       (:),            &
-                                           dwavefreq   = dwavefreq      (:),            &
-                                           trcrn       = trcrn_slot          (ms, :,:), &
-                                           d_afsd_wave = d_afsd_wave    (i,j,:,  iblk), &
-                                           wave_height = wave_sig_ht    (i,j,    iblk))
-         enddo   ! is
-         ! close the transitional island -- INSIDE the iblk loop, because
-         ! this routine loops over blocks itself rather than taking iblk.
-         call unpack_cat_from_slots(aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), aicen(:,:,:,iblk))
-         call unpack_trc_from_slots(trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:), dynMap(:,iblk), trcrn(:,:,:,:,iblk))
-      end do    ! iblk
-      !$OMP END PARALLEL DO
+      call unpack_cat_from_slots(aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
+           dynMap(:,iblk), aicen(:,:,:,iblk))
+      call unpack_trc_from_slots(trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:), &
+           dynMap(:,iblk), trcrn(:,:,:,:,iblk))
 
       call ice_timer_stop(timer_fsd)
       call ice_timer_stop(timer_column)
-
 
       end subroutine step_dyn_wave
 

@@ -109,6 +109,7 @@
 ! based on subroutine evp
 
       subroutine eap (dt)
+use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
 #ifdef CICE_IN_NEMO
 ! Wind stress is set during this routine from the values supplied
@@ -169,7 +170,8 @@
           grid_atm_dynu, grid_atm_dynv, grid_ocn_dynu, grid_ocn_dynv
       use ice_restoring, only: ice_restoring_halo, restore_ice
       use ice_state, only: aice_slot, vice_slot, vsno_slot, aice, aiU, vice, vsno, uvel, vvel, divu, shear, vort, &
-          aice_init, aice0, aicen, vicen, strength
+          aice_init, aice0, aicen, vicen, strength, &
+          aicen_slot, vicen_slot
       use ice_timers, only: timer_dynamics, timer_bound, &
           ice_timer_start, ice_timer_stop
 
@@ -179,6 +181,8 @@
       ! local variables
 
       integer (kind=int_kind) :: &
+         ms             , & ! global slot of this cell
+         is             , & ! slot within this block
          ksub       , & ! subcycle step
          iblk       , & ! block index
          ilo,ihi,jlo,jhi, & ! beginning and end of physical domain
@@ -340,7 +344,7 @@
          call grid_average_X2Y('F', strairyT, 'T', strairyU, 'U')
       endif
 
-      !$OMP PARALLEL DO PRIVATE(iblk,ilo,ihi,jlo,jhi,this_block,ij,i,j) SCHEDULE(runtime)
+      !$OMP PARALLEL DO PRIVATE(iblk,ilo,ihi,jlo,jhi,this_block,ij,i,j,is,ms) SCHEDULE(runtime)
       do iblk = 1, nblocks
 
          !-----------------------------------------------------------------
@@ -420,16 +424,26 @@
          !-----------------------------------------------------------------
 
          strength(:,:,iblk) = c0  ! initialize
-         do ij = 1, icellT(iblk)
-            i = indxTi(ij, iblk)
-            j = indxTj(ij, iblk)
+         ! ⚠ skipT, not skipPhys.  icellT is built over jlo..jhi+1 x
+         ! ilo..ihi+1 -- the physical domain PLUS one north and east ghost
+         ! row, where stresses are needed -- and selects on iceTmask alone.
+         ! dyn_prep1 records that set slot-wise in skipT, so this
+         ! reproduces icellT cell for cell.  ms is assigned BEFORE the
+         ! call: in update_state it was the ordering, not the index, that
+         ! was wrong, and the symptom appeared two routines downstream.
+         do is = 1, dynCnt(iblk)
+            if (skipT(dynOff(iblk)+is)) cycle
+            ms = dynOff(iblk) + is
+            ij = dynIJ(ms)
+            j  = (ij-1)/nx_block + 1
+            i  = ij - (j-1)*nx_block
             call icepack_ice_strength(aice     = aice    (i,j,  iblk), &
                                       vice     = vice    (i,j,  iblk), &
                                       aice0    = aice0   (i,j,  iblk), &
-                                      aicen    = aicen   (i,j,:,iblk), &
-                                      vicen    = vicen   (i,j,:,iblk), &
+                                      aicen    = aicen_slot   (ms,:), &
+                                      vicen    = vicen_slot   (ms,:), &
                                       strength = strength(i,j,  iblk) )
-         enddo  ! ij
+         enddo  ! is
       enddo  ! iblk
       !$OMP END PARALLEL DO
 
