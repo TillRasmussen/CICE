@@ -826,7 +826,8 @@
       use ice_grid, only: tmask, grid_ice, &
           dynMap, dynOff, dynCnt, dynNbr, dynTot, &
           skipEdgeE, skipEdgeN, skipPhys, &
-          HTE_slot, HTN_slot, tarea_slot, pack_to_slots
+          HTE_slot, HTN_slot, tarea_slot, pack_to_slots, &
+              unpack_cat_from_slots, unpack_trc_from_slots
       use ice_timers, only: ice_timer_start, ice_timer_stop, &
           timer_bound, timer_advect
 
@@ -981,8 +982,8 @@
                              dynMap(:,iblk),                             &
                              ntrcr,                                      &
                              narr,                 trcr_depend,          &
-                             aicen (:,:,  :,iblk), trcrn (:,:,:,:,iblk), &
-                             vicen (:,:,  :,iblk), vsnon (:,:,  :,iblk), &
+                             aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:), &
+                             vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
                              aice0_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                              works (dynOff(iblk)+1:dynOff(iblk)+nc+1,:))
 
@@ -1014,10 +1015,20 @@
                              trcr_depend(:),      trcr_base(:,:),       &
                              n_trcr_strata(:),    nt_strata(:,:),       &
                              tmask(:,      iblk), Tf    (:,:,iblk),     &
-                             aicen(:,:,  :,iblk), trcrn (:,:,:,:,iblk), &
-                             vicen(:,:,  :,iblk), vsnon (:,:,  :,iblk), &
+                             aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:), &
+                             vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
                              aice0(:,:,    iblk), aice0_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                              works(dynOff(iblk)+1:dynOff(iblk)+nc+1,:))
+
+         ! ⚠ Same as the remap path: work_to_state writes the state in slot
+         ! form, so the block copies it left behind are stale.  Refresh them
+         ! here for restart, history, restoring, diagnostics and the islands
+         ! downstream, which would otherwise pack block->slot and clobber what
+         ! transport just computed.
+         call unpack_cat_from_slots(aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), aicen(:,:,:,iblk))
+         call unpack_cat_from_slots(vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), vicen(:,:,:,iblk))
+         call unpack_cat_from_slots(vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), vsnon(:,:,:,iblk))
+         call unpack_trc_from_slots(trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:), dynMap(:,iblk), trcrn(:,:,:,:,iblk))
 
       enddo                     ! iblk
       !$OMP END PARALLEL DO
@@ -1706,12 +1717,14 @@
       integer (kind=int_kind), dimension (ntrcr), intent(in) ::     &
          trcr_depend ! = 0 for aicen tracers, 1 for vicen, 2 for vsnon
 
-      real (kind=dbl_kind), dimension (nx_block,ny_block,ncat), intent(in) ::     &
+      ! ⚠ Compressed: the category state is read in slot form here,
+      ! like aice0 and works alongside it.
+      real (kind=dbl_kind), dimension (:,:), intent(in) ::     &
          aicen   , & ! concentration of ice
          vicen   , & ! volume per unit area of ice          (m)
          vsnon       ! volume per unit area of snow         (m)
 
-      real (kind=dbl_kind), dimension (nx_block,ny_block,ntrcr,ncat), intent(in) ::     &
+      real (kind=dbl_kind), dimension (:,:,:), intent(in) ::     &
          trcrn       ! ice tracers
 
       ! compressed, as in state_to_tracers
@@ -1762,84 +1775,52 @@
 
       do n=1, ncat
 
-         do j = 1, ny_block
-         do i = 1, nx_block
-            ms = map((j-1)*nx_block + i)
-            if (ms < 1) cycle
-            works(ms,narrays+1) = aicen(i,j,n)
-            works(ms,narrays+2) = vicen(i,j,n)
-            works(ms,narrays+3) = vsnon(i,j,n)
-         enddo                  ! i
-         enddo                  ! j
+         do ms = 1, size(works,dim=1) - 1
+            works(ms,narrays+1) = aicen(ms,n)
+            works(ms,narrays+2) = vicen(ms,n)
+            works(ms,narrays+3) = vsnon(ms,n)
+         enddo
          narrays = narrays + 3
 
          do it = 1, ntrcr
             if (trcr_depend(it) == 0) then
-               do j = 1, ny_block
-               do i = 1, nx_block
-                  ms = map((j-1)*nx_block + i)
-                  if (ms < 1) cycle
-                  works(ms,narrays+it) = aicen(i,j,n)*trcrn(i,j,it,n)
-               enddo
+               do ms = 1, size(works,dim=1) - 1
+                  works(ms,narrays+it) = aicen(ms,n)*trcrn(ms,it,n)
                enddo
             elseif (trcr_depend(it) == 1) then
-               do j = 1, ny_block
-               do i = 1, nx_block
-                  ms = map((j-1)*nx_block + i)
-                  if (ms < 1) cycle
-                  works(ms,narrays+it) = vicen(i,j,n)*trcrn(i,j,it,n)
-               enddo
+               do ms = 1, size(works,dim=1) - 1
+                  works(ms,narrays+it) = vicen(ms,n)*trcrn(ms,it,n)
                enddo
             elseif (trcr_depend(it) == 2) then
-               do j = 1, ny_block
-               do i = 1, nx_block
-                  ms = map((j-1)*nx_block + i)
-                  if (ms < 1) cycle
-                  works(ms,narrays+it) = vsnon(i,j,n)*trcrn(i,j,it,n)
-               enddo
+               do ms = 1, size(works,dim=1) - 1
+                  works(ms,narrays+it) = vsnon(ms,n)*trcrn(ms,it,n)
                enddo
             elseif (trcr_depend(it) == 2+nt_alvl) then
-               do j = 1, ny_block
-               do i = 1, nx_block
-                  ms = map((j-1)*nx_block + i)
-                  if (ms < 1) cycle
-                  works(ms,narrays+it) = aicen(i,j        ,n) &
-                                        * trcrn(i,j,nt_alvl,n) &
-                                        * trcrn(i,j,it     ,n)
-               enddo
+               do ms = 1, size(works,dim=1) - 1
+                  works(ms,narrays+it) = aicen(ms,n) &
+                                        * trcrn(ms,nt_alvl,n) &
+                                        * trcrn(ms,it,n)
                enddo
             elseif (trcr_depend(it) == 2+nt_apnd .and. &
                     (tr_pond_topo .or. tr_pond_sealvl)) then
-               do j = 1, ny_block
-               do i = 1, nx_block
-                  ms = map((j-1)*nx_block + i)
-                  if (ms < 1) cycle
-                  works(ms,narrays+it) = aicen(i,j        ,n) &
-                                        * trcrn(i,j,nt_apnd,n) &
-                                        * trcrn(i,j,it     ,n)
-               enddo
+               do ms = 1, size(works,dim=1) - 1
+                  works(ms,narrays+it) = aicen(ms,n) &
+                                        * trcrn(ms,nt_apnd,n) &
+                                        * trcrn(ms,it,n)
                enddo
             elseif (trcr_depend(it) == 2+nt_apnd .and. &
                     tr_pond_lvl) then
-               do j = 1, ny_block
-               do i = 1, nx_block
-                  ms = map((j-1)*nx_block + i)
-                  if (ms < 1) cycle
-                  works(ms,narrays+it) = aicen(i,j        ,n) &
-                                        * trcrn(i,j,nt_alvl,n) &
-                                        * trcrn(i,j,nt_apnd,n) &
-                                        * trcrn(i,j,it     ,n)
-               enddo
+               do ms = 1, size(works,dim=1) - 1
+                  works(ms,narrays+it) = aicen(ms,n) &
+                                        * trcrn(ms,nt_alvl,n) &
+                                        * trcrn(ms,nt_apnd,n) &
+                                        * trcrn(ms,it,n)
                enddo
             elseif (trcr_depend(it) == 2+nt_fbri) then
-               do j = 1, ny_block
-               do i = 1, nx_block
-                  ms = map((j-1)*nx_block + i)
-                  if (ms < 1) cycle
-                  works(ms,narrays+it) = vicen(i,j        ,n) &
-                                        * trcrn(i,j,nt_fbri,n) &
-                                        * trcrn(i,j,it     ,n)
-               enddo
+               do ms = 1, size(works,dim=1) - 1
+                  works(ms,narrays+it) = vicen(ms,n) &
+                                        * trcrn(ms,nt_fbri,n) &
+                                        * trcrn(ms,it,n)
                enddo
             endif
          enddo
@@ -1902,12 +1883,14 @@
       real (kind=dbl_kind), dimension (:,:), intent (in) :: &
          works
 
-      real (kind=dbl_kind), dimension (nx_block,ny_block,ncat), intent(out) :: &
+      ! ⚠ Compressed: the category state is written in slot form here,
+      ! like aice0 and works alongside it.
+      real (kind=dbl_kind), dimension (:,:), intent(out) :: &
          aicen      , & ! concentration of ice
          vicen      , & ! volume per unit area of ice          (m)
          vsnon          ! volume per unit area of snow         (m)
 
-      real (kind=dbl_kind), dimension (nx_block,ny_block,ntrcr,ncat),intent(out) :: &
+      real (kind=dbl_kind), dimension (:,:,:),intent(out) :: &
          trcrn          ! ice tracers
 
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(out) :: &
@@ -1957,24 +1940,24 @@
             ms = map((j-1)*nx_block + i)
             if (ms < 1) cycle
 
-            aicen(i,j,n) = works(ms,narrays+1)
-            vicen(i,j,n) = works(ms,narrays+2)
-            vsnon(i,j,n) = works(ms,narrays+3)
+            aicen(ms,n) = works(ms,narrays+1)
+            vicen(ms,n) = works(ms,narrays+2)
+            vsnon(ms,n) = works(ms,narrays+3)
 
             call icepack_compute_tracers(trcr_depend   = trcr_depend(:),   &
                                          atrcrn        = works(ms,narrays+4:narrays+3+ntrcr), &
-                                         aicen         = aicen(i,j,n),     &
-                                         vicen         = vicen(i,j,n),     &
-                                         vsnon         = vsnon(i,j,n),     &
+                                         aicen         = aicen(ms,n),     &
+                                         vicen         = vicen(ms,n),     &
+                                         vsnon         = vsnon(ms,n),     &
                                          trcr_base     = trcr_base(:,:),   &
                                          n_trcr_strata = n_trcr_strata(:), &
                                          nt_strata     = nt_strata(:,:),   &
-                                         trcrn         = trcrn(i,j,:,n),   &
+                                         trcrn         = trcrn(ms,:,n),   &
                                          Tf            = Tf(i,j))
 
             ! tcraig, don't let land points get non-zero Tsfc
             if (.not.tmask((j-1)*nx_block+i)) then
-               trcrn(i,j,nt_Tsfc,n) = c0
+               trcrn(ms,nt_Tsfc,n) = c0
             endif
 
          enddo

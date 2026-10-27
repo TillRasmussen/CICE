@@ -979,6 +979,12 @@
               ! ⚠ Both layouts are written while the conversion is in
               ! progress.  The block forms stay authoritative for every
               ! consumer that has not moved yet.
+              !
+              ! slot-audit: no-refresh-needed  icepack_aggregate has just written
+              ! the BLOCK forms and these slots are DERIVED from them, so the block
+              ! copy is current by construction.  This is the one shape the audit
+              ! cannot distinguish from a real slot-write that strands its block
+              ! copy, which is why the reason is recorded here and not elsewhere.
               aice_slot (ms) = aice (i,j,iblk)
               vice_slot (ms) = vice (i,j,iblk)
               vsno_slot (ms) = vsno (i,j,iblk)
