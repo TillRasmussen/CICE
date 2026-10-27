@@ -2206,7 +2206,8 @@
       use ice_domain_size, only: nfsd
       use ice_grid, only: tmask, lmask_n, lmask_s, dxU, dyU, grid_ice, &
                           dynMap, dynOff, dynCnt, dynIJ, pack_to_slots, &
-                          unpack_from_slots
+                          unpack_from_slots, &
+          dynCnt, dynOff, dynIJ, skipPhys
       use ice_calendar, only: new_year, write_history, write_restart, &
                               write_ic, timesecs, histfreq, nstreams, mmonth, &
                               new_month, write_histrest
@@ -2409,7 +2410,7 @@
       !---------------------------------------------------------------
 
 #ifndef __INTEL_LLVM_COMPILER
-      !$OMP PARALLEL DO PRIVATE(iblk,i,j,is,ij,ilo,ihi,jlo,jhi,this_block, &
+      !$OMP PARALLEL DO PRIVATE(iblk,i,j,is,ij,ms,ilo,ihi,jlo,jhi,this_block, &
       !$OMP             k,n,qn,ns,sn,rho_ocn,rho_ice,sal_ice,dfresh,dfsalt,sicen, &
       !$OMP             worka,workb,Tinz4d,Sinz4d,Tsnz4d)
 #endif
@@ -3300,13 +3301,13 @@
          ! 3D category fields
          if (f_aicen   (1:1) /= 'x') &
              call accum_hist_field(n_aicen-n2D, iblk, ncat_hist, &
-                                   aicen(:,:,1:ncat_hist,iblk), a3Dc)
+                                   aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,1:ncat_hist), a3Dc)
          if (f_vicen   (1:1) /= 'x') &
              call accum_hist_field(n_vicen-n2D, iblk, ncat_hist, &
-                                   vicen(:,:,1:ncat_hist,iblk), a3Dc)
+                                   vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,1:ncat_hist), a3Dc)
          if (f_vsnon   (1:1) /= 'x') &
              call accum_hist_field(n_vsnon-n2D, iblk, ncat_hist, &
-                                   vsnon(:,:,1:ncat_hist,iblk), a3Dc)
+                                   vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,1:ncat_hist), a3Dc)
          if (f_snowfracn(1:1) /= 'x') &
              call accum_hist_field(n_snowfracn-n2D, iblk, ncat_hist, &
                                    snowfracn(:,:,1:ncat_hist,iblk), a3Dc)
@@ -3336,7 +3337,7 @@
                       *aicen_init(:,:,1:ncat_hist,iblk), a3Dc)
 
          if (f_siitdconc   (1:1) /= 'x') then
-           call accum_hist_field(n_siitdconc-n2D, iblk, ncat_hist, aicen(:,:,:,iblk), a3Dc)
+           call accum_hist_field(n_siitdconc-n2D, iblk, ncat_hist, aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), a3Dc)
          endif
 
          if (f_siitdsnconc   (1:1) /= 'x') then
@@ -3344,11 +3345,11 @@
          endif
 
          if (f_siitdthick   (1:1) /= 'x') then
-           call accum_hist_field(n_siitdthick-n2D, iblk, ncat_hist, vicen(:,:,:,iblk), a3Dc)
+           call accum_hist_field(n_siitdthick-n2D, iblk, ncat_hist, vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), a3Dc)
          endif
 
          if (f_siitdsnthick   (1:1) /= 'x') then
-           call accum_hist_field(n_siitdsnthick-n2D, iblk, ncat_hist, vsnon(:,:,:,iblk), a3Dc)
+           call accum_hist_field(n_siitdsnthick-n2D, iblk, ncat_hist, vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), a3Dc)
          endif
 
          endif ! if (allocated(a3Dc))
@@ -3364,14 +3365,24 @@
          if (f_Tinz   (1:1) /= 'x') then
             Tinz4d(:,:,:,:) = c0
             do n = 1, ncat_hist
-               do j = jlo, jhi
-               do i = ilo, ihi
+               ! ⚠ Slot-driven: the state comes from trcrn_slot/vicen_slot, so
+               ! history stops being a per-step reader of the block category
+               ! arrays.  The 4D temporary stays block shaped -- it is a local
+               ! and the accumulator takes it so.  Interior land is no longer
+               ! visited, which is harmless: it keeps the c0 set above, and
+               ! accum_hist_field_4D_compressed guards on tmask before it
+               ! accumulates, so land never reaches the output.
+               do is = 1, dynCnt(iblk)
+                  if (skipPhys(dynOff(iblk)+is)) cycle
+                  ij = dynIJ(dynOff(iblk)+is)
+                  j  = (ij-1)/nx_block + 1
+                  i  = ij - (j-1)*nx_block
+                  ms = dynOff(iblk) + is
                   do k = 1, nzilyr
-                     qn = trcrn(i,j,nt_qice+k-1,n,iblk)
-                     sn = trcrn(i,j,nt_sice+k-1,n,iblk)
+                     qn = trcrn_slot(ms,nt_qice+k-1,n)
+                     sn = trcrn_slot(ms,nt_sice+k-1,n)
                      Tinz4d(i,j,k,n) = icepack_ice_temperature(qn,sn)
                   enddo
-               enddo
                enddo
             enddo
             call accum_hist_field(n_Tinz-n3Dfcum, iblk, nzilyr, ncat_hist, &
@@ -3380,12 +3391,22 @@
          if (f_Sinz   (1:1) /= 'x') then
             Sinz4d(:,:,:,:) = c0
             do n = 1, ncat_hist
-               do j = jlo, jhi
-               do i = ilo, ihi
-                  if (vicen(i,j,n,iblk) > puny) then
-                     Sinz4d(i,j,1:nzilyr,n) = trcrn(i,j,nt_sice:nt_sice+nzilyr-1,n,iblk)
+               ! ⚠ Slot-driven: the state comes from trcrn_slot/vicen_slot, so
+               ! history stops being a per-step reader of the block category
+               ! arrays.  The 4D temporary stays block shaped -- it is a local
+               ! and the accumulator takes it so.  Interior land is no longer
+               ! visited, which is harmless: it keeps the c0 set above, and
+               ! accum_hist_field_4D_compressed guards on tmask before it
+               ! accumulates, so land never reaches the output.
+               do is = 1, dynCnt(iblk)
+                  if (skipPhys(dynOff(iblk)+is)) cycle
+                  ij = dynIJ(dynOff(iblk)+is)
+                  j  = (ij-1)/nx_block + 1
+                  i  = ij - (j-1)*nx_block
+                  ms = dynOff(iblk) + is
+                  if (vicen_slot(ms,n) > puny) then
+                     Sinz4d(i,j,1:nzilyr,n) = trcrn_slot(ms,nt_sice:nt_sice+nzilyr-1,n)
                   endif
-               enddo
                enddo
             enddo
             call accum_hist_field(n_Sinz-n3Dfcum, iblk, nzilyr, ncat_hist, &
@@ -3399,13 +3420,23 @@
          if (f_Tsnz   (1:1) /= 'x') then
             Tsnz4d(:,:,:,:) = c0
             do n = 1, ncat_hist
-               do j = jlo, jhi
-               do i = ilo, ihi
+               ! ⚠ Slot-driven: the state comes from trcrn_slot/vicen_slot, so
+               ! history stops being a per-step reader of the block category
+               ! arrays.  The 4D temporary stays block shaped -- it is a local
+               ! and the accumulator takes it so.  Interior land is no longer
+               ! visited, which is harmless: it keeps the c0 set above, and
+               ! accum_hist_field_4D_compressed guards on tmask before it
+               ! accumulates, so land never reaches the output.
+               do is = 1, dynCnt(iblk)
+                  if (skipPhys(dynOff(iblk)+is)) cycle
+                  ij = dynIJ(dynOff(iblk)+is)
+                  j  = (ij-1)/nx_block + 1
+                  i  = ij - (j-1)*nx_block
+                  ms = dynOff(iblk) + is
                   do k = 1, nzslyr
-                     qn = trcrn(i,j,nt_qsno+k-1,n,iblk)
+                     qn = trcrn_slot(ms,nt_qsno+k-1,n)
                      Tsnz4d(i,j,k,n) = icepack_snow_temperature(qn)
                   enddo
-               enddo
                enddo
             enddo
             call accum_hist_field(n_Tsnz-n4Dicum, iblk, nzslyr, ncat_hist, &

@@ -781,6 +781,7 @@
                             accum_hist_field_2D_compressed, &
                             accum_hist_field_3D, &
                             accum_hist_field_3D_compressed, &
+                            accum_hist_field_3D_slotin, &
                             accum_hist_field_4D, &
                             accum_hist_field_4D_compressed
       end interface
@@ -1453,6 +1454,63 @@
        enddo
 
       end subroutine accum_hist_field_3D_compressed
+
+!=======================================================================
+! As accum_hist_field_3D_compressed, but the MODEL STATE arrives in slot
+! form too, not just the accumulator.
+!
+! ⚠ accum_hist runs EVERY step, not only on write steps -- its category
+! reads are guarded by allocated(a3Dc) and the per-field f_* flags, never
+! by write_history -- so while field_accum stayed block shaped the history
+! was a per-step reader of the block state, and the exit unpacks could not
+! be gated.  This variant is what removes that.
+!
+! The loop is slot-driven.  skipPhys is exactly the right mask here: the
+! block form walked jlo..jhi x ilo..ihi, which is what skipPhys encodes.
+! (That is NOT true of the icellT loops in the dynamics, which run one
+! ghost row further and need skipT instead.)
+
+      subroutine accum_hist_field_3D_slotin(id, iblk, ndim, field_accum, field)
+
+      use ice_blocks, only: nx_block
+      use ice_calendar, only: nstreams
+      use ice_grid, only: tmask, dynCnt, dynOff, dynIJ, skipPhys
+
+      integer (int_kind), dimension(:), intent(in) :: &
+         id                ! location in avail_fields array
+
+      integer (kind=int_kind), intent(in) :: iblk
+      integer (kind=int_kind), intent(in) :: &
+         ndim              ! third dimension size
+
+      ! (slot, category) -- this block's slice, as the dynamics holds it
+      real (kind=dbl_kind), intent(in) :: &
+         field_accum(:,:)
+
+      ! (slot, category, stream)
+      real (kind=dbl_kind), intent(inout) :: &
+         field(:,:,:)
+
+      integer (kind=int_kind) :: is, ij, k, m, ns, idns
+
+      character(len=*), parameter :: subname = '(accum_hist_field_3D_slotin)'
+
+      do ns = 1, nstreams
+         idns = id(ns)
+         if (idns > 0) then
+            do k = 1, ndim
+            do is = 1, dynCnt(iblk)
+               if (skipPhys(dynOff(iblk)+is)) cycle
+               ij = dynIJ(dynOff(iblk)+is)
+               if (.not. tmask(ij,iblk)) cycle
+               m = dynOff(iblk) + is
+               field(m,k,idns) = field(m,k,idns) + field_accum(is,k)
+            enddo
+            enddo
+         endif
+      enddo
+
+      end subroutine accum_hist_field_3D_slotin
 
 !=======================================================================
 
