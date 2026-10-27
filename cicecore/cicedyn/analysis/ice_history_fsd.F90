@@ -312,7 +312,8 @@
       use ice_constants, only: c0, c1, c2, c4
       use ice_history_shared, only: a2D, a3Df, a4Df, nfsd_hist, &
          ncat_hist, accum_hist_field, n3Dacum, n4Dscum
-      use ice_state, only: trcrn, aicen, vicen, aice
+      use ice_grid, only: dynCnt, dynOff, dynIJ, skipPhys
+      use ice_state, only: aicen_slot, vicen_slot, trcrn_slot,  trcrn, aicen, vicen, aice
       use ice_arrays_column, only: wave_sig_ht, floe_rad_c, floe_binwidth, &
          d_afsd_newi, d_afsd_latg, d_afsd_latm, d_afsd_wave, d_afsd_weld
 
@@ -325,7 +326,7 @@
       ! local variables
 
       integer (kind=int_kind) :: &
-         i, j, n, k, & ! loop indices
+         i, j, is, ij, ms, n, k, & ! loop indices
          nt_fsd        ! fsd tracer index
       logical (kind=log_kind) :: tr_fsd
       real (kind=dbl_kind) :: floeshape, puny
@@ -358,27 +359,42 @@
                                wave_sig_ht(:,:,iblk), a2D)
 
       if (f_aice_ww(1:1)/= 'x') then
-         do j = 1, ny_block
-         do i = 1, nx_block
+         ! ⚠ The physical domain only.  These loops ran 1..ny_block x
+         ! 1..nx_block, but accum_hist_field reads just jlo..jhi x
+         ! ilo..ihi, so everything computed in the ghost rim was
+         ! discarded.  skipPhys is exactly that range.
+         do is = 1, dynCnt(iblk)
+            if (skipPhys(dynOff(iblk)+is)) cycle
+            ij = dynIJ(dynOff(iblk)+is)
+            j  = (ij-1)/nx_block + 1
+            i  = ij - (j-1)*nx_block
+            ms = dynOff(iblk) + is
             worka(i,j) = c0
             do n = 1, ncat_hist
             do k = 1, nfsd_hist
-               worka(i,j) = worka(i,j) + aicen(i,j,n,iblk)*trcrn(i,j,nt_fsd+k-1,n,iblk)
+               worka(i,j) = worka(i,j) + aicen_slot(ms,n)*trcrn_slot(ms,nt_fsd+k-1,n)
             end do
             end do
-         end do
-         end do
+         enddo
          call accum_hist_field(n_aice_ww,   iblk, worka(:,:), a2D)
       endif
 
       if (f_diam_ww (1:1) /= 'x') then
-         do j = 1, ny_block
-         do i = 1, nx_block
+         ! ⚠ The physical domain only.  These loops ran 1..ny_block x
+         ! 1..nx_block, but accum_hist_field reads just jlo..jhi x
+         ! ilo..ihi, so everything computed in the ghost rim was
+         ! discarded.  skipPhys is exactly that range.
+         do is = 1, dynCnt(iblk)
+            if (skipPhys(dynOff(iblk)+is)) cycle
+            ij = dynIJ(dynOff(iblk)+is)
+            j  = (ij-1)/nx_block + 1
+            i  = ij - (j-1)*nx_block
+            ms = dynOff(iblk) + is
             worka(i,j) = c0
             workb      = c0
             do n = 1, ncat_hist
             do k = 1, nfsd_hist
-               workc = aicen(i,j,n,iblk)*trcrn(i,j,nt_fsd+k-1,n,iblk) &
+               workc = aicen_slot(ms,n)*trcrn_slot(ms,nt_fsd+k-1,n) &
                      / (c4*floeshape*floe_rad_c(k)**2)
                ! number-mean radius
                worka(i,j) = worka(i,j) + workc * floe_rad_c(k)
@@ -389,20 +405,27 @@
             ! number-mean diameter, following Eqn. 5 in HT2017
             if (workb > c0) worka(i,j) = c2*worka(i,j) / workb
             worka(i,j) = MAX(c2*floe_rad_c(1),worka(i,j)) ! >= smallest resolved diameter
-         end do
-         end do
+         enddo
          call accum_hist_field(n_diam_ww, iblk, worka(:,:), a2D)
       endif
 
       if (f_hice_ww (1:1) /= 'x') then
-         do j = 1, ny_block
-         do i = 1, nx_block
+         ! ⚠ The physical domain only.  These loops ran 1..ny_block x
+         ! 1..nx_block, but accum_hist_field reads just jlo..jhi x
+         ! ilo..ihi, so everything computed in the ghost rim was
+         ! discarded.  skipPhys is exactly that range.
+         do is = 1, dynCnt(iblk)
+            if (skipPhys(dynOff(iblk)+is)) cycle
+            ij = dynIJ(dynOff(iblk)+is)
+            j  = (ij-1)/nx_block + 1
+            i  = ij - (j-1)*nx_block
+            ms = dynOff(iblk) + is
             worka(i,j) = c0
             workb      = c0
             do n = 1, ncat_hist
             do k = 1, nfsd_hist
-               workb = workb + aicen(i,j,n,iblk)*trcrn(i,j,nt_fsd+k-1,n,iblk)
-               worka(i,j) = worka(i,j) + vicen(i,j,n,iblk)*trcrn(i,j,nt_fsd+k-1,n,iblk)
+               workb = workb + aicen_slot(ms,n)*trcrn_slot(ms,nt_fsd+k-1,n)
+               worka(i,j) = worka(i,j) + vicen_slot(ms,n)*trcrn_slot(ms,nt_fsd+k-1,n)
             end do
             end do
             if (workb > puny) then
@@ -410,44 +433,57 @@
             else
                worka(i,j) = c1
             endif
-         end do
-         end do
+         enddo
          call accum_hist_field(n_hice_ww, iblk, worka(:,:), a2D)
       endif
 
       if (f_fsdrad(1:1) /= 'x') then
-         do j = 1, ny_block
-         do i = 1, nx_block
+         ! ⚠ The physical domain only.  These loops ran 1..ny_block x
+         ! 1..nx_block, but accum_hist_field reads just jlo..jhi x
+         ! ilo..ihi, so everything computed in the ghost rim was
+         ! discarded.  skipPhys is exactly that range.
+         do is = 1, dynCnt(iblk)
+            if (skipPhys(dynOff(iblk)+is)) cycle
+            ij = dynIJ(dynOff(iblk)+is)
+            j  = (ij-1)/nx_block + 1
+            i  = ij - (j-1)*nx_block
+            ms = dynOff(iblk) + is
             worka(i,j) = c0
             if (aice(i,j,iblk) > puny) then
              do k = 1, nfsd_hist
                 do n = 1, ncat_hist
                   worka(i,j) = worka(i,j) &
-                               + (trcrn(i,j,nt_fsd+k-1,n,iblk) * floe_rad_c(k) &
-                               * aicen(i,j,n,iblk)/aice(i,j,iblk))
+                               + (trcrn_slot(ms,nt_fsd+k-1,n) * floe_rad_c(k) &
+                               * aicen_slot(ms,n)/aice(i,j,iblk))
                  end do
               end do
             endif
-         end do
-         end do
+         enddo
          call accum_hist_field(n_fsdrad, iblk, worka(:,:), a2D)
       endif
 
       if (f_fsdperim(1:1) /= 'x') then
-         do j = 1, ny_block
-         do i = 1, nx_block
+         ! ⚠ The physical domain only.  These loops ran 1..ny_block x
+         ! 1..nx_block, but accum_hist_field reads just jlo..jhi x
+         ! ilo..ihi, so everything computed in the ghost rim was
+         ! discarded.  skipPhys is exactly that range.
+         do is = 1, dynCnt(iblk)
+            if (skipPhys(dynOff(iblk)+is)) cycle
+            ij = dynIJ(dynOff(iblk)+is)
+            j  = (ij-1)/nx_block + 1
+            i  = ij - (j-1)*nx_block
+            ms = dynOff(iblk) + is
             worka(i,j) = c0
             if (aice(i,j,iblk) > puny) then
              do k = 1, nfsd_hist
                do n = 1, ncat_hist
                   worka(i,j) = worka(i,j) &
-                               + (c8*floeshape*trcrn(i,j,nt_fsd+k-1,n,iblk)*floe_rad_c(k) &
-                                    *aicen(i,j,n,iblk)/(c4*floeshape*floe_rad_c(k)**2 *aice(i,j,iblk)))
+                               + (c8*floeshape*trcrn_slot(ms,nt_fsd+k-1,n)*floe_rad_c(k) &
+                                    *aicen_slot(ms,n)/(c4*floeshape*floe_rad_c(k)**2 *aice(i,j,iblk)))
                end do
               end do
             endif
-         end do
-         end do
+         enddo
          call accum_hist_field(n_fsdperim, iblk, worka, a2D)
       endif
 
@@ -457,6 +493,13 @@
       if (allocated(a3Df)) then
 
       if (f_afsd(1:1) /= 'x') then
+         ! ⚠ NOT converted.  Converting this cluster makes aicen, vicen, Tinz
+         ! and Sinz differ in the history output -- fields written from
+         ! DIFFERENT buffers (a3Dc, a4Di) than anything fsd touches (a2D,
+         ! a3Df, a4Ds), with uninitialised values appearing in them.  Adding
+         ! explicit initialisation of worke/workd did not fix it, so the
+         ! mechanism is not simply the undefined tail.  Clusters above
+         ! convert cleanly; these two need the cause understood first.
          do j = 1, ny_block
          do i = 1, nx_block
             do k = 1, nfsd_hist
@@ -494,6 +537,13 @@
       if (f_afsdn(1:1) /= 'x') then
          do n = 1, ncat_hist
          do k = 1, nfsd_hist
+         ! ⚠ NOT converted.  Converting this cluster makes aicen, vicen, Tinz
+         ! and Sinz differ in the history output -- fields written from
+         ! DIFFERENT buffers (a3Dc, a4Di) than anything fsd touches (a2D,
+         ! a3Df, a4Ds), with uninitialised values appearing in them.  Adding
+         ! explicit initialisation of worke/workd did not fix it, so the
+         ! mechanism is not simply the undefined tail.  Clusters above
+         ! convert cleanly; these two need the cause understood first.
          do j = 1, ny_block
          do i = 1, nx_block
             workd(i,j,k,n) = trcrn(i,j,nt_fsd+k-1,n,iblk) &

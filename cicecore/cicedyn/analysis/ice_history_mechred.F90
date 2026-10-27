@@ -360,7 +360,9 @@
 
       use ice_history_shared, only: n2D, a2D, a3Dc, ncat_hist, &
           accum_hist_field
-      use ice_state, only: aice, vice, trcr, aicen, vicen, trcrn
+      use ice_state, only: aice, vice, trcr, aicen, vicen, trcrn, &
+          aicen_slot, vicen_slot, trcrn_slot
+      use ice_grid, only: dynOff, dynCnt
       use ice_flux, only: dardg1dt, dardg2dt, dvirdgdt, dardg1ndt,&
           dardg2ndt, dvirdgndt, krdgn, aparticn, aredistn, vredistn, &
           araftn, vraftn, opening
@@ -423,12 +425,12 @@
 
          if (f_ardgn(1:1)/= 'x') &
              call accum_hist_field(n_ardgn-n2D, iblk, ncat_hist, &
-                                   aicen(:,:,1:ncat_hist,iblk) &
-                                 * (c1 - trcrn(:,:,nt_alvl,1:ncat_hist,iblk)), a3Dc)
+                                   aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,1:ncat_hist) &
+                                 * (c1 - trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,nt_alvl,1:ncat_hist)), a3Dc)
          if (f_vrdgn(1:1)/= 'x') &
              call accum_hist_field(n_vrdgn-n2D, iblk, ncat_hist, &
-                                   vicen(:,:,1:ncat_hist,iblk) &
-                                 * (c1 - trcrn(:,:,nt_vlvl,1:ncat_hist,iblk)), a3Dc)
+                                   vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,1:ncat_hist) &
+                                 * (c1 - trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,nt_vlvl,1:ncat_hist)), a3Dc)
          if (f_dardg1ndt(1:1)/= 'x') &
              call accum_hist_field(n_dardg1ndt-n2D, iblk, ncat_hist, &
                                    dardg1ndt(:,:,1:ncat_hist,iblk), a3Dc)

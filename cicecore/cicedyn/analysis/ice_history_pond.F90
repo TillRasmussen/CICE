@@ -464,7 +464,9 @@
       use ice_flux, only: dpnd_flushn, dpnd_exponn, dpnd_freebdn, dpnd_initialn
       use ice_history_shared, only: n2D, a2D, a3Dc, ncat_hist, &
           accum_hist_field
-      use ice_state, only: aice, aice_init3d, trcr, trcrn
+      use ice_state, only: aice, aice_init3d, trcr, trcrn, &
+          trcrn_slot
+      use ice_grid, only: dynOff, dynCnt
 
       integer (kind=int_kind), intent(in) :: &
            iblk                 ! block index
@@ -579,14 +581,14 @@
          if (allocated(a3Dc)) then
          if (f_apondn   (1:1) /= 'x') &
              call accum_hist_field(n_apondn-n2D, iblk, ncat_hist, &
-                  trcrn(:,:,nt_apnd,1:ncat_hist,iblk), a3Dc)
+                  trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,nt_apnd,1:ncat_hist), a3Dc)
          if (f_apeffn (1:1) /= 'x') &
              call accum_hist_field(n_apeffn-n2D,  iblk, ncat_hist, &
                   apeffn(:,:,1:ncat_hist,iblk), a3Dc)
          if (f_hpondn   (1:1) /= 'x') &
              call accum_hist_field(n_hpondn-n2D, iblk, ncat_hist, &
-                    trcrn(:,:,nt_apnd,1:ncat_hist,iblk) &
-                  * trcrn(:,:,nt_hpnd,1:ncat_hist,iblk), a3Dc)
+                    trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,nt_apnd,1:ncat_hist) &
+                  * trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,nt_hpnd,1:ncat_hist), a3Dc)
 
          if (f_dpnd_flushn (1:1) /= 'x') &
              call accum_hist_field(n_dpnd_flushn-n2D  , iblk, ncat_hist, dpnd_flushn  (:,:,1:ncat_hist,iblk), a3Dc)

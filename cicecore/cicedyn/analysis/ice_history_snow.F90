@@ -302,7 +302,8 @@
       use ice_flux, only: fsloss
       use ice_history_shared, only: n2D, a2D, a3Dc, ncat_hist, &
           accum_hist_field, nzslyr
-      use ice_state, only: vsno, vsnon, trcr, trcrn
+      use ice_state, only: vsno, vsnon, trcr, trcrn, vsnon_slot, trcrn_slot
+      use ice_grid, only: dynOff, dynCnt
 
       integer (kind=int_kind), intent(in) :: &
            iblk                 ! block index
@@ -322,6 +323,14 @@
 
       real (kind=dbl_kind), dimension (nx_block,ny_block,ncat_hist) :: &
          workb
+
+      ! ⚠ The slot-shaped sibling of workb, so the 3D category fields can be
+      ! built from the compressed state.  An automatic sized from dynCnt(iblk),
+      ! like workb itself, so each call and therefore each thread has its own
+      ! -- no shared buffer to race on.  Length cnt+1 matches the slice the
+      ! dynamics passes everywhere, real cells then the dead slot.
+      real (kind=dbl_kind), dimension (dynCnt(iblk)+1,ncat_hist) :: &
+         workbs
 
       character(len=*), parameter :: subname = '(accum_hist_snow)'
 
@@ -401,62 +410,62 @@
          ! 3D category fields
          if (allocated(a3Dc)) then
          if (f_smassicen(1:1)/= 'x') then
-            workb(:,:,:) = c0
+            workbs(:,:) = c0
             do n = 1, ncat_hist
                do k = 1, nzslyr
-                  workb(:,:,n) = workb(:,:,n) &
-                               + trcrn(:,:,nt_smice+k-1,n,iblk)
+                  workbs(:,n) = workbs(:,n) &
+                               + trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,nt_smice+k-1,n)
                enddo
-               workb(:,:,n) = workb(:,:,n) &
-                            * vsnon(:,:,n,iblk) / real(nslyr,kind=dbl_kind)
+               workbs(:,n) = workbs(:,n) &
+                            * vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,n) / real(nslyr,kind=dbl_kind)
             enddo
-            call accum_hist_field(n_smassicen-n2D, iblk, ncat_hist, workb, a3Dc)
+            call accum_hist_field(n_smassicen-n2D, iblk, ncat_hist, workbs, a3Dc)
          endif
          if (f_smassliqn(1:1)/= 'x') then
-            workb(:,:,:) = c0
+            workbs(:,:) = c0
             do n = 1, ncat_hist
                do k = 1, nzslyr
-                  workb(:,:,n) = workb(:,:,n) &
-                               + trcrn(:,:,nt_smliq+k-1,n,iblk)
+                  workbs(:,n) = workbs(:,n) &
+                               + trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,nt_smliq+k-1,n)
                enddo
-               workb(:,:,n) = workb(:,:,n) &
-                            * vsnon(:,:,n,iblk) / real(nslyr,kind=dbl_kind)
+               workbs(:,n) = workbs(:,n) &
+                            * vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,n) / real(nslyr,kind=dbl_kind)
             enddo
-            call accum_hist_field(n_smassliqn-n2D, iblk, ncat_hist, workb, a3Dc)
+            call accum_hist_field(n_smassliqn-n2D, iblk, ncat_hist, workbs, a3Dc)
          endif
          if (f_rhos_cmpn(1:1)/= 'x') then
-            workb(:,:,:) = c0
+            workbs(:,:) = c0
             do n = 1, ncat_hist
                do k = 1, nzslyr
-                  workb(:,:,n) = workb(:,:,n) &
-                               + trcrn(:,:,nt_rhos+k-1,n,iblk)
+                  workbs(:,n) = workbs(:,n) &
+                               + trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,nt_rhos+k-1,n)
                enddo
-               workb(:,:,n) = workb(:,:,n) / real(nslyr,kind=dbl_kind)
+               workbs(:,n) = workbs(:,n) / real(nslyr,kind=dbl_kind)
             enddo
-            call accum_hist_field(n_rhos_cmpn-n2D, iblk, ncat_hist, workb, a3Dc)
+            call accum_hist_field(n_rhos_cmpn-n2D, iblk, ncat_hist, workbs, a3Dc)
          endif
          if (f_rhos_cntn(1:1)/= 'x') then
-            workb(:,:,:) = c0
+            workbs(:,:) = c0
             do n = 1, ncat_hist
                do k = 1, nzslyr
-                  workb(:,:,n) = workb(:,:,n) &
-                               + trcrn(:,:,nt_smice+k-1,n,iblk) &
-                               + trcrn(:,:,nt_smliq+k-1,n,iblk)
+                  workbs(:,n) = workbs(:,n) &
+                               + trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,nt_smice+k-1,n) &
+                               + trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,nt_smliq+k-1,n)
                enddo
-               workb(:,:,n) = workb(:,:,n) / real(nslyr,kind=dbl_kind)
+               workbs(:,n) = workbs(:,n) / real(nslyr,kind=dbl_kind)
             enddo
-            call accum_hist_field(n_rhos_cntn-n2D, iblk, ncat_hist, workb, a3Dc)
+            call accum_hist_field(n_rhos_cntn-n2D, iblk, ncat_hist, workbs, a3Dc)
          endif
          if (f_rsnwn(1:1)/= 'x') then
-            workb(:,:,:) = c0
+            workbs(:,:) = c0
             do n = 1, ncat_hist
                do k = 1, nzslyr
-                  workb(:,:,n) = workb(:,:,n) &
-                               + trcrn(:,:,nt_rsnw+k-1,n,iblk)
+                  workbs(:,n) = workbs(:,n) &
+                               + trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,nt_rsnw+k-1,n)
                enddo
-               workb(:,:,n) = workb(:,:,n) / real(nslyr,kind=dbl_kind)
+               workbs(:,n) = workbs(:,n) / real(nslyr,kind=dbl_kind)
             enddo
-            call accum_hist_field(n_rsnwn-n2D, iblk, ncat_hist, workb, a3Dc)
+            call accum_hist_field(n_rsnwn-n2D, iblk, ncat_hist, workbs, a3Dc)
          endif
          endif ! allocated(a3Dc)
 
