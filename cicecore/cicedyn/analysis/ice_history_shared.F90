@@ -35,6 +35,8 @@
 
       private
       public :: define_hist_field, accum_hist_field, icefields_nml, construct_filename, ice_brine_density
+      public :: accum_hist_field_2D_slotin
+      public :: accum_hist_field_2D_aiflux
       public :: hist_field_needed
       public :: expand_a2D, compress_a2D, expand_a3Dc, compress_a3Dc, &
                 expand_hist_plane, compress_hist_plane
@@ -1511,6 +1513,96 @@
       enddo
 
       end subroutine accum_hist_field_3D_slotin
+
+!=======================================================================
+
+      subroutine accum_hist_field_2D_slotin(id, iblk, field_accum, field)
+
+      use ice_blocks, only: nx_block
+      use ice_calendar, only: nstreams
+      use ice_grid, only: tmask, dynCnt, dynOff, dynIJ, skipPhys
+
+      integer (int_kind), dimension(:), intent(in) :: &
+         id                ! location in avail_fields array
+
+      integer (kind=int_kind), intent(in) :: iblk
+
+      ! this block's slice, 1-based: real cells at 1..cnt, dead slot last
+      real (kind=dbl_kind), intent(in) :: &
+         field_accum(:)
+
+      ! (slot, field)
+      real (kind=dbl_kind), intent(inout) :: &
+         field(:,:)
+
+      integer (kind=int_kind) :: ij, is, m, ns, idns
+
+      character(len=*), parameter :: subname = '(accum_hist_field_2D_slotin)'
+
+      do ns = 1, nstreams
+         idns = id(ns)
+         if (idns > 0) then
+            do is = 1, dynCnt(iblk)
+               if (skipPhys(dynOff(iblk)+is)) cycle
+               ij = dynIJ(dynOff(iblk)+is)
+               if (.not. tmask(ij,iblk)) cycle
+               m = dynOff(iblk) + is
+               field(m,idns) = field(m,idns) + field_accum(is)
+            enddo
+         endif
+      enddo
+
+      end subroutine accum_hist_field_2D_slotin
+
+!=======================================================================
+
+      subroutine accum_hist_field_2D_aiflux(id, iblk, fluxb, agg, field)
+
+      use ice_blocks, only: nx_block
+      use ice_calendar, only: nstreams
+      use ice_grid, only: tmask, dynCnt, dynOff, dynIJ, skipPhys
+
+      integer (int_kind), dimension(:), intent(in) :: &
+         id                ! location in avail_fields array
+
+      integer (kind=int_kind), intent(in) :: iblk
+
+      ! block shaped: a flux, a density, anything with no slot form
+      real (kind=dbl_kind), intent(in) :: &
+         fluxb(:,:)
+
+      ! this block's slot slice of the aggregate state
+      real (kind=dbl_kind), intent(in) :: &
+         agg(:)
+
+      ! (slot, field)
+      real (kind=dbl_kind), intent(inout) :: &
+         field(:,:)
+
+      integer (kind=int_kind) :: i, j, ij, is, m, ns, idns
+
+      character(len=*), parameter :: subname = '(accum_hist_field_2D_aiflux)'
+
+      ! The product of a block-shaped field and a slot-shaped one.  The
+      ! flux stays a block read on purpose: fluxes are not state, nothing
+      ! unpacks them, and only the STATE side has to leave the block
+      ! layout for the exit unpacks to be gated.
+      do ns = 1, nstreams
+         idns = id(ns)
+         if (idns > 0) then
+            do is = 1, dynCnt(iblk)
+               m = dynOff(iblk) + is
+               if (skipPhys(m)) cycle
+               ij = dynIJ(m)
+               if (.not. tmask(ij,iblk)) cycle
+               j = (ij-1)/nx_block + 1
+               i = ij - (j-1)*nx_block
+               field(m,idns) = field(m,idns) + fluxb(i,j)*agg(is)
+            enddo
+         endif
+      enddo
+
+      end subroutine accum_hist_field_2D_aiflux
 
 !=======================================================================
 

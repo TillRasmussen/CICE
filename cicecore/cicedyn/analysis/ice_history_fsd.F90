@@ -313,7 +313,8 @@
       use ice_history_shared, only: a2D, a3Df, a4Df, nfsd_hist, &
          ncat_hist, accum_hist_field, n3Dacum, n4Dscum
       use ice_grid, only: dynCnt, dynOff, dynIJ, skipPhys
-      use ice_state, only: aicen_slot, vicen_slot, trcrn_slot,  trcrn, aicen, vicen, aice
+      use ice_state, only: aicen_slot, vicen_slot, trcrn_slot, aice_slot, &
+          trcrn, aicen, vicen, aice
       use ice_arrays_column, only: wave_sig_ht, floe_rad_c, floe_binwidth, &
          d_afsd_newi, d_afsd_latg, d_afsd_latm, d_afsd_wave, d_afsd_weld
 
@@ -363,6 +364,10 @@
          ! 1..nx_block, but accum_hist_field reads just jlo..jhi x
          ! ilo..ihi, so everything computed in the ghost rim was
          ! discarded.  skipPhys is exactly that range.
+         ! ⚠ worka is an AUTOMATIC array and the block loop this
+         ! replaces wrote every cell of it.  Harmless today only
+         ! because a2D is compressed and reads slot cells alone.
+         worka(:,:) = c0
          do is = 1, dynCnt(iblk)
             if (skipPhys(dynOff(iblk)+is)) cycle
             ij = dynIJ(dynOff(iblk)+is)
@@ -384,6 +389,10 @@
          ! 1..nx_block, but accum_hist_field reads just jlo..jhi x
          ! ilo..ihi, so everything computed in the ghost rim was
          ! discarded.  skipPhys is exactly that range.
+         ! ⚠ worka is an AUTOMATIC array and the block loop this
+         ! replaces wrote every cell of it.  Harmless today only
+         ! because a2D is compressed and reads slot cells alone.
+         worka(:,:) = c0
          do is = 1, dynCnt(iblk)
             if (skipPhys(dynOff(iblk)+is)) cycle
             ij = dynIJ(dynOff(iblk)+is)
@@ -414,6 +423,10 @@
          ! 1..nx_block, but accum_hist_field reads just jlo..jhi x
          ! ilo..ihi, so everything computed in the ghost rim was
          ! discarded.  skipPhys is exactly that range.
+         ! ⚠ worka is an AUTOMATIC array and the block loop this
+         ! replaces wrote every cell of it.  Harmless today only
+         ! because a2D is compressed and reads slot cells alone.
+         worka(:,:) = c0
          do is = 1, dynCnt(iblk)
             if (skipPhys(dynOff(iblk)+is)) cycle
             ij = dynIJ(dynOff(iblk)+is)
@@ -442,6 +455,10 @@
          ! 1..nx_block, but accum_hist_field reads just jlo..jhi x
          ! ilo..ihi, so everything computed in the ghost rim was
          ! discarded.  skipPhys is exactly that range.
+         ! ⚠ worka is an AUTOMATIC array and the block loop this
+         ! replaces wrote every cell of it.  Harmless today only
+         ! because a2D is compressed and reads slot cells alone.
+         worka(:,:) = c0
          do is = 1, dynCnt(iblk)
             if (skipPhys(dynOff(iblk)+is)) cycle
             ij = dynIJ(dynOff(iblk)+is)
@@ -449,12 +466,12 @@
             i  = ij - (j-1)*nx_block
             ms = dynOff(iblk) + is
             worka(i,j) = c0
-            if (aice(i,j,iblk) > puny) then
+            if (aice_slot(ms) > puny) then
              do k = 1, nfsd_hist
                 do n = 1, ncat_hist
                   worka(i,j) = worka(i,j) &
                                + (trcrn_slot(ms,nt_fsd+k-1,n) * floe_rad_c(k) &
-                               * aicen_slot(ms,n)/aice(i,j,iblk))
+                               * aicen_slot(ms,n)/aice_slot(ms))
                  end do
               end do
             endif
@@ -467,6 +484,10 @@
          ! 1..nx_block, but accum_hist_field reads just jlo..jhi x
          ! ilo..ihi, so everything computed in the ghost rim was
          ! discarded.  skipPhys is exactly that range.
+         ! ⚠ worka is an AUTOMATIC array and the block loop this
+         ! replaces wrote every cell of it.  Harmless today only
+         ! because a2D is compressed and reads slot cells alone.
+         worka(:,:) = c0
          do is = 1, dynCnt(iblk)
             if (skipPhys(dynOff(iblk)+is)) cycle
             ij = dynIJ(dynOff(iblk)+is)
@@ -474,12 +495,12 @@
             i  = ij - (j-1)*nx_block
             ms = dynOff(iblk) + is
             worka(i,j) = c0
-            if (aice(i,j,iblk) > puny) then
+            if (aice_slot(ms) > puny) then
              do k = 1, nfsd_hist
                do n = 1, ncat_hist
                   worka(i,j) = worka(i,j) &
                                + (c8*floeshape*trcrn_slot(ms,nt_fsd+k-1,n)*floe_rad_c(k) &
-                                    *aicen_slot(ms,n)/(c4*floeshape*floe_rad_c(k)**2 *aice(i,j,iblk)))
+                                    *aicen_slot(ms,n)/(c4*floeshape*floe_rad_c(k)**2 *aice_slot(ms)))
                end do
               end do
             endif
@@ -493,24 +514,26 @@
       if (allocated(a3Df)) then
 
       if (f_afsd(1:1) /= 'x') then
-         ! ⚠ NOT converted.  Converting this cluster makes aicen, vicen, Tinz
-         ! and Sinz differ in the history output -- fields written from
-         ! DIFFERENT buffers (a3Dc, a4Di) than anything fsd touches (a2D,
-         ! a3Df, a4Ds), with uninitialised values appearing in them.  Adding
-         ! explicit initialisation of worke/workd did not fix it, so the
-         ! mechanism is not simply the undefined tail.  Clusters above
-         ! convert cleanly; these two need the cause understood first.
-         do j = 1, ny_block
-         do i = 1, nx_block
+         ! ⚠ worke is an AUTOMATIC array and the block loop this replaces
+         ! wrote every cell of it.  A slot loop touches only the slot
+         ! cells, so the rest keeps whatever was on the stack -- and that
+         ! garbage reaches the output through accum_hist_field.  The
+         ! pre-zero is what makes the narrower loop safe, not decoration.
+         worke(:,:,:) = c0
+         do is = 1, dynCnt(iblk)
+            if (skipPhys(dynOff(iblk)+is)) cycle
+            ij = dynIJ(dynOff(iblk)+is)
+            j  = (ij-1)/nx_block + 1
+            i  = ij - (j-1)*nx_block
+            ms = dynOff(iblk) + is
             do k = 1, nfsd_hist
                worke(i,j,k)=c0
                do n = 1, ncat_hist
-                  worke(i,j,k) = worke(i,j,k) + (trcrn(i,j,nt_fsd+k-1,n,iblk) &
-                               * aicen(i,j,n,iblk)/floe_binwidth(k))
+                  worke(i,j,k) = worke(i,j,k) + (trcrn_slot(ms,nt_fsd+k-1,n) &
+                               * aicen_slot(ms,n)/floe_binwidth(k))
                end do
             end do
-         end do
-         end do
+         enddo
          call accum_hist_field(n_afsd-n3Dacum, iblk, nfsd_hist, worke, a3Df)
       endif
 
@@ -535,23 +558,25 @@
       if (allocated(a4Df)) then
 
       if (f_afsdn(1:1) /= 'x') then
-         do n = 1, ncat_hist
-         do k = 1, nfsd_hist
-         ! ⚠ NOT converted.  Converting this cluster makes aicen, vicen, Tinz
-         ! and Sinz differ in the history output -- fields written from
-         ! DIFFERENT buffers (a3Dc, a4Di) than anything fsd touches (a2D,
-         ! a3Df, a4Ds), with uninitialised values appearing in them.  Adding
-         ! explicit initialisation of worke/workd did not fix it, so the
-         ! mechanism is not simply the undefined tail.  Clusters above
-         ! convert cleanly; these two need the cause understood first.
-         do j = 1, ny_block
-         do i = 1, nx_block
-            workd(i,j,k,n) = trcrn(i,j,nt_fsd+k-1,n,iblk) &
-                           * aicen(i,j,n,iblk)/floe_binwidth(k)
-         end do
-         end do
-         end do
-         end do
+         ! ⚠ workd is an AUTOMATIC array and the block loop this replaces
+         ! wrote every cell of it.  A slot loop touches only the slot
+         ! cells, so the rest keeps whatever was on the stack -- and that
+         ! garbage reaches the output through accum_hist_field.  The
+         ! pre-zero is what makes the narrower loop safe, not decoration.
+         workd(:,:,:,:) = c0
+         do is = 1, dynCnt(iblk)
+            if (skipPhys(dynOff(iblk)+is)) cycle
+            ij = dynIJ(dynOff(iblk)+is)
+            j  = (ij-1)/nx_block + 1
+            i  = ij - (j-1)*nx_block
+            ms = dynOff(iblk) + is
+            do n = 1, ncat_hist
+            do k = 1, nfsd_hist
+               workd(i,j,k,n) = trcrn_slot(ms,nt_fsd+k-1,n) &
+                              * aicen_slot(ms,n)/floe_binwidth(k)
+            end do
+            end do
+         enddo
          call accum_hist_field(n_afsdn-n4Dscum, iblk, nfsd_hist, ncat_hist, &
                                workd(:,:,1:nfsd_hist,1:ncat_hist), a4Df)
       endif

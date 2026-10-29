@@ -2207,6 +2207,7 @@
       use ice_grid, only: tmask, lmask_n, lmask_s, dxU, dyU, grid_ice, &
                           dynMap, dynOff, dynCnt, dynIJ, pack_to_slots, &
                           unpack_from_slots, &
+                          dynNbr, nbr_E, nbr_N, dynMaxCnt, &
           dynCnt, dynOff, dynIJ, skipPhys
       use ice_calendar, only: new_year, write_history, write_restart, &
                               write_ic, timesecs, histfreq, nstreams, mmonth, &
@@ -2286,6 +2287,7 @@
            iblk             , & ! block index
            ilo,ihi,jlo,jhi  , & ! beginning and end of physical domain
            ms               , & ! a2D slot index of the cell (i,j) owns
+           msh              , & ! slot of (i,j) in a block loop, dead slot if none
            nstrm                ! nstreams (1 if writing initial condition)
 
       real (kind=dbl_kind) :: &
@@ -2299,6 +2301,10 @@
 
       real (kind=dbl_kind), dimension (nx_block,ny_block) :: &
          worka, workb, ravgip, ravgip_init, ravgip_pond, ravgip_ridge, rho_ice, rho_ocn, sal_ice
+
+      ! slot-shaped sibling of worka, sized from the largest block
+      real (kind=dbl_kind), dimension (dynMaxCnt+1) :: &
+         workas
 
       real (kind=dbl_kind), dimension (nx_block,ny_block,ncat_hist) :: &
          ravgipn
@@ -2410,9 +2416,9 @@
       !---------------------------------------------------------------
 
 #ifndef __INTEL_LLVM_COMPILER
-      !$OMP PARALLEL DO PRIVATE(iblk,i,j,is,ij,ms,ilo,ihi,jlo,jhi,this_block, &
+      !$OMP PARALLEL DO PRIVATE(iblk,i,j,is,ij,ms,msh,ilo,ihi,jlo,jhi,this_block, &
       !$OMP             k,n,qn,ns,sn,rho_ocn,rho_ice,sal_ice,dfresh,dfsalt,sicen, &
-      !$OMP             worka,workb,Tinz4d,Sinz4d,Tsnz4d)
+      !$OMP             worka,workas,workb,Tinz4d,Sinz4d,Tsnz4d)
 #endif
 
       do iblk = 1, nblocks
@@ -2429,15 +2435,16 @@
 !        if (f_example(1:1) /= 'x') &
 !            call accum_hist_field(n_example,iblk, vice(:,:,iblk), a2D)
          if (f_hi     (1:1) /= 'x') &
-             call accum_hist_field(n_hi,     iblk, vice(:,:,iblk), a2D)
+             call accum_hist_field_2D_slotin(n_hi,     iblk, vice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
          if (f_hs     (1:1) /= 'x') &
-             call accum_hist_field(n_hs,     iblk, vsno(:,:,iblk), a2D)
+             call accum_hist_field_2D_slotin(n_hs,     iblk, vsno_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
          if (f_snowfrac(1:1) /= 'x') &
              call accum_hist_field(n_snowfrac, iblk, snowfrac(:,:,iblk), a2D)
          if (f_Tsfc   (1:1) /= 'x') &
-             call accum_hist_field(n_Tsfc,   iblk, trcr(:,:,nt_Tsfc,iblk), a2D)
+             call accum_hist_field_2D_slotin(n_Tsfc,   iblk, &
+                 trcr_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,nt_Tsfc), a2D)
          if (f_aice   (1:1) /= 'x') &
-             call accum_hist_field(n_aice,   iblk, aice(:,:,iblk), a2D)
+             call accum_hist_field_2D_slotin(n_aice,   iblk, aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
          if (f_aice_init   (1:1) /= 'x') &
              call accum_hist_field(n_aice_init,   iblk, aice_init3d(:,:,iblk), a2D)
          if (f_uvel   (1:1) /= 'x') &
@@ -2517,14 +2524,19 @@
            call accum_hist_field(n_atmdir, iblk, worka(:,:), a2D)
          endif
          if (f_sice   (1:1) /= 'x') then
-             do j = jlo, jhi
-             do i = ilo, ihi
-                worka(i,j) = c0
+             ! worka is only written at slot cells below, so the whole
+             ! array has to be cleared here rather than per cell.
+             worka(:,:) = c0
+             do is = 1, dynCnt(iblk)
+                msh = dynOff(iblk) + is
+                if (skipPhys(msh)) cycle
+                ij = dynIJ(msh)
+                j  = (ij-1)/nx_block + 1
+                i  = ij - (j-1)*nx_block
                 do k = 1, nzilyr
-                   worka(i,j) = worka(i,j) + trcr(i,j,nt_sice+k-1,iblk)
+                   worka(i,j) = worka(i,j) + trcr_slot(msh,nt_sice+k-1)
                 enddo
                 worka(i,j) = worka(i,j) / nzilyr
-             enddo
              enddo
              call accum_hist_field(n_sice,   iblk, worka(:,:), a2D)
          endif
@@ -2583,7 +2595,8 @@
              call accum_hist_field(n_fswint_ai, iblk, fswint_ai(:,:,iblk), a2D)
 
          if (f_fswabs_ai(1:1)/= 'x') &
-             call accum_hist_field(n_fswabs_ai, iblk, fswabs(:,:,iblk)*aice(:,:,iblk), a2D)
+             call accum_hist_field_2D_aiflux(n_fswabs_ai, iblk, fswabs(:,:,iblk), &
+                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
 
          if (f_albsni(1:1) /= 'x') then
              call accum_hist_field(n_albsni, iblk, &
@@ -2622,19 +2635,23 @@
          if (f_flat   (1:1) /= 'x') &
              call accum_hist_field(n_flat,   iblk, flat(:,:,iblk), a2D)
          if (f_flat_ai(1:1) /= 'x') &
-             call accum_hist_field(n_flat_ai,iblk, flat(:,:,iblk)*aice(:,:,iblk), a2D)
+             call accum_hist_field_2D_aiflux(n_flat_ai, iblk, flat(:,:,iblk), &
+                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
          if (f_fsens  (1:1) /= 'x') &
              call accum_hist_field(n_fsens,   iblk, fsens(:,:,iblk), a2D)
          if (f_fsens_ai(1:1)/= 'x') &
-             call accum_hist_field(n_fsens_ai,iblk, fsens(:,:,iblk)*aice(:,:,iblk), a2D)
+             call accum_hist_field_2D_aiflux(n_fsens_ai, iblk, fsens(:,:,iblk), &
+                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
          if (f_flwup  (1:1) /= 'x') &
              call accum_hist_field(n_flwup,   iblk, flwout(:,:,iblk), a2D)
          if (f_flwup_ai(1:1)/= 'x') &
-             call accum_hist_field(n_flwup_ai,iblk, flwout(:,:,iblk)*aice(:,:,iblk), a2D)
+             call accum_hist_field_2D_aiflux(n_flwup_ai, iblk, flwout(:,:,iblk), &
+                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
          if (f_evap   (1:1) /= 'x') &
              call accum_hist_field(n_evap,   iblk, evap(:,:,iblk), a2D)
          if (f_evap_ai(1:1) /= 'x') &
-             call accum_hist_field(n_evap_ai,iblk, evap(:,:,iblk)*aice(:,:,iblk), a2D)
+             call accum_hist_field_2D_aiflux(n_evap_ai, iblk, evap(:,:,iblk), &
+                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
 
          if (f_Tair   (1:1) /= 'x') &
              call accum_hist_field(n_Tair,   iblk, Tair(:,:,iblk), a2D)
@@ -2807,17 +2824,21 @@
              call accum_hist_field(n_dagedtd, iblk, dagedtd(:,:,iblk), a2D)
 
          if (f_fsurf_ai(1:1)/= 'x') &
-             call accum_hist_field(n_fsurf_ai,iblk, fsurf(:,:,iblk)*aice(:,:,iblk), a2D)
+             call accum_hist_field_2D_aiflux(n_fsurf_ai, iblk, fsurf(:,:,iblk), &
+                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
          if (f_fcondtop_ai(1:1)/= 'x') &
-             call accum_hist_field(n_fcondtop_ai, iblk, &
-                                                 fcondtop(:,:,iblk)*aice(:,:,iblk), a2D)
+             call accum_hist_field_2D_aiflux(n_fcondtop_ai, iblk, fcondtop(:,:,iblk), &
+                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
 
          if (f_icepresent(1:1) /= 'x') then
            worka(:,:) = c0
-           do j = jlo, jhi
-           do i = ilo, ihi
-              if (aice(i,j,iblk) > puny) worka(i,j) = c1
-           enddo
+           do is = 1, dynCnt(iblk)
+              msh = dynOff(iblk) + is
+              if (skipPhys(msh)) cycle
+              ij = dynIJ(msh)
+              j  = (ij-1)/nx_block + 1
+              i  = ij - (j-1)*nx_block
+              if (aice_slot(msh) > puny) worka(i,j) = c1
            enddo
            call accum_hist_field(n_icepresent, iblk, worka(:,:), a2D)
          endif
@@ -2826,20 +2847,23 @@
 
          if (f_sitimefrac(1:1) /= 'x') then
            worka(:,:) = c0
-           do j = jlo, jhi
-           do i = ilo, ihi
-              if (aice(i,j,iblk) > puny) worka(i,j) = c1
-           enddo
+           do is = 1, dynCnt(iblk)
+              msh = dynOff(iblk) + is
+              if (skipPhys(msh)) cycle
+              ij = dynIJ(msh)
+              j  = (ij-1)/nx_block + 1
+              i  = ij - (j-1)*nx_block
+              if (aice_slot(msh) > puny) worka(i,j) = c1
            enddo
            call accum_hist_field(n_sitimefrac, iblk, worka(:,:), a2D)
          endif
 
          if (f_sithick(1:1) /= 'x') then
-           call accum_hist_field(n_sithick, iblk, vice(:,:,iblk), a2D)
+           call accum_hist_field_2D_slotin(n_sithick, iblk, vice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
          endif
 
          if (f_sivol(1:1) /= 'x') then
-           call accum_hist_field(n_sivol, iblk, vice(:,:,iblk), a2D)
+           call accum_hist_field_2D_slotin(n_sivol, iblk, vice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
          endif
 
          rho_ice(:,:) = rhoi
@@ -2847,28 +2871,35 @@
          sal_ice(:,:) = ice_ref_salinity
 
          if (ktherm == 2) then
-            do j = jlo, jhi
-            do i = ilo, ihi
-               call ice_brine_density(trcr(i,j,nt_qice:nt_qice+nzilyr-1,iblk),trcr(i,j,nt_sice:nt_sice+nzilyr-1,iblk), &
+            do is = 1, dynCnt(iblk)
+               msh = dynOff(iblk) + is
+               if (skipPhys(msh)) cycle
+               ij = dynIJ(msh)
+               j  = (ij-1)/nx_block + 1
+               i  = ij - (j-1)*nx_block
+               call ice_brine_density(trcr_slot(msh,nt_qice:nt_qice+nzilyr-1),trcr_slot(msh,nt_sice:nt_sice+nzilyr-1), &
                                       sss(i,j,iblk), rho_ice(i,j), rho_ocn(i,j), sal_ice(i,j))
-            enddo
             enddo
          endif
 
          if (f_simass(1:1) /= 'x') then
-           call accum_hist_field(n_simass, iblk, rho_ice(:,:)*vice(:,:,iblk), a2D)
+           call accum_hist_field_2D_aiflux(n_simass, iblk, rho_ice(:,:), &
+                 vice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
          endif
 
          if (f_sisaltmass(1:1) /= 'x') then
-           call accum_hist_field(n_sisaltmass, iblk, rho_ice(:,:)*sal_ice(:,:)*vice(:,:,iblk), a2D)
+           worka(:,:) = rho_ice(:,:)*sal_ice(:,:)
+          call accum_hist_field_2D_aiflux(n_sisaltmass, iblk, worka(:,:), &
+                 vice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
          endif
 
          if (f_sisali(1:1) /= 'x') then
-           call accum_hist_field(n_sisali, iblk, aice(:,:,iblk)*sal_ice(:,:), a2D)
+           call accum_hist_field_2D_aiflux(n_sisali, iblk, sal_ice(:,:), &
+                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
          endif
 
          if (f_siconc(1:1) /= 'x') then
-           call accum_hist_field(n_siconc, iblk, aice(:,:,iblk), a2D)
+           call accum_hist_field_2D_slotin(n_siconc, iblk, aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
          endif
 
          if (f_sisnconc(1:1) /= 'x') then
@@ -2876,19 +2907,23 @@
          endif
 
          if (f_sisnmass(1:1) /= 'x') then
-           call accum_hist_field(n_sisnmass, iblk, rhos*vsno(:,:,iblk), a2D)
+           call accum_hist_field_2D_slotin(n_sisnmass, iblk, rhos*vsno_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
          endif
 
          if (f_siage(1:1) /= 'x') then
-           call accum_hist_field(n_siage, iblk, aice(:,:,iblk)*trcr(:,:,nt_iage,iblk), a2D)
+           call accum_hist_field_2D_slotin(n_siage, iblk, &
+               aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) &
+             * trcr_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,nt_iage), a2D)
          endif
 
          if (f_sisnthick(1:1) /= 'x') then
-           call accum_hist_field(n_sisnthick, iblk, vsno(:,:,iblk), a2D)
+           call accum_hist_field_2D_slotin(n_sisnthick, iblk, vsno_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
          endif
 
          if (f_sitemptop(1:1) /= 'x') then
-           call accum_hist_field(n_sitemptop, iblk, aice(:,:,iblk)*trcr(:,:,nt_Tsfc,iblk), a2D)
+           call accum_hist_field_2D_slotin(n_sitemptop, iblk, &
+               aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) &
+             * trcr_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,nt_Tsfc), a2D)
          endif
 
          ! Tsnice is already multiplied by aicen in icepack.
@@ -2901,20 +2936,25 @@
          endif
 
          if (f_siu(1:1) /= 'x') then
-           call accum_hist_field(n_siu, iblk, aice(:,:,iblk)*reshape(uvel(:,iblk),(/nx_block,ny_block/)), a2D)
+           call accum_hist_field_2D_aiflux(n_siu, iblk, reshape(uvel(:,iblk),(/nx_block,ny_block/)), &
+                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
          endif
 
          if (f_siv(1:1) /= 'x') then
-           call accum_hist_field(n_siv, iblk, aice(:,:,iblk)*reshape(vvel(:,iblk),(/nx_block,ny_block/)), a2D)
+           call accum_hist_field_2D_aiflux(n_siv, iblk, reshape(vvel(:,iblk),(/nx_block,ny_block/)), &
+                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
          endif
 
          if (f_sispeed(1:1) /= 'x') then
            worka(:,:) = c0
-           do j = jlo, jhi
-           do i = ilo, ihi
-              worka(i,j) = aice(i,j,iblk) &
+           do is = 1, dynCnt(iblk)
+              msh = dynOff(iblk) + is
+              if (skipPhys(msh)) cycle
+              ij = dynIJ(msh)
+              j  = (ij-1)/nx_block + 1
+              i  = ij - (j-1)*nx_block
+              worka(i,j) = aice_slot(msh) &
                  * sqrt(uvel((j-1)*nx_block+i,iblk)*uvel((j-1)*nx_block+i,iblk)+vvel((j-1)*nx_block+i,iblk)*vvel((j-1)*nx_block+i,iblk))
-           enddo
            enddo
            call accum_hist_field(n_sispeed, iblk, worka(:,:), a2D)
          endif
@@ -2937,24 +2977,30 @@
 
          if (f_sidmasstranx(1:1) /= 'x') then
            worka(:,:) = c0
-           do j = jlo, jhi
-           do i = ilo, ihi
-              worka(i,j) = (rho_ice(i,j)*p5*(vice(i+1,j,iblk)+vice(i,j,iblk))*dyU((j-1)*nx_block+i,iblk) &
-                         + rhos*p5*(vsno(i+1,j,iblk)+vsno(i,j,iblk))*dyU((j-1)*nx_block+i,iblk)) &
+           do is = 1, dynCnt(iblk)
+              msh = dynOff(iblk) + is
+              if (skipPhys(msh)) cycle
+              ij = dynIJ(msh)
+              j  = (ij-1)/nx_block + 1
+              i  = ij - (j-1)*nx_block
+              worka(i,j) = (rho_ice(i,j)*p5*(vice_slot(dynNbr(msh,nbr_E))+vice_slot(msh))*dyU((j-1)*nx_block+i,iblk) &
+                         + rhos*p5*(vsno_slot(dynNbr(msh,nbr_E))+vsno_slot(msh))*dyU((j-1)*nx_block+i,iblk)) &
                          *  p5*(uvel((j-1-1)*nx_block+i,iblk)+uvel((j-1)*nx_block+i,iblk))
-           enddo
            enddo
            call accum_hist_field(n_sidmasstranx, iblk, worka(:,:), a2D)
          endif
 
          if (f_sidmasstrany(1:1) /= 'x') then
            worka(:,:) = c0
-           do j = jlo, jhi
-           do i = ilo, ihi
-              worka(i,j) = (rho_ice(i,j)*p5*(vice(i,j+1,iblk)+vice(i,j,iblk))*dxU((j-1)*nx_block+i,iblk) &
-                         + rhos*p5*(vsno(i,j+1,iblk)+vsno(i,j,iblk))*dxU((j-1)*nx_block+i,iblk)) &
+           do is = 1, dynCnt(iblk)
+              msh = dynOff(iblk) + is
+              if (skipPhys(msh)) cycle
+              ij = dynIJ(msh)
+              j  = (ij-1)/nx_block + 1
+              i  = ij - (j-1)*nx_block
+              worka(i,j) = (rho_ice(i,j)*p5*(vice_slot(dynNbr(msh,nbr_N))+vice_slot(msh))*dxU((j-1)*nx_block+i,iblk) &
+                         + rhos*p5*(vsno_slot(dynNbr(msh,nbr_N))+vsno_slot(msh))*dxU((j-1)*nx_block+i,iblk)) &
                          *  p5*(vvel((j-1)*nx_block+i-1,iblk)+vvel((j-1)*nx_block+i,iblk))
-           enddo
            enddo
            call accum_hist_field(n_sidmasstrany, iblk, worka(:,:), a2D)
          endif
@@ -2965,7 +3011,7 @@
               ij = dynIJ(dynOff(iblk)+is)
               j  = (ij-1)/nx_block + 1
               i  = ij - (j-1)*nx_block
-              worksl(is,iblk) = aice(i,j,iblk) * strairxU(dynOff(iblk)+is)
+              worksl(is,iblk) = aice_slot(dynOff(iblk)+is) * strairxU(dynOff(iblk)+is)
            enddo
            call accum_hist_field(n_sistrxdtop, iblk, worksl(1:dynCnt(iblk),iblk), &
                                  dynMap(:,iblk), a2D)
@@ -2977,7 +3023,7 @@
               ij = dynIJ(dynOff(iblk)+is)
               j  = (ij-1)/nx_block + 1
               i  = ij - (j-1)*nx_block
-              worksl(is,iblk) = aice(i,j,iblk) * strairyU(dynOff(iblk)+is)
+              worksl(is,iblk) = aice_slot(dynOff(iblk)+is) * strairyU(dynOff(iblk)+is)
            enddo
            call accum_hist_field(n_sistrydtop, iblk, worksl(1:dynCnt(iblk),iblk), &
                                  dynMap(:,iblk), a2D)
@@ -2990,7 +3036,7 @@
               ij = dynIJ(dynOff(iblk)+is)
               j  = (ij-1)/nx_block + 1
               i  = ij - (j-1)*nx_block
-              worksl(is,iblk) = aice(i,j,iblk) * strocnxU(dynOff(iblk)+is)
+              worksl(is,iblk) = aice_slot(dynOff(iblk)+is) * strocnxU(dynOff(iblk)+is)
            enddo
            call accum_hist_field(n_sistrxubot, iblk, worksl(1:dynCnt(iblk),iblk), &
                                  dynMap(:,iblk), a2D)
@@ -3003,23 +3049,27 @@
               ij = dynIJ(dynOff(iblk)+is)
               j  = (ij-1)/nx_block + 1
               i  = ij - (j-1)*nx_block
-              worksl(is,iblk) = aice(i,j,iblk) * strocnyU(dynOff(iblk)+is)
+              worksl(is,iblk) = aice_slot(dynOff(iblk)+is) * strocnyU(dynOff(iblk)+is)
            enddo
            call accum_hist_field(n_sistryubot, iblk, worksl(1:dynCnt(iblk),iblk), &
                                  dynMap(:,iblk), a2D)
          endif
 
          if (f_sicompstren(1:1) /= 'x') then
-           call accum_hist_field(n_sicompstren, iblk, aice(:,:,iblk)*strength(:,:,iblk), a2D)
+           call accum_hist_field_2D_aiflux(n_sicompstren, iblk, strength(:,:,iblk), &
+                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
          endif
 
          if (f_sihc(1:1) /= 'x') then
            worka(:,:) = c0
            do k = 1,nzilyr
-           do j = jlo, jhi
-           do i = ilo, ihi
-              worka(i,j) = worka(i,j) + trcr(i,j,nt_qice+k-1,iblk)*vice(i,j,iblk)/real(nzilyr,kind=dbl_kind)
-           enddo
+           do is = 1, dynCnt(iblk)
+              msh = dynOff(iblk) + is
+              if (skipPhys(msh)) cycle
+              ij = dynIJ(msh)
+              j  = (ij-1)/nx_block + 1
+              i  = ij - (j-1)*nx_block
+              worka(i,j) = worka(i,j) + trcr_slot(msh,nt_qice+k-1)*vice_slot(msh)/real(nzilyr,kind=dbl_kind)
            enddo
            enddo
            call accum_hist_field(n_sihc, iblk, worka(:,:), a2D)
@@ -3028,10 +3078,13 @@
          if (f_sisnhc(1:1) /= 'x') then
            worka(:,:) = c0
            do k = 1,nzslyr
-           do j = jlo, jhi
-           do i = ilo, ihi
-              worka(i,j) = worka(i,j) + trcr(i,j,nt_qsno+k-1,iblk)*vsno(i,j,iblk)/real(nzslyr,kind=dbl_kind)
-           enddo
+           do is = 1, dynCnt(iblk)
+              msh = dynOff(iblk) + is
+              if (skipPhys(msh)) cycle
+              ij = dynIJ(msh)
+              j  = (ij-1)/nx_block + 1
+              i  = ij - (j-1)*nx_block
+              worka(i,j) = worka(i,j) + trcr_slot(msh,nt_qsno+k-1)*vsno_slot(msh)/real(nzslyr,kind=dbl_kind)
            enddo
            enddo
            call accum_hist_field(n_sisnhc, iblk, worka(:,:), a2D)
@@ -3118,33 +3171,42 @@
          endif
 
          if (f_sifllwutop(1:1) /= 'x') then
-           call accum_hist_field(n_sifllwutop, iblk, aice(:,:,iblk)*flwout(:,:,iblk), a2D)
+           call accum_hist_field_2D_aiflux(n_sifllwutop, iblk, flwout(:,:,iblk), &
+                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
          endif
 
          if (f_siflsenstop(1:1) /= 'x') then
            worka(:,:) = c0
-           do j = jlo, jhi
-           do i = ilo, ihi
-              worka(i,j) = aice(i,j,iblk)*fsens(i,j,iblk)
+           do is = 1, dynCnt(iblk)
+              msh = dynOff(iblk) + is
+              if (skipPhys(msh)) cycle
+              ij = dynIJ(msh)
+              j  = (ij-1)/nx_block + 1
+              i  = ij - (j-1)*nx_block
+              worka(i,j) = aice_slot(msh)*fsens(i,j,iblk)
            enddo
-           enddo
-           call accum_hist_field(n_siflsenstop, iblk, aice(:,:,iblk)*fsens(:,:,iblk), a2D)
+           call accum_hist_field_2D_aiflux(n_siflsenstop, iblk, fsens(:,:,iblk), &
+                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
          endif
 
          if (f_siflsensbot(1:1) /= 'x') then
-           call accum_hist_field(n_siflsensbot, iblk, aice(:,:,iblk)*fhocn(:,:,iblk), a2D)
+           call accum_hist_field_2D_aiflux(n_siflsensbot, iblk, fhocn(:,:,iblk), &
+                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
          endif
 
          if (f_sifllattop(1:1) /= 'x') then
-           call accum_hist_field(n_sifllattop, iblk, aice(:,:,iblk)*flat(:,:,iblk), a2D)
+           call accum_hist_field_2D_aiflux(n_sifllattop, iblk, flat(:,:,iblk), &
+                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
          endif
 
          if (f_siflcondtop(1:1) /= 'x') then
-           call accum_hist_field(n_siflcondtop, iblk, aice(:,:,iblk)*fcondtop(:,:,iblk), a2D)
+           call accum_hist_field_2D_aiflux(n_siflcondtop, iblk, fcondtop(:,:,iblk), &
+                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
          endif
 
          if (f_siflcondbot(1:1) /= 'x') then
-           call accum_hist_field(n_siflcondbot, iblk, aice(:,:,iblk)*fcondbot(:,:,iblk), a2D)
+           call accum_hist_field_2D_aiflux(n_siflcondbot, iblk, fcondbot(:,:,iblk), &
+                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
          endif
 
          if (f_sipr(1:1) /= 'x') then
@@ -3155,22 +3217,29 @@
 
          if (f_sifb(1:1) /= 'x') then
            worka(:,:) = c0
-           do j = jlo, jhi
-           do i = ilo, ihi
-              if (aice(i,j,iblk) > puny) then
-                 worka(i,j) = max(((rho_ocn(i,j)-rho_ice(i,j))*vice(i,j,iblk)-rhos*vsno(i,j,iblk)) &
+           do is = 1, dynCnt(iblk)
+              msh = dynOff(iblk) + is
+              if (skipPhys(msh)) cycle
+              ij = dynIJ(msh)
+              j  = (ij-1)/nx_block + 1
+              i  = ij - (j-1)*nx_block
+              if (aice_slot(msh) > puny) then
+                 worka(i,j) = max(((rho_ocn(i,j)-rho_ice(i,j))*vice_slot(msh)-rhos*vsno_slot(msh)) &
                                   / rho_ocn(i,j), c0)
               endif
-           enddo
            enddo
            call accum_hist_field(n_sifb, iblk, worka(:,:), a2D)
          endif
 
          if (f_siflsaltbot(1:1) /= 'x') then
            worka(:,:) = c0
-           do j = jlo, jhi
-           do i = ilo, ihi
-              if (aice(i,j,iblk) > puny) then
+           do is = 1, dynCnt(iblk)
+              msh = dynOff(iblk) + is
+              if (skipPhys(msh)) cycle
+              ij = dynIJ(msh)
+              j  = (ij-1)/nx_block + 1
+              i  = ij - (j-1)*nx_block
+              if (aice_slot(msh) > puny) then
 !                Add in frazil flux
                  if (.not. update_ocn_f) then
                     if ( ktherm == 2 .and. cpl_frazil == 'fresh_ice_correction') then
@@ -3182,25 +3251,28 @@
                  if (saltflux_option == 'prognostic') then
                     sicen = c0
                     do k = 1, nzilyr
-                       sicen = sicen + trcr(i,j,nt_sice+k-1,iblk)*vice(i,j,iblk) &
+                       sicen = sicen + trcr_slot(msh,nt_sice+k-1)*vice_slot(msh) &
                                      / real(nzilyr,kind=dbl_kind)
                     enddo
                     dfsalt = sicen*p001*dfresh
                  else
                     dfsalt = ice_ref_salinity*p001*dfresh
                  endif
-                 worka(i,j) = aice(i,j,iblk)*(fsalt(i,j,iblk)+dfsalt)
+                 worka(i,j) = aice_slot(msh)*(fsalt(i,j,iblk)+dfsalt)
               endif
-           enddo
            enddo
            call accum_hist_field(n_siflsaltbot, iblk, worka(:,:), a2D)
          endif
 
          if (f_siflfwbot(1:1) /= 'x') then
            worka(:,:) = c0
-           do j = jlo, jhi
-           do i = ilo, ihi
-              if (aice(i,j,iblk) > puny) then
+           do is = 1, dynCnt(iblk)
+              msh = dynOff(iblk) + is
+              if (skipPhys(msh)) cycle
+              ij = dynIJ(msh)
+              j  = (ij-1)/nx_block + 1
+              i  = ij - (j-1)*nx_block
+              if (aice_slot(msh) > puny) then
 !                Add in frazil flux
                  if (.not. update_ocn_f) then
                     if ( ktherm == 2 .and. cpl_frazil == 'fresh_ice_correction') then
@@ -3209,19 +3281,21 @@
                        dfresh = -rhoi*frazil(i,j,iblk)/dt
                     endif
                  endif
-                 worka(i,j) = aice(i,j,iblk)*(fresh(i,j,iblk)+dfresh)
+                 worka(i,j) = aice_slot(msh)*(fresh(i,j,iblk)+dfresh)
               endif
-           enddo
            enddo
            call accum_hist_field(n_siflfwbot, iblk, worka(:,:), a2D)
          endif
 
          if (f_siflfwdrain(1:1) /= 'x') then
            worka(:,:) = c0
-           do j = jlo, jhi
-           do i = ilo, ihi
-              worka(i,j) = aice(i,j,iblk)*(melts(i,j,iblk)+meltt(i,j,iblk))
-           enddo
+           do is = 1, dynCnt(iblk)
+              msh = dynOff(iblk) + is
+              if (skipPhys(msh)) cycle
+              ij = dynIJ(msh)
+              j  = (ij-1)/nx_block + 1
+              i  = ij - (j-1)*nx_block
+              worka(i,j) = aice_slot(msh)*(melts(i,j,iblk)+meltt(i,j,iblk))
            enddo
            call accum_hist_field(n_siflfwdrain, iblk, worka(:,:), a2D)
          endif
@@ -3260,20 +3334,26 @@
 
          if (f_siforcecoriolx(1:1) /= 'x') then
            worka(:,:) = c0
-           do j = jlo, jhi
-           do i = ilo, ihi
-              worka(i,j) = aice(i,j,iblk)*fmU((j-1)*nx_block+i,iblk)*vvel((j-1)*nx_block+i,iblk)
-           enddo
+           do is = 1, dynCnt(iblk)
+              msh = dynOff(iblk) + is
+              if (skipPhys(msh)) cycle
+              ij = dynIJ(msh)
+              j  = (ij-1)/nx_block + 1
+              i  = ij - (j-1)*nx_block
+              worka(i,j) = aice_slot(msh)*fmU((j-1)*nx_block+i,iblk)*vvel((j-1)*nx_block+i,iblk)
            enddo
            call accum_hist_field(n_siforcecoriolx, iblk, worka(:,:), a2D)
          endif
 
          if (f_siforcecorioly(1:1) /= 'x') then
            worka(:,:) = c0
-           do j = jlo, jhi
-           do i = ilo, ihi
-              worka(i,j) = -aice(i,j,iblk)*fmU((j-1)*nx_block+i,iblk)*uvel((j-1)*nx_block+i,iblk)
-           enddo
+           do is = 1, dynCnt(iblk)
+              msh = dynOff(iblk) + is
+              if (skipPhys(msh)) cycle
+              ij = dynIJ(msh)
+              j  = (ij-1)/nx_block + 1
+              i  = ij - (j-1)*nx_block
+              worka(i,j) = -aice_slot(msh)*fmU((j-1)*nx_block+i,iblk)*uvel((j-1)*nx_block+i,iblk)
            enddo
            call accum_hist_field(n_siforcecorioly, iblk, worka(:,:), a2D)
          endif
@@ -3282,16 +3362,26 @@
            ! strintxU is flattened, aice is not -- reshape the latter rather
            ! than hold strintxU back.  One block copied, on history steps only,
            ! gated on the namelist flag.  It goes if aice is ever flattened.
-           call accum_hist_field(n_siforceintstrx, iblk, &
-                reshape(aice(:,:,iblk),(/nx_block*ny_block/))*strintxU(:,iblk), a2D)
+           workas(:) = c0
+           do is = 1, dynCnt(iblk)
+              msh = dynOff(iblk) + is
+              if (skipPhys(msh)) cycle
+              workas(is) = aice_slot(msh)*strintxU(dynIJ(msh),iblk)
+           enddo
+           call accum_hist_field_2D_slotin(n_siforceintstrx, iblk, workas, a2D)
          endif
 
          if (f_siforceintstry(1:1) /= 'x') then
            ! strintyU is flattened, aice is not -- reshape the latter rather
            ! than hold strintyU back.  One block copied, on history steps only,
            ! gated on the namelist flag.  It goes if aice is ever flattened.
-           call accum_hist_field(n_siforceintstry, iblk, &
-                reshape(aice(:,:,iblk),(/nx_block*ny_block/))*strintyU(:,iblk), a2D)
+           workas(:) = c0
+           do is = 1, dynCnt(iblk)
+              msh = dynOff(iblk) + is
+              if (skipPhys(msh)) cycle
+              workas(is) = aice_slot(msh)*strintyU(dynIJ(msh),iblk)
+           enddo
+           call accum_hist_field_2D_slotin(n_siforceintstry, iblk, workas, a2D)
          endif
 
          endif ! if (allocated(a2D))
@@ -3519,7 +3609,7 @@
         ! it is per-iteration state; left shared it races and a thread reads
         ! another's value -- or 0 before any thread has set one, which is what
         ! aborted the gx3 history write with "Subscript #1 of A2D has value 0".
-        !$OMP PARALLEL DO PRIVATE(iblk,i,j,ms,worksig1,worksig2,worksig3,ilo,ihi,jlo,jhi,this_block, &
+        !$OMP PARALLEL DO PRIVATE(iblk,i,j,is,ij,ms,msh,worksig1,worksig2,worksig3,ilo,ihi,jlo,jhi,this_block, &
         !$OMP                     n,nn,ravgctz,ravgip,ravgip_init,ravgip_pond, &
         !$OMP                     ravgip_ridge,ravgipn)
         do iblk = 1, nblocks
@@ -4083,14 +4173,15 @@
                                       dynMap(:,iblk))
             end select
 
-           do j = jlo, jhi
-           do i = ilo, ihi
-              ms = dynMap((j-1)*nx_block+i,iblk)
-              ! No slot: a land cell outside mask_any.  The writer fills
-              ! those with spval_dbl on expansion, which is what this loop
-              ! would have written here.
-              if (ms < 1) cycle
-              ms = dynOff(iblk) + ms
+           do is = 1, dynCnt(iblk)
+              msh = dynOff(iblk) + is
+              if (skipPhys(msh)) cycle
+              ij = dynIJ(msh)
+              j  = (ij-1)/nx_block + 1
+              i  = ij - (j-1)*nx_block
+              ! The slot walk only visits cells that have one, so the
+              ! old dynMap lookup and its ms < 1 guard are now dead.
+              ms = msh
               if (.not. tmask((j-1)*nx_block+i,iblk)) then ! mask out land points
                  if (n_divu     (ns) /= 0) a2D(ms,n_divu(ns)) = spval_dbl
                  if (n_shear    (ns) /= 0) a2D(ms,n_shear(ns)) = spval_dbl
@@ -4147,9 +4238,9 @@
                  if (n_frz_onset(ns) /= 0) a2D(ms,n_frz_onset(ns)) = &
                        frz_onset(i,j,iblk)
                  if (n_hisnap   (ns) /= 0) a2D(ms,n_hisnap(ns))    = &
-                       vice(i,j,iblk)
+                       vice_slot(msh)
                  if (n_aisnap   (ns) /= 0) a2D(ms,n_aisnap(ns))    = &
-                       aice(i,j,iblk)
+                       aice_slot(msh)
 
                  if (kdyn == 2) then  ! for EAP dynamics different time of output
                     if (n_trsig    (ns) /= 0) a2D(ms,n_trsig(ns)) = &
@@ -4170,9 +4261,9 @@
                  endif
 
                  if (n_iage     (ns) /= 0) a2D(ms,n_iage(ns))  = &
-                       trcr(i,j,nt_iage,iblk)*avail_hist_fields(n_iage(ns))%cona
+                       trcr_slot(ms,nt_iage)*avail_hist_fields(n_iage(ns))%cona
                  if (n_FY       (ns) /= 0) a2D(ms,n_FY(ns))  = &
-                       trcr(i,j,nt_FY,iblk)*avail_hist_fields(n_FY(ns))%cona
+                       trcr_slot(ms,nt_FY)*avail_hist_fields(n_FY(ns))%cona
 
                  if (n_a11     (ns) /= 0) a2D(ms,n_a11(ns))      = &
                        a11 ((j-1)*nx_block+i,iblk)*avail_hist_fields(n_a11(ns))%cona
@@ -4197,7 +4288,6 @@
                  if (n_yieldstress22     (ns) /= 0) a2D(ms,n_yieldstress22(ns))      = &
                        yieldstress22 ((j-1)*nx_block+i,iblk)*avail_hist_fields(n_yieldstress22(ns))%cona
               endif
-           enddo                ! i
            enddo                ! j
 
         enddo                   ! iblk

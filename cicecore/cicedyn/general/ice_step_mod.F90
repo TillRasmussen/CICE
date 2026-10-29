@@ -885,7 +885,8 @@
                            aice,  trcr,  vice,  vsno, aice0, trcr_depend, &
                            trcr_base, nt_strata, n_trcr_strata , &
                              aice_slot, vice_slot, vsno_slot, aice0_slot, &
-                             aicen_slot, vicen_slot, vsnon_slot, trcrn_slot
+                             aicen_slot, vicen_slot, vsnon_slot, trcrn_slot, &
+                             trcr_slot
         use ice_grid,  only: dynMap, dynOff, dynCnt, dynIJ
       use ice_bound_state, only: bound_state
       use ice_flux,  only: Tf
@@ -989,6 +990,7 @@
               vice_slot (ms) = vice (i,j,iblk)
               vsno_slot (ms) = vsno (i,j,iblk)
               aice0_slot(ms) = aice0(i,j,iblk)
+              trcr_slot (ms,:) = trcr (i,j,:,iblk)
 
 
             if (present(offset)) then

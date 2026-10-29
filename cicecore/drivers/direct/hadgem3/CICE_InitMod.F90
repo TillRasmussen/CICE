@@ -91,6 +91,7 @@
       use ice_timers, only: timer_total, init_ice_timers, ice_timer_start
       use ice_transport_driver, only: init_transport
       use lib_mpp, only:   mpi_comm_opa      ! NEMO MPI communicator
+      use ice_bound_state, only: pack_state_slots
 
       logical(kind=log_kind) :: tr_aero, tr_zaero, skl_bgc, z_tracers, &
          tr_fsd, wave_spec
@@ -214,6 +215,10 @@
       call init_flux_ocn        ! initialize ocean fluxes sent to coupler
 
       call dealloc_grid         ! deallocate temporary grid arrays
+      ! ⚠ init_restart fills trcrn for fsd/bgc/aerosols/isotopes/brine
+      ! AFTER init_state ran bound_state, so refresh the slot copies
+      ! before anything reads them.  Without this the IC history is zero.
+      call pack_state_slots
       if (write_ic) call accum_hist(dt) ! write initial conditions
       call ice_read_hist  ! read history restarts
 

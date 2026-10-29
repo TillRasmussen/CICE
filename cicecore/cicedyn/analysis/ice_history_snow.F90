@@ -301,8 +301,9 @@
       use ice_blocks, only: block, nx_block, ny_block
       use ice_flux, only: fsloss
       use ice_history_shared, only: n2D, a2D, a3Dc, ncat_hist, &
-          accum_hist_field, nzslyr
-      use ice_state, only: vsno, vsnon, trcr, trcrn, vsnon_slot, trcrn_slot
+          accum_hist_field, accum_hist_field_2D_slotin, nzslyr
+      use ice_state, only: vsno, vsnon, trcr, trcrn, vsnon_slot, trcrn_slot, &
+          vsno_slot, trcr_slot
       use ice_grid, only: dynOff, dynCnt
 
       integer (kind=int_kind), intent(in) :: &
@@ -332,7 +333,17 @@
       real (kind=dbl_kind), dimension (dynCnt(iblk)+1,ncat_hist) :: &
          workbs
 
+      ! The 1-D sibling of workbs, for the aggregate fields.
+      real (kind=dbl_kind), dimension (dynCnt(iblk)+1) :: &
+         workas
+
+      integer (kind=int_kind) :: &
+         s1, s2               ! this block's slot slice
+
       character(len=*), parameter :: subname = '(accum_hist_snow)'
+
+      s1 = dynOff(iblk) + 1
+      s2 = dynOff(iblk) + dynCnt(iblk) + 1
 
       !---------------------------------------------------------------
       ! increment field
@@ -349,50 +360,50 @@
       if (tr_snow) then
 
          if (f_smassice(1:1)/= 'x') then
-            worka(:,:) = c0
+            workas(:) = c0
             do k = 1, nzslyr
-               worka(:,:) = worka(:,:) &
-                          + trcr(:,:,nt_smice+k-1,iblk)
+               workas(:) = workas(:) &
+                          + trcr_slot(s1:s2,nt_smice+k-1)
             enddo
-            worka(:,:) = worka(:,:) * vsno(:,:,iblk) / real(nslyr,kind=dbl_kind)
-            call accum_hist_field(n_smassice, iblk, worka, a2D)
+            workas(:) = workas(:) * vsno_slot(s1:s2) / real(nslyr,kind=dbl_kind)
+            call accum_hist_field_2D_slotin(n_smassice, iblk, workas, a2D)
          endif
          if (f_smassliq(1:1)/= 'x') then
-            worka(:,:) = c0
+            workas(:) = c0
             do k = 1, nzslyr
-               worka(:,:) = worka(:,:) &
-                          + trcr(:,:,nt_smliq+k-1,iblk)
+               workas(:) = workas(:) &
+                          + trcr_slot(s1:s2,nt_smliq+k-1)
             enddo
-            worka(:,:) = worka(:,:) * vsno(:,:,iblk) / real(nslyr,kind=dbl_kind)
-            call accum_hist_field(n_smassliq, iblk, worka, a2D)
+            workas(:) = workas(:) * vsno_slot(s1:s2) / real(nslyr,kind=dbl_kind)
+            call accum_hist_field_2D_slotin(n_smassliq, iblk, workas, a2D)
          endif
          if (f_rhos_cmp(1:1)/= 'x') then
-            worka(:,:) = c0
+            workas(:) = c0
             do k = 1, nzslyr
-               worka(:,:) = worka(:,:) &
-                          + trcr(:,:,nt_rhos+k-1,iblk)
+               workas(:) = workas(:) &
+                          + trcr_slot(s1:s2,nt_rhos+k-1)
             enddo
-            worka(:,:) = worka(:,:) / real(nslyr,kind=dbl_kind)
-            call accum_hist_field(n_rhos_cmp, iblk, worka, a2D)
+            workas(:) = workas(:) / real(nslyr,kind=dbl_kind)
+            call accum_hist_field_2D_slotin(n_rhos_cmp, iblk, workas, a2D)
          endif
          if (f_rhos_cnt(1:1)/= 'x') then
-            worka(:,:) = c0
+            workas(:) = c0
             do k = 1, nzslyr
-               worka(:,:) = worka(:,:) &
-                          + trcr(:,:,nt_smice+k-1,iblk) &
-                          + trcr(:,:,nt_smliq+k-1,iblk)
+               workas(:) = workas(:) &
+                          + trcr_slot(s1:s2,nt_smice+k-1) &
+                          + trcr_slot(s1:s2,nt_smliq+k-1)
             enddo
-            worka(:,:) = worka(:,:) / real(nslyr,kind=dbl_kind)
-            call accum_hist_field(n_rhos_cnt, iblk, worka, a2D)
+            workas(:) = workas(:) / real(nslyr,kind=dbl_kind)
+            call accum_hist_field_2D_slotin(n_rhos_cnt, iblk, workas, a2D)
          endif
          if (f_rsnw(1:1)/= 'x') then
-            worka(:,:) = c0
+            workas(:) = c0
             do k = 1, nzslyr
-               worka(:,:) = worka(:,:) &
-                          + trcr(:,:,nt_rsnw+k-1,iblk)
+               workas(:) = workas(:) &
+                          + trcr_slot(s1:s2,nt_rsnw+k-1)
             enddo
-            worka(:,:) = worka(:,:) / real(nslyr,kind=dbl_kind)
-            call accum_hist_field(n_rsnw, iblk, worka, a2D)
+            workas(:) = workas(:) / real(nslyr,kind=dbl_kind)
+            call accum_hist_field_2D_slotin(n_rsnw, iblk, workas, a2D)
          endif
          if (f_meltsliq(1:1)/= 'x') &
             call accum_hist_field(n_meltsliq, iblk, &

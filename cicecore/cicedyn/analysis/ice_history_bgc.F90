@@ -1857,8 +1857,11 @@
           flux_bio, flux_bio_ai
       use ice_history_shared, only: n2D, a2D, a3Dc, &
           n3Dzcum, n3Dbcum, a3Db, a3Da, &
-          ncat_hist, accum_hist_field, nzblyr, nzalyr
-      use ice_state, only: trcrn, trcr, aicen, aice, vicen
+          ncat_hist, accum_hist_field, accum_hist_field_2D_slotin, &
+          nzblyr, nzalyr
+      use ice_state, only: trcrn, trcr, aicen, aice, vicen, &
+          aicen_slot, aice_slot, vicen_slot, trcrn_slot, trcr_slot
+      use ice_grid, only: dynCnt, dynOff, dynIJ, skipPhys
 
       integer (kind=int_kind), intent(in) :: &
            iblk                 ! block index
@@ -1867,6 +1870,8 @@
 
       integer (kind=int_kind) :: &
          i, j, n, k,        & ! loop indices
+         is, ms, ij,        & ! slot loop index, global slot, flattened cell
+         s1, s2,            & ! this block's slot slice
          ilo,ihi,jlo,jhi      ! beginning and end of physical domain
 
       real (kind=dbl_kind), dimension (nx_block,ny_block,nblyr+4) :: &
@@ -1968,6 +1973,9 @@
       jlo = this_block%jlo
       jhi = this_block%jhi
 
+      s1 = dynOff(iblk) + 1
+      s2 = dynOff(iblk) + dynCnt(iblk) + 1
+
       !---------------------------------------------------------------
       ! increment field
       !---------------------------------------------------------------
@@ -1992,10 +2000,10 @@
       endif
       if (f_iso(1:1) /= 'x') then
          do n=1,n_iso
-            call accum_hist_field(n_isosno(n,:), iblk, &
-                               trcr(:,:,nt_isosno+n-1,iblk)/rhos, a2D)
-            call accum_hist_field(n_isoice(n,:), iblk, &
-                               trcr(:,:,nt_isoice+n-1,iblk)/rhos, a2D)
+            call accum_hist_field_2D_slotin(n_isosno(n,:), iblk, &
+                               trcr_slot(s1:s2,nt_isosno+n-1)/rhos, a2D)
+            call accum_hist_field_2D_slotin(n_isoice(n,:), iblk, &
+                               trcr_slot(s1:s2,nt_isoice+n-1)/rhos, a2D)
          enddo
       endif
 
@@ -2014,14 +2022,14 @@
       endif
       if (f_aero(1:1) /= 'x') then
          do n=1,n_aero
-            call accum_hist_field(n_aerosn1(n,:), iblk, &
-                               trcr(:,:,nt_aero  +4*(n-1),iblk)/rhos, a2D)
-            call accum_hist_field(n_aerosn2(n,:), iblk, &
-                               trcr(:,:,nt_aero+1+4*(n-1),iblk)/rhos, a2D)
-            call accum_hist_field(n_aeroic1(n,:), iblk, &
-                               trcr(:,:,nt_aero+2+4*(n-1),iblk)/rhoi, a2D)
-            call accum_hist_field(n_aeroic2(n,:), iblk, &
-                               trcr(:,:,nt_aero+3+4*(n-1),iblk)/rhoi, a2D)
+            call accum_hist_field_2D_slotin(n_aerosn1(n,:), iblk, &
+                               trcr_slot(s1:s2,nt_aero  +4*(n-1))/rhos, a2D)
+            call accum_hist_field_2D_slotin(n_aerosn2(n,:), iblk, &
+                               trcr_slot(s1:s2,nt_aero+1+4*(n-1))/rhos, a2D)
+            call accum_hist_field_2D_slotin(n_aeroic1(n,:), iblk, &
+                               trcr_slot(s1:s2,nt_aero+2+4*(n-1))/rhoi, a2D)
+            call accum_hist_field_2D_slotin(n_aeroic2(n,:), iblk, &
+                               trcr_slot(s1:s2,nt_aero+3+4*(n-1))/rhoi, a2D)
          enddo
       endif
 
@@ -2031,76 +2039,76 @@
 
       if (f_bgc_N(1:1)/= 'x') then
          do n=1,n_algae
-            call accum_hist_field(n_bgc_N(n,:), iblk, &
-                    sk_l*trcr(:,:,nt_bgc_N(n),   iblk), a2D)
+            call accum_hist_field_2D_slotin(n_bgc_N(n,:), iblk, &
+                    sk_l*trcr_slot(s1:s2,nt_bgc_N(n)), a2D)
          enddo
       endif
       if (f_bgc_C(1:1)/= 'x') then
          do n=1,n_algae
-            call accum_hist_field(n_bgc_C(n,:),        iblk, &
-                    sk_l*R_C2N(n)*trcr(:,:,nt_bgc_N(n), iblk), a2D)
+            call accum_hist_field_2D_slotin(n_bgc_C(n,:),        iblk, &
+                    sk_l*R_C2N(n)*trcr_slot(s1:s2,nt_bgc_N(n)), a2D)
          enddo
       endif
       if (f_bgc_DOC(1:1)/= 'x') then
          do n=1,n_doc
-            call accum_hist_field(n_bgc_DOC(n,:), iblk, &
-                    sk_l*trcr(:,:,nt_bgc_DOC(n),   iblk), a2D)
+            call accum_hist_field_2D_slotin(n_bgc_DOC(n,:), iblk, &
+                    sk_l*trcr_slot(s1:s2,nt_bgc_DOC(n)), a2D)
          enddo
       endif
       if (f_bgc_DIC(1:1)/= 'x') then
          do n=1,n_dic
-            call accum_hist_field(n_bgc_DIC(n,:), iblk, &
-                    sk_l*trcr(:,:,nt_bgc_DIC(n),   iblk), a2D)
+            call accum_hist_field_2D_slotin(n_bgc_DIC(n,:), iblk, &
+                    sk_l*trcr_slot(s1:s2,nt_bgc_DIC(n)), a2D)
          enddo
       endif
       if (f_bgc_DON(1:1)/= 'x') then
          do n=1,n_don
-            call accum_hist_field(n_bgc_DON(n,:), iblk, &
-                    sk_l*trcr(:,:,nt_bgc_DON(n),   iblk), a2D)
+            call accum_hist_field_2D_slotin(n_bgc_DON(n,:), iblk, &
+                    sk_l*trcr_slot(s1:s2,nt_bgc_DON(n)), a2D)
          enddo
       endif
       if (f_bgc_Fed (1:1)/= 'x') then
          do n=1,n_fed
-            call accum_hist_field(n_bgc_Fed (n,:), iblk, &
-                    sk_l*trcr(:,:,nt_bgc_Fed (n),   iblk), a2D)
+            call accum_hist_field_2D_slotin(n_bgc_Fed (n,:), iblk, &
+                    sk_l*trcr_slot(s1:s2,nt_bgc_Fed (n)), a2D)
          enddo
       endif
       if (f_bgc_Fep (1:1)/= 'x') then
          do n=1,n_fep
-            call accum_hist_field(n_bgc_Fep (n,:), iblk, &
-                    sk_l*trcr(:,:,nt_bgc_Fep (n),   iblk), a2D)
+            call accum_hist_field_2D_slotin(n_bgc_Fep (n,:), iblk, &
+                    sk_l*trcr_slot(s1:s2,nt_bgc_Fep (n)), a2D)
          enddo
       endif
       if (f_bgc_chl(1:1)/= 'x') then
          do n=1,n_algae
-            call accum_hist_field(n_bgc_chl(n,:), iblk, &
-                    sk_l*trcr(:,:,nt_bgc_chl(n),   iblk), a2D)
+            call accum_hist_field_2D_slotin(n_bgc_chl(n,:), iblk, &
+                    sk_l*trcr_slot(s1:s2,nt_bgc_chl(n)), a2D)
          enddo
       endif
       if (f_bgc_Nit(1:1)/= 'x') &
-         call accum_hist_field(n_bgc_Nit,  iblk, &
-                sk_l*trcr(:,:,nt_bgc_Nit,  iblk), a2D)
+         call accum_hist_field_2D_slotin(n_bgc_Nit,  iblk, &
+                sk_l*trcr_slot(s1:s2,nt_bgc_Nit), a2D)
       if (f_bgc_Am(1:1)/= 'x') &
-         call accum_hist_field(n_bgc_Am,   iblk, &
-                sk_l*trcr(:,:,nt_bgc_Am,   iblk), a2D)
+         call accum_hist_field_2D_slotin(n_bgc_Am,   iblk, &
+                sk_l*trcr_slot(s1:s2,nt_bgc_Am), a2D)
       if (f_bgc_Sil(1:1)/= 'x') &
-         call accum_hist_field(n_bgc_Sil,  iblk, &
-                sk_l*trcr(:,:,nt_bgc_Sil,  iblk), a2D)
+         call accum_hist_field_2D_slotin(n_bgc_Sil,  iblk, &
+                sk_l*trcr_slot(s1:s2,nt_bgc_Sil), a2D)
       if (f_bgc_hum(1:1)/= 'x') &
-         call accum_hist_field(n_bgc_hum,  iblk, &
-                sk_l*trcr(:,:,nt_bgc_hum,  iblk), a2D)
+         call accum_hist_field_2D_slotin(n_bgc_hum,  iblk, &
+                sk_l*trcr_slot(s1:s2,nt_bgc_hum), a2D)
       if (f_bgc_PON(1:1)/= 'x') &
-         call accum_hist_field(n_bgc_PON,  iblk, &
-                sk_l*trcr(:,:,nt_bgc_PON,  iblk), a2D)
+         call accum_hist_field_2D_slotin(n_bgc_PON,  iblk, &
+                sk_l*trcr_slot(s1:s2,nt_bgc_PON), a2D)
       if (f_bgc_DMSPp(1:1)/= 'x') &
-         call accum_hist_field(n_bgc_DMSPp,iblk, &
-                sk_l*trcr(:,:,nt_bgc_DMSPp,iblk), a2D)
+         call accum_hist_field_2D_slotin(n_bgc_DMSPp,iblk, &
+                sk_l*trcr_slot(s1:s2,nt_bgc_DMSPp), a2D)
       if (f_bgc_DMSPd(1:1)/= 'x') &
-         call accum_hist_field(n_bgc_DMSPd,iblk, &
-                sk_l*trcr(:,:,nt_bgc_DMSPd,iblk), a2D)
+         call accum_hist_field_2D_slotin(n_bgc_DMSPd,iblk, &
+                sk_l*trcr_slot(s1:s2,nt_bgc_DMSPd), a2D)
       if (f_bgc_DMS(1:1)/= 'x') &
-         call accum_hist_field(n_bgc_DMS,  iblk, &
-                sk_l*trcr(:,:,nt_bgc_DMS,  iblk), a2D)
+         call accum_hist_field_2D_slotin(n_bgc_DMS,  iblk, &
+                sk_l*trcr_slot(s1:s2,nt_bgc_DMS), a2D)
 
      endif  !skl_bgc
 
@@ -2313,12 +2321,16 @@
       endif
       if (f_algalpeak  (1:1) /= 'x') then
          do n=1,n_algae
-            do j = jlo, jhi
-               do i = ilo, ihi
+            do is = 1, dynCnt(iblk)
+               ms = dynOff(iblk) + is
+               if (skipPhys(ms)) cycle
+               ij = dynIJ(ms)
+               j  = (ij-1)/nx_block + 1
+               i  = ij - (j-1)*nx_block
                 workii = 0
                 maxv = c0
-                if (aice(i,j,iblk) > c0) then
-                  workv(:) = trcr(i,j,nt_bgc_N(n):nt_bgc_N(n)+nblyr,iblk)
+                if (aice_slot(ms) > c0) then
+                  workv(:) = trcr_slot(ms,nt_bgc_N(n):nt_bgc_N(n)+nblyr)
                   worki = maxloc(workv)  ! integer for first location of max
                   maxv = workv(worki(1)) ! value of max
                   workv(worki(1)) = c0   ! remove maximum at first location
@@ -2327,8 +2339,7 @@
                 endif
                 workni(i,j) = real(workii,kind=dbl_kind)
                 worknj(i,j) = maxv
-               enddo  ! i
-             enddo    ! j
+             enddo    ! is
              call accum_hist_field(n_algalpeak(n,:),    iblk, &
                    workni(:,:), a2D)
              call accum_hist_field(n_peakval(n,:), iblk, &
@@ -2505,77 +2516,77 @@
       !
       if (f_zaerofrac  (1:1) /= 'x') then
          do n=1,n_zaero
-            call accum_hist_field(n_zaerofrac(n,:),    iblk, &
-                   trcr(:,:,nt_zbgc_frac - 1 + nlt_zaero(n), iblk), a2D)
+            call accum_hist_field_2D_slotin(n_zaerofrac(n,:),    iblk, &
+                   trcr_slot(s1:s2,nt_zbgc_frac - 1 + nlt_zaero(n)), a2D)
          enddo
       endif !f_zaerofrac
       if (f_chlfrac  (1:1) /= 'x') then
          do n=1,n_algae
-            call accum_hist_field(n_chlfrac(n,:),    iblk, &
-                   trcr(:,:,nlt_bgc_N(n), iblk), a2D)
+            call accum_hist_field_2D_slotin(n_chlfrac(n,:),    iblk, &
+                   trcr_slot(s1:s2,nlt_bgc_N(n)), a2D)
          enddo
       endif !f_chlfrac
       if (f_Nfrac  (1:1) /= 'x') then
          do n=1,n_algae
-            call accum_hist_field(n_Nfrac(n,:),    iblk, &
-                   trcr(:,:,nt_zbgc_frac - 1 + nlt_bgc_N(n), iblk), a2D)
+            call accum_hist_field_2D_slotin(n_Nfrac(n,:),    iblk, &
+                   trcr_slot(s1:s2,nt_zbgc_frac - 1 + nlt_bgc_N(n)), a2D)
          enddo
       endif !f_Nfrac
       if (f_DOCfrac  (1:1) /= 'x') then
          do n=1,n_doc
-            call accum_hist_field(n_DOCfrac(n,:),    iblk, &
-                   trcr(:,:,nt_zbgc_frac - 1 + nlt_bgc_DOC(n), iblk), a2D)
+            call accum_hist_field_2D_slotin(n_DOCfrac(n,:),    iblk, &
+                   trcr_slot(s1:s2,nt_zbgc_frac - 1 + nlt_bgc_DOC(n)), a2D)
          enddo
       endif !f_DOCfrac
       if (f_DICfrac  (1:1) /= 'x') then
          do n=1,n_dic
-            call accum_hist_field(n_DICfrac(n,:),    iblk, &
-                   trcr(:,:,nt_zbgc_frac - 1 + nlt_bgc_DIC(n), iblk), a2D)
+            call accum_hist_field_2D_slotin(n_DICfrac(n,:),    iblk, &
+                   trcr_slot(s1:s2,nt_zbgc_frac - 1 + nlt_bgc_DIC(n)), a2D)
          enddo
       endif !f_DICfrac
       if (f_DONfrac  (1:1) /= 'x') then
          do n=1,n_don
-            call accum_hist_field(n_DONfrac(n,:),    iblk, &
-                   trcr(:,:,nt_zbgc_frac - 1 + nlt_bgc_DON(n), iblk), a2D)
+            call accum_hist_field_2D_slotin(n_DONfrac(n,:),    iblk, &
+                   trcr_slot(s1:s2,nt_zbgc_frac - 1 + nlt_bgc_DON(n)), a2D)
          enddo
       endif !f_DONfrac
       if (f_Fedfrac   (1:1) /= 'x') then
          do n=1,n_fed
-            call accum_hist_field(n_Fedfrac (n,:),    iblk, &
-                   trcr(:,:,nt_zbgc_frac - 1 + nlt_bgc_Fed (n), iblk), a2D)
+            call accum_hist_field_2D_slotin(n_Fedfrac (n,:),    iblk, &
+                   trcr_slot(s1:s2,nt_zbgc_frac - 1 + nlt_bgc_Fed (n)), a2D)
          enddo
       endif !f_Fedfrac
       if (f_Fepfrac   (1:1) /= 'x') then
          do n=1,n_fep
-            call accum_hist_field(n_Fepfrac (n,:),    iblk, &
-                   trcr(:,:,nt_zbgc_frac - 1 + nlt_bgc_Fep (n), iblk), a2D)
+            call accum_hist_field_2D_slotin(n_Fepfrac (n,:),    iblk, &
+                   trcr_slot(s1:s2,nt_zbgc_frac - 1 + nlt_bgc_Fep (n)), a2D)
          enddo
       endif !f_Fepfrac
 
       if (f_Nitfrac  (1:1) /= 'x') &
-         call accum_hist_field(n_Nitfrac,   iblk, &
-                   trcr(:,:,nt_zbgc_frac - 1 + nlt_bgc_Nit, iblk), a2D)
+         call accum_hist_field_2D_slotin(n_Nitfrac,   iblk, &
+                   trcr_slot(s1:s2,nt_zbgc_frac - 1 + nlt_bgc_Nit), a2D)
       if (f_Amfrac  (1:1) /= 'x') &
-         call accum_hist_field(n_Amfrac,   iblk, &
-                   trcr(:,:,nt_zbgc_frac - 1 + nlt_bgc_Am, iblk), a2D)
+         call accum_hist_field_2D_slotin(n_Amfrac,   iblk, &
+                   trcr_slot(s1:s2,nt_zbgc_frac - 1 + nlt_bgc_Am), a2D)
       if (f_Silfrac  (1:1) /= 'x') &
-         call accum_hist_field(n_Silfrac,   iblk, &
-                   trcr(:,:,nt_zbgc_frac - 1 + nlt_bgc_Sil, iblk), a2D)
+         call accum_hist_field_2D_slotin(n_Silfrac,   iblk, &
+                   trcr_slot(s1:s2,nt_zbgc_frac - 1 + nlt_bgc_Sil), a2D)
       if (f_humfrac  (1:1) /= 'x') &
-         call accum_hist_field(n_humfrac,   iblk, &
-                   trcr(:,:,nt_zbgc_frac - 1 + nlt_bgc_hum, iblk), a2D)
+         call accum_hist_field_2D_slotin(n_humfrac,   iblk, &
+                   trcr_slot(s1:s2,nt_zbgc_frac - 1 + nlt_bgc_hum), a2D)
       if (f_DMSPpfrac  (1:1) /= 'x') &
-         call accum_hist_field(n_DMSPpfrac,   iblk, &
-                   trcr(:,:,nt_zbgc_frac - 1 + nlt_bgc_DMSPp, iblk), a2D)
+         call accum_hist_field_2D_slotin(n_DMSPpfrac,   iblk, &
+                   trcr_slot(s1:s2,nt_zbgc_frac - 1 + nlt_bgc_DMSPp), a2D)
       if (f_DMSPdfrac  (1:1) /= 'x') &
-         call accum_hist_field(n_DMSPdfrac,   iblk, &
-                   trcr(:,:,nt_zbgc_frac - 1 + nlt_bgc_DMSPd, iblk), a2D)
+         call accum_hist_field_2D_slotin(n_DMSPdfrac,   iblk, &
+                   trcr_slot(s1:s2,nt_zbgc_frac - 1 + nlt_bgc_DMSPd), a2D)
       if (f_DMSfrac  (1:1) /= 'x') &
-         call accum_hist_field(n_DMSfrac,   iblk, &
-                   trcr(:,:,nt_zbgc_frac - 1 + nlt_bgc_DMS, iblk), a2D)
+         call accum_hist_field_2D_slotin(n_DMSfrac,   iblk, &
+                   trcr_slot(s1:s2,nt_zbgc_frac - 1 + nlt_bgc_DMS), a2D)
       if (f_PONfrac  (1:1) /= 'x') &
-         call accum_hist_field(n_PONfrac,   iblk, &
-                   trcr(:,:,nt_zbgc_frac - 1 + nlt_bgc_PON, iblk), a2D)
+         call accum_hist_field_2D_slotin(n_PONfrac,   iblk, &
+                   trcr_slot(s1:s2,nt_zbgc_frac - 1 + nlt_bgc_PON), a2D)
 
      endif  ! z_tracers
 
@@ -2595,7 +2606,8 @@
 
       if (f_fbri   (1:1) /= 'x') &
          call accum_hist_field(n_fbri-n2D, iblk, ncat_hist, &
-                               trcrn(:,:,nt_fbri,1:ncat_hist,iblk), a3Dc)
+                               trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1, &
+                                          nt_fbri,1:ncat_hist), a3Dc)
      endif
      endif ! allocated(a3Dc)
 
@@ -2606,14 +2618,17 @@
       if (f_bTin  (1:1) /= 'x')  then
          workz(:,:,:) = c0
          do n = 1, ncat_hist
-            do j = jlo, jhi
-               do i = ilo, ihi
-                  if (aicen(i,j,n,iblk) > c0) then
+            do is = 1, dynCnt(iblk)
+               ms = dynOff(iblk) + is
+               if (skipPhys(ms)) cycle
+               ij = dynIJ(ms)
+               j  = (ij-1)/nx_block + 1
+               i  = ij - (j-1)*nx_block
+                  if (aicen_slot(ms,n) > c0) then
                       workz(i,j,1:nzblyr) =  workz(i,j,1:nzblyr) + bTiz(i,j,1:nzblyr,n,iblk)*&
-                               aicen(i,j,n,iblk)
+                               aicen_slot(ms,n)
                   endif
-               enddo  ! i
-            enddo     ! j
+            enddo    ! is
          enddo        ! n
          call accum_hist_field(n_bTin-n3Dzcum, iblk, nzblyr, &
                                workz(:,:,1:nzblyr), a3Db)
@@ -2622,14 +2637,17 @@
       if (f_bphi  (1:1) /= 'x') then
          workz(:,:,:) = c0
          do n = 1, ncat_hist
-            do j = jlo, jhi
-               do i = ilo, ihi
-                  if (aicen(i,j,n,iblk) > c0) then
+            do is = 1, dynCnt(iblk)
+               ms = dynOff(iblk) + is
+               if (skipPhys(ms)) cycle
+               ij = dynIJ(ms)
+               j  = (ij-1)/nx_block + 1
+               i  = ij - (j-1)*nx_block
+                  if (aicen_slot(ms,n) > c0) then
                       workz(i,j,1:nzblyr) =  workz(i,j,1:nzblyr) + bphi(i,j,1:nzblyr,n,iblk)*&
-                               aicen(i,j,n,iblk)
+                               aicen_slot(ms,n)
                   endif
-               enddo ! i
-            enddo    ! j
+            enddo    ! is
          enddo       ! n
          call accum_hist_field(n_bphi-n3Dzcum, iblk, nzblyr, &
                                workz(:,:,1:nzblyr), a3Db)
@@ -2638,16 +2656,19 @@
       if (f_zfswin   (1:1) /= 'x') then
          workz(:,:,:) = c0
          do n = 1, ncat_hist
-            do j = jlo, jhi
-               do i = ilo, ihi
-                if (aicen(i,j,n,iblk) > c0) then
+            do is = 1, dynCnt(iblk)
+               ms = dynOff(iblk) + is
+               if (skipPhys(ms)) cycle
+               ij = dynIJ(ms)
+               j  = (ij-1)/nx_block + 1
+               i  = ij - (j-1)*nx_block
+                if (aicen_slot(ms,n) > c0) then
                    workz(i,j,1:nblyr+1) = workz(i,j,1:nblyr+1)+ zfswin(i,j,1:nblyr+1,n,iblk)*&
-                       aicen(i,j,n,iblk)
+                       aicen_slot(ms,n)
                    workz(i,j,nzblyr) = workz(i,j,nzblyr) + zfswin(i,j,nblyr+1,n,iblk)*&
-                       aicen(i,j,n,iblk)
+                       aicen_slot(ms,n)
                 endif
-               enddo ! i
-            enddo    ! j
+            enddo    ! is
          enddo       ! n
          call accum_hist_field(n_zfswin-n3Dzcum, iblk, nzblyr, &
                                   workz(:,:,1:nzblyr), a3Db)
@@ -2657,14 +2678,17 @@
          workz(:,:,:) = c0
          do n = 1, ncat_hist
             do k = 1,nzblyr-1
-              do j = jlo, jhi
-               do i = ilo, ihi
-                if (aicen(i,j,n,iblk) > c0) then
-                   workz(i,j,k) = workz(i,j,k) + iDi(i,j,k,n,iblk)*vicen(i,j,n,iblk)**2/aicen(i,j,n,iblk)
+              do is = 1, dynCnt(iblk)
+                 ms = dynOff(iblk) + is
+                 if (skipPhys(ms)) cycle
+                 ij = dynIJ(ms)
+                 j  = (ij-1)/nx_block + 1
+                 i  = ij - (j-1)*nx_block
+                if (aicen_slot(ms,n) > c0) then
+                   workz(i,j,k) = workz(i,j,k) + iDi(i,j,k,n,iblk)*vicen_slot(ms,n)**2/aicen_slot(ms,n)
                    workz(i,j,nzblyr)   = workz(i,j,nzblyr-1)
                 endif
-               enddo ! i
-              enddo  ! j
+              enddo    ! is
             enddo    ! k
           enddo      ! n
           call accum_hist_field(n_iDi-n3Dzcum, iblk, nzblyr, &
@@ -2675,16 +2699,19 @@
          workz(:,:,:) = c0
          do n = 1, ncat_hist
             do k = 1,nzblyr-1
-            do j = jlo, jhi
-               do i = ilo, ihi
-                if (aicen(i,j,n,iblk) > c0) then
+            do is = 1, dynCnt(iblk)
+               ms = dynOff(iblk) + is
+               if (skipPhys(ms)) cycle
+               ij = dynIJ(ms)
+               j  = (ij-1)/nx_block + 1
+               i  = ij - (j-1)*nx_block
+                if (aicen_slot(ms,n) > c0) then
                    workz(i,j,k) = workz(i,j,k) + iki(i,j,k,n,iblk)*&
-                       aicen(i,j,n,iblk)
+                       aicen_slot(ms,n)
                    workz(i,j,nzblyr)   = workz(i,j,nzblyr) + iki(i,j,nblyr+1,n,iblk)*&
-                       aicen(i,j,n,iblk)
+                       aicen_slot(ms,n)
                 endif
-               enddo ! i
-            enddo    ! j
+            enddo    ! is
             enddo    ! k
          enddo       ! n
          call accum_hist_field(n_iki-n3Dzcum, iblk, nzblyr,  &
@@ -2701,17 +2728,20 @@
       if (f_zaero   (1:1) /= 'x') then
          do k = 1,n_zaero
            workz(:,:,:) = c0
-             do j = jlo, jhi
-               do i = ilo, ihi
-                  if (aice(i,j,iblk) > puny) then
+             do is = 1, dynCnt(iblk)
+                ms = dynOff(iblk) + is
+                if (skipPhys(ms)) cycle
+                ij = dynIJ(ms)
+                j  = (ij-1)/nx_block + 1
+                i  = ij - (j-1)*nx_block
+                  if (aice_slot(ms) > puny) then
                     workz(i,j,1:2) =  &   !snow
-                         trcr(i,j,nt_zaero(k)+nblyr+1:nt_zaero(k)+nblyr+2,iblk)/rhos
+                         trcr_slot(ms,nt_zaero(k)+nblyr+1:nt_zaero(k)+nblyr+2)/rhos
                     workz(i,j,3:nblyr+3) = &  !ice
-                         trcr(i,j,nt_zaero(k):nt_zaero(k)+nblyr,iblk)/rhoi
+                         trcr_slot(ms,nt_zaero(k):nt_zaero(k)+nblyr)/rhoi
                     workz(i,j,nblyr+4) =  ocean_bio(i,j,nlt_zaero(k),iblk)/rhow !ocean
                   endif
-                enddo ! i
-             enddo    ! j
+             enddo    ! is
            call accum_hist_field(n_zaeros(k,:)-n3Dbcum, iblk, nzalyr, &
                                   workz(:,:,1:nzalyr), a3Da)
          enddo !k
@@ -2720,24 +2750,27 @@
          do k = 1,n_algae
            workz(:,:,:) = c0
            workz2(:,:,:) = c0
-             do j = jlo, jhi
-               do i = ilo, ihi
-                  if (aice(i,j,iblk) > puny) then
+             do is = 1, dynCnt(iblk)
+                ms = dynOff(iblk) + is
+                if (skipPhys(ms)) cycle
+                ij = dynIJ(ms)
+                j  = (ij-1)/nx_block + 1
+                i  = ij - (j-1)*nx_block
+                  if (aice_slot(ms) > puny) then
                     workz(i,j,1:2) =  &   !snow
-                         trcr(i,j,nt_bgc_N(k)+nblyr+1:nt_bgc_N(k)+nblyr+2,iblk)
+                         trcr_slot(ms,nt_bgc_N(k)+nblyr+1:nt_bgc_N(k)+nblyr+2)
                     workz(i,j,3:nblyr+3) = &  !ice
-                         trcr(i,j,nt_bgc_N(k):nt_bgc_N(k)+nblyr,iblk)
+                         trcr_slot(ms,nt_bgc_N(k):nt_bgc_N(k)+nblyr)
                     workz(i,j,nblyr+4) =  ocean_bio(i,j,nlt_bgc_N(k),iblk) !ocean
                   endif
-                  if (aicen(i,j,1,iblk) > puny) then
+                  if (aicen_slot(ms,1) > puny) then
                     workz2(i,j,1:2) =  &   !snow
-                         trcrn(i,j,nt_bgc_N(k)+nblyr+1:nt_bgc_N(k)+nblyr+2,1,iblk)
+                         trcrn_slot(ms,nt_bgc_N(k)+nblyr+1:nt_bgc_N(k)+nblyr+2,1)
                     workz2(i,j,3:nblyr+3) = &  !ice
-                         trcrn(i,j,nt_bgc_N(k):nt_bgc_N(k)+nblyr,1,iblk)
+                         trcrn_slot(ms,nt_bgc_N(k):nt_bgc_N(k)+nblyr,1)
                     workz2(i,j,nblyr+4) =  ocean_bio(i,j,nlt_bgc_N(k),iblk) !ocean
                   endif
-                enddo ! i
-             enddo    ! j
+             enddo    ! is
            call accum_hist_field(n_bgc_N(k,:)-n3Dbcum, iblk, nzalyr,  &
                                   workz(:,:,1:nzalyr), a3Da)
            call accum_hist_field(n_bgc_N_cat1(k,:)-n3Dbcum, iblk, nzalyr,  &
@@ -2747,17 +2780,20 @@
       if (f_bgc_C   (1:1) /= 'x') then
          do k = 1,n_algae
            workz(:,:,:) = c0
-             do j = jlo, jhi
-               do i = ilo, ihi
-                  if (aice(i,j,iblk) > puny) then
+             do is = 1, dynCnt(iblk)
+                ms = dynOff(iblk) + is
+                if (skipPhys(ms)) cycle
+                ij = dynIJ(ms)
+                j  = (ij-1)/nx_block + 1
+                i  = ij - (j-1)*nx_block
+                  if (aice_slot(ms) > puny) then
                     workz(i,j,1:2) =  &   !snow
-                         R_C2N(k)*trcr(i,j,nt_bgc_N(k)+nblyr+1:nt_bgc_N(k)+nblyr+2,iblk)
+                         R_C2N(k)*trcr_slot(ms,nt_bgc_N(k)+nblyr+1:nt_bgc_N(k)+nblyr+2)
                     workz(i,j,3:nblyr+3) = &  !ice
-                         R_C2N(k)*trcr(i,j,nt_bgc_N(k):nt_bgc_N(k)+nblyr,iblk)
+                         R_C2N(k)*trcr_slot(ms,nt_bgc_N(k):nt_bgc_N(k)+nblyr)
                     workz(i,j,nblyr+4) =  R_C2N(k)*ocean_bio(i,j,nlt_bgc_N(k),iblk) !ocean
                   endif
-                enddo ! i
-             enddo    ! j
+             enddo    ! is
            call accum_hist_field(n_bgc_C(k,:)-n3Dbcum, iblk, nzalyr, &
                                   workz(:,:,1:nzalyr), a3Da)
          enddo !k
@@ -2766,24 +2802,27 @@
          do k = 1,n_doc
            workz(:,:,:) = c0
            workz2(:,:,:) = c0
-             do j = jlo, jhi
-               do i = ilo, ihi
-                  if (aice(i,j,iblk) > puny) then
+             do is = 1, dynCnt(iblk)
+                ms = dynOff(iblk) + is
+                if (skipPhys(ms)) cycle
+                ij = dynIJ(ms)
+                j  = (ij-1)/nx_block + 1
+                i  = ij - (j-1)*nx_block
+                  if (aice_slot(ms) > puny) then
                     workz(i,j,1:2) =  &   !snow
-                         trcr(i,j,nt_bgc_DOC(k)+nblyr+1:nt_bgc_DOC(k)+nblyr+2,iblk)
+                         trcr_slot(ms,nt_bgc_DOC(k)+nblyr+1:nt_bgc_DOC(k)+nblyr+2)
                     workz(i,j,3:nblyr+3) = &  !ice
-                         trcr(i,j,nt_bgc_DOC(k):nt_bgc_DOC(k)+nblyr,iblk)
+                         trcr_slot(ms,nt_bgc_DOC(k):nt_bgc_DOC(k)+nblyr)
                     workz(i,j,nblyr+4) =  ocean_bio(i,j,nlt_bgc_DOC(k),iblk) !ocean
                   endif
-                  if (aicen(i,j,1,iblk) > puny) then
+                  if (aicen_slot(ms,1) > puny) then
                     workz2(i,j,1:2) =  &   !snow
-                         trcrn(i,j,nt_bgc_DOC(k)+nblyr+1:nt_bgc_DOC(k)+nblyr+2,1,iblk)
+                         trcrn_slot(ms,nt_bgc_DOC(k)+nblyr+1:nt_bgc_DOC(k)+nblyr+2,1)
                     workz2(i,j,3:nblyr+3) = &  !ice
-                         trcrn(i,j,nt_bgc_DOC(k):nt_bgc_DOC(k)+nblyr,1,iblk)
+                         trcrn_slot(ms,nt_bgc_DOC(k):nt_bgc_DOC(k)+nblyr,1)
                     workz2(i,j,nblyr+4) =  ocean_bio(i,j,nlt_bgc_DOC(k),iblk) !ocean
                   endif
-                enddo ! i
-             enddo    ! j
+             enddo    ! is
            call accum_hist_field(n_bgc_DOC(k,:)-n3Dbcum, iblk, nzalyr,  &
                                   workz(:,:,1:nzalyr), a3Da)
            call accum_hist_field(n_bgc_DOC_cat1(k,:)-n3Dbcum, iblk, nzalyr,  &
@@ -2794,24 +2833,27 @@
          do k = 1,n_dic
            workz(:,:,:) = c0
            workz2(:,:,:) = c0
-             do j = jlo, jhi
-               do i = ilo, ihi
-                  if (aice(i,j,iblk) > puny) then
+             do is = 1, dynCnt(iblk)
+                ms = dynOff(iblk) + is
+                if (skipPhys(ms)) cycle
+                ij = dynIJ(ms)
+                j  = (ij-1)/nx_block + 1
+                i  = ij - (j-1)*nx_block
+                  if (aice_slot(ms) > puny) then
                     workz(i,j,1:2) =  &   !snow
-                         trcr(i,j,nt_bgc_DIC(k)+nblyr+1:nt_bgc_DIC(k)+nblyr+2,iblk)
+                         trcr_slot(ms,nt_bgc_DIC(k)+nblyr+1:nt_bgc_DIC(k)+nblyr+2)
                     workz(i,j,3:nblyr+3) = &  !ice
-                         trcr(i,j,nt_bgc_DIC(k):nt_bgc_DIC(k)+nblyr,iblk)
+                         trcr_slot(ms,nt_bgc_DIC(k):nt_bgc_DIC(k)+nblyr)
                     workz(i,j,nblyr+4) =  ocean_bio(i,j,nlt_bgc_DIC(k),iblk) !ocean
                   endif
-                  if (aicen(i,j,1,iblk) > puny) then
+                  if (aicen_slot(ms,1) > puny) then
                     workz2(i,j,1:2) =  &   !snow
-                         trcrn(i,j,nt_bgc_DIC(k)+nblyr+1:nt_bgc_DIC(k)+nblyr+2,1,iblk)
+                         trcrn_slot(ms,nt_bgc_DIC(k)+nblyr+1:nt_bgc_DIC(k)+nblyr+2,1)
                     workz2(i,j,3:nblyr+3) = &  !ice
-                         trcrn(i,j,nt_bgc_DIC(k):nt_bgc_DIC(k)+nblyr,1,iblk)
+                         trcrn_slot(ms,nt_bgc_DIC(k):nt_bgc_DIC(k)+nblyr,1)
                     workz2(i,j,nblyr+4) =  ocean_bio(i,j,nlt_bgc_DIC(k),iblk) !ocean
                   endif
-                enddo ! i
-             enddo    ! j
+             enddo    ! is
            call accum_hist_field(n_bgc_DIC(k,:)-n3Dbcum, iblk, nzalyr,  &
                                   workz(:,:,1:nzalyr), a3Da)
           call accum_hist_field(n_bgc_DIC_cat1(k,:)-n3Dbcum, iblk, nzalyr,  &
@@ -2822,24 +2864,27 @@
          do k = 1,n_don
            workz(:,:,:) = c0
            workz2(:,:,:) = c0
-             do j = jlo, jhi
-               do i = ilo, ihi
-                  if (aice(i,j,iblk) > puny) then
+             do is = 1, dynCnt(iblk)
+                ms = dynOff(iblk) + is
+                if (skipPhys(ms)) cycle
+                ij = dynIJ(ms)
+                j  = (ij-1)/nx_block + 1
+                i  = ij - (j-1)*nx_block
+                  if (aice_slot(ms) > puny) then
                     workz(i,j,1:2) =  &   !snow
-                         trcr(i,j,nt_bgc_DON(k)+nblyr+1:nt_bgc_DON(k)+nblyr+2,iblk)
+                         trcr_slot(ms,nt_bgc_DON(k)+nblyr+1:nt_bgc_DON(k)+nblyr+2)
                     workz(i,j,3:nblyr+3) = &  !ice
-                         trcr(i,j,nt_bgc_DON(k):nt_bgc_DON(k)+nblyr,iblk)
+                         trcr_slot(ms,nt_bgc_DON(k):nt_bgc_DON(k)+nblyr)
                     workz(i,j,nblyr+4) =  ocean_bio(i,j,nlt_bgc_DON(k),iblk) !ocean
                   endif
-                  if (aicen(i,j,1,iblk) > puny) then
+                  if (aicen_slot(ms,1) > puny) then
                     workz2(i,j,1:2) =  &   !snow
-                         trcrn(i,j,nt_bgc_DON(k)+nblyr+1:nt_bgc_DON(k)+nblyr+2,1,iblk)
+                         trcrn_slot(ms,nt_bgc_DON(k)+nblyr+1:nt_bgc_DON(k)+nblyr+2,1)
                     workz2(i,j,3:nblyr+3) = &  !ice
-                         trcrn(i,j,nt_bgc_DON(k):nt_bgc_DON(k)+nblyr,1,iblk)
+                         trcrn_slot(ms,nt_bgc_DON(k):nt_bgc_DON(k)+nblyr,1)
                     workz2(i,j,nblyr+4) =  ocean_bio(i,j,nlt_bgc_DON(k),iblk) !ocean
                   endif
-                enddo ! i
-             enddo    ! j
+             enddo    ! is
            call accum_hist_field(n_bgc_DON(k,:)-n3Dbcum, iblk, nzalyr,  &
                                   workz(:,:,1:nzalyr), a3Da)
            call accum_hist_field(n_bgc_DON_cat1(k,:)-n3Dbcum, iblk, nzalyr,  &
@@ -2850,24 +2895,27 @@
          do k = 1,n_fed
            workz(:,:,:) = c0
            workz2(:,:,:) = c0
-             do j = jlo, jhi
-               do i = ilo, ihi
-                  if (aice(i,j,iblk) > puny) then
+             do is = 1, dynCnt(iblk)
+                ms = dynOff(iblk) + is
+                if (skipPhys(ms)) cycle
+                ij = dynIJ(ms)
+                j  = (ij-1)/nx_block + 1
+                i  = ij - (j-1)*nx_block
+                  if (aice_slot(ms) > puny) then
                     workz(i,j,1:2) =  &   !snow
-                         trcr(i,j,nt_bgc_Fed (k)+nblyr+1:nt_bgc_Fed (k)+nblyr+2,iblk)
+                         trcr_slot(ms,nt_bgc_Fed (k)+nblyr+1:nt_bgc_Fed (k)+nblyr+2)
                     workz(i,j,3:nblyr+3) = &  !ice
-                         trcr(i,j,nt_bgc_Fed (k):nt_bgc_Fed (k)+nblyr,iblk)
+                         trcr_slot(ms,nt_bgc_Fed (k):nt_bgc_Fed (k)+nblyr)
                     workz(i,j,nblyr+4) =  ocean_bio(i,j,nlt_bgc_Fed (k),iblk) !ocean
                   endif
-                  if (aicen(i,j,1,iblk) > puny) then
+                  if (aicen_slot(ms,1) > puny) then
                     workz2(i,j,1:2) =  &   !snow
-                         trcrn(i,j,nt_bgc_Fed (k)+nblyr+1:nt_bgc_Fed (k)+nblyr+2,1,iblk)
+                         trcrn_slot(ms,nt_bgc_Fed (k)+nblyr+1:nt_bgc_Fed (k)+nblyr+2,1)
                     workz2(i,j,3:nblyr+3) = &  !ice
-                         trcrn(i,j,nt_bgc_Fed (k):nt_bgc_Fed (k)+nblyr,1,iblk)
+                         trcrn_slot(ms,nt_bgc_Fed (k):nt_bgc_Fed (k)+nblyr,1)
                     workz2(i,j,nblyr+4) =  ocean_bio(i,j,nlt_bgc_Fed (k),iblk) !ocean
                   endif
-                enddo ! i
-             enddo    ! j
+             enddo    ! is
            call accum_hist_field(n_bgc_Fed (k,:)-n3Dbcum, iblk, nzalyr,  &
                                   workz(:,:,1:nzalyr), a3Da)
            call accum_hist_field(n_bgc_Fed_cat1 (k,:)-n3Dbcum, iblk, nzalyr,  &
@@ -2878,24 +2926,27 @@
          do k = 1,n_fep
            workz(:,:,:) = c0
            workz2(:,:,:) = c0
-             do j = jlo, jhi
-               do i = ilo, ihi
-                  if (aice(i,j,iblk) > puny) then
+             do is = 1, dynCnt(iblk)
+                ms = dynOff(iblk) + is
+                if (skipPhys(ms)) cycle
+                ij = dynIJ(ms)
+                j  = (ij-1)/nx_block + 1
+                i  = ij - (j-1)*nx_block
+                  if (aice_slot(ms) > puny) then
                     workz(i,j,1:2) =  &   !snow
-                         trcr(i,j,nt_bgc_Fep (k)+nblyr+1:nt_bgc_Fep (k)+nblyr+2,iblk)
+                         trcr_slot(ms,nt_bgc_Fep (k)+nblyr+1:nt_bgc_Fep (k)+nblyr+2)
                     workz(i,j,3:nblyr+3) = &  !ice
-                         trcr(i,j,nt_bgc_Fep (k):nt_bgc_Fep (k)+nblyr,iblk)
+                         trcr_slot(ms,nt_bgc_Fep (k):nt_bgc_Fep (k)+nblyr)
                     workz(i,j,nblyr+4) =  ocean_bio(i,j,nlt_bgc_Fep (k),iblk) !ocean
                   endif
-                  if (aicen(i,j,1,iblk) > puny) then
+                  if (aicen_slot(ms,1) > puny) then
                     workz2(i,j,1:2) =  &   !snow
-                         trcrn(i,j,nt_bgc_Fep (k)+nblyr+1:nt_bgc_Fep (k)+nblyr+2,1,iblk)
+                         trcrn_slot(ms,nt_bgc_Fep (k)+nblyr+1:nt_bgc_Fep (k)+nblyr+2,1)
                     workz2(i,j,3:nblyr+3) = &  !ice
-                         trcrn(i,j,nt_bgc_Fep (k):nt_bgc_Fep (k)+nblyr,1,iblk)
+                         trcrn_slot(ms,nt_bgc_Fep (k):nt_bgc_Fep (k)+nblyr,1)
                     workz2(i,j,nblyr+4) =  ocean_bio(i,j,nlt_bgc_Fep (k),iblk) !ocean
                   endif
-                enddo ! i
-             enddo    ! j
+             enddo    ! is
            call accum_hist_field(n_bgc_Fep (k,:)-n3Dbcum, iblk, nzalyr,  &
                                   workz(:,:,1:nzalyr), a3Da)
            call accum_hist_field(n_bgc_Fep_cat1 (k,:)-n3Dbcum, iblk, nzalyr,  &
@@ -2905,17 +2956,20 @@
       if (f_bgc_chl   (1:1) /= 'x') then
          do k = 1,n_algae
            workz(:,:,:) = c0
-             do j = jlo, jhi
-               do i = ilo, ihi
-                  if (aice(i,j,iblk) > puny) then
+             do is = 1, dynCnt(iblk)
+                ms = dynOff(iblk) + is
+                if (skipPhys(ms)) cycle
+                ij = dynIJ(ms)
+                j  = (ij-1)/nx_block + 1
+                i  = ij - (j-1)*nx_block
+                  if (aice_slot(ms) > puny) then
                     workz(i,j,1:2) =  &   !snow
-                         trcr(i,j,nt_bgc_chl(k)+nblyr+1:nt_bgc_chl(k)+nblyr+2,iblk)
+                         trcr_slot(ms,nt_bgc_chl(k)+nblyr+1:nt_bgc_chl(k)+nblyr+2)
                     workz(i,j,3:nblyr+3) = &  !ice
-                         trcr(i,j,nt_bgc_chl(k):nt_bgc_chl(k)+nblyr,iblk)
+                         trcr_slot(ms,nt_bgc_chl(k):nt_bgc_chl(k)+nblyr)
                     workz(i,j,nblyr+4) =  ocean_bio(i,j,nlt_bgc_chl(k),iblk) !ocean
                   endif
-                enddo ! i
-             enddo    ! j
+             enddo    ! is
            call accum_hist_field(n_bgc_chl(k,:)-n3Dbcum, iblk, nzalyr,  &
                                   workz(:,:,1:nzalyr), a3Da)
          enddo !k
@@ -2924,24 +2978,27 @@
       if (f_bgc_Nit   (1:1) /= 'x') then
          workz(:,:,:) = c0
          workz2(:,:,:) = c0
-            do j = jlo, jhi
-               do i = ilo, ihi
-                  if (aice(i,j,iblk) > puny) then
+            do is = 1, dynCnt(iblk)
+               ms = dynOff(iblk) + is
+               if (skipPhys(ms)) cycle
+               ij = dynIJ(ms)
+               j  = (ij-1)/nx_block + 1
+               i  = ij - (j-1)*nx_block
+                  if (aice_slot(ms) > puny) then
                     workz(i,j,1:2) =  &   !snow
-                         trcr(i,j,nt_bgc_Nit+nblyr+2:nt_bgc_Nit+nblyr+3,iblk)
+                         trcr_slot(ms,nt_bgc_Nit+nblyr+2:nt_bgc_Nit+nblyr+3)
                     workz(i,j,3:nblyr+3) = &  !ice
-                         trcr(i,j,nt_bgc_Nit:nt_bgc_Nit+nblyr,iblk)
+                         trcr_slot(ms,nt_bgc_Nit:nt_bgc_Nit+nblyr)
                     workz(i,j,nblyr+4) =  ocean_bio(i,j,nlt_bgc_Nit,iblk) !ocean
                   endif
-                  if (aicen(i,j,1,iblk) > puny) then
+                  if (aicen_slot(ms,1) > puny) then
                     workz2(i,j,1:2) =  &   !snow
-                         trcrn(i,j,nt_bgc_Nit+nblyr+2:nt_bgc_Nit+nblyr+3,1,iblk)
+                         trcrn_slot(ms,nt_bgc_Nit+nblyr+2:nt_bgc_Nit+nblyr+3,1)
                     workz2(i,j,3:nblyr+3) = &  !ice
-                         trcrn(i,j,nt_bgc_Nit:nt_bgc_Nit+nblyr,1,iblk)
+                         trcrn_slot(ms,nt_bgc_Nit:nt_bgc_Nit+nblyr,1)
                     workz2(i,j,nblyr+4) =  ocean_bio(i,j,nlt_bgc_Nit,iblk) !ocean
                   endif
-                enddo ! i
-             enddo    ! j
+             enddo    ! is
          call accum_hist_field(n_bgc_Nit-n3Dbcum, iblk, nzalyr,  &
                                   workz(:,:,1:nzalyr), a3Da)
          call accum_hist_field(n_bgc_Nit_cat1-n3Dbcum, iblk, nzalyr,  &
@@ -2951,24 +3008,27 @@
       if (f_bgc_Am   (1:1) /= 'x') then
          workz(:,:,:) = c0
          workz2(:,:,:) = c0
-            do j = jlo, jhi
-               do i = ilo, ihi
-                  if (aice(i,j,iblk) > puny) then
+            do is = 1, dynCnt(iblk)
+               ms = dynOff(iblk) + is
+               if (skipPhys(ms)) cycle
+               ij = dynIJ(ms)
+               j  = (ij-1)/nx_block + 1
+               i  = ij - (j-1)*nx_block
+                  if (aice_slot(ms) > puny) then
                     workz(i,j,1:2) =  &   !snow
-                         trcr(i,j,nt_bgc_Am+nblyr+1:nt_bgc_Am+nblyr+2,iblk)
+                         trcr_slot(ms,nt_bgc_Am+nblyr+1:nt_bgc_Am+nblyr+2)
                     workz(i,j,3:nblyr+3) = &  !ice
-                         trcr(i,j,nt_bgc_Am:nt_bgc_Am+nblyr,iblk)
+                         trcr_slot(ms,nt_bgc_Am:nt_bgc_Am+nblyr)
                     workz(i,j,nblyr+4) =  ocean_bio(i,j,nlt_bgc_Am,iblk) !ocean
                   endif
-                  if (aicen(i,j,1,iblk) > puny) then
+                  if (aicen_slot(ms,1) > puny) then
                     workz2(i,j,1:2) =  &   !snow
-                         trcrn(i,j,nt_bgc_Am+nblyr+1:nt_bgc_Am+nblyr+2,1,iblk)
+                         trcrn_slot(ms,nt_bgc_Am+nblyr+1:nt_bgc_Am+nblyr+2,1)
                     workz2(i,j,3:nblyr+3) = &  !ice
-                         trcrn(i,j,nt_bgc_Am:nt_bgc_Am+nblyr,1,iblk)
+                         trcrn_slot(ms,nt_bgc_Am:nt_bgc_Am+nblyr,1)
                     workz2(i,j,nblyr+4) =  ocean_bio(i,j,nlt_bgc_Am,iblk) !ocean
                   endif
-                enddo ! i
-             enddo    ! j
+             enddo    ! is
          call accum_hist_field(n_bgc_Am-n3Dbcum, iblk, nzalyr,  &
                                   workz(:,:,1:nzalyr), a3Da)
          call accum_hist_field(n_bgc_Am_cat1-n3Dbcum, iblk, nzalyr,  &
@@ -2978,24 +3038,27 @@
       if (f_bgc_Sil   (1:1) /= 'x') then
          workz(:,:,:) = c0
          workz2(:,:,:) = c0
-            do j = jlo, jhi
-               do i = ilo, ihi
-                  if (aice(i,j,iblk) > puny) then
+            do is = 1, dynCnt(iblk)
+               ms = dynOff(iblk) + is
+               if (skipPhys(ms)) cycle
+               ij = dynIJ(ms)
+               j  = (ij-1)/nx_block + 1
+               i  = ij - (j-1)*nx_block
+                  if (aice_slot(ms) > puny) then
                     workz(i,j,1:2) =  &   !snow
-                         trcr(i,j,nt_bgc_Sil+nblyr+1:nt_bgc_Sil+nblyr+2,iblk)
+                         trcr_slot(ms,nt_bgc_Sil+nblyr+1:nt_bgc_Sil+nblyr+2)
                     workz(i,j,3:nblyr+3) = &  !ice
-                         trcr(i,j,nt_bgc_Sil:nt_bgc_Sil+nblyr,iblk)
+                         trcr_slot(ms,nt_bgc_Sil:nt_bgc_Sil+nblyr)
                     workz(i,j,nblyr+4) =  ocean_bio(i,j,nlt_bgc_Sil,iblk) !ocean
                   endif
-                  if (aicen(i,j,1,iblk) > puny) then
+                  if (aicen_slot(ms,1) > puny) then
                     workz2(i,j,1:2) =  &   !snow
-                         trcrn(i,j,nt_bgc_Sil+nblyr+1:nt_bgc_Sil+nblyr+2,1,iblk)
+                         trcrn_slot(ms,nt_bgc_Sil+nblyr+1:nt_bgc_Sil+nblyr+2,1)
                     workz2(i,j,3:nblyr+3) = &  !ice
-                         trcrn(i,j,nt_bgc_Sil:nt_bgc_Sil+nblyr,1,iblk)
+                         trcrn_slot(ms,nt_bgc_Sil:nt_bgc_Sil+nblyr,1)
                     workz2(i,j,nblyr+4) =  ocean_bio(i,j,nlt_bgc_Sil,iblk) !ocean
                   endif
-                enddo ! i
-             enddo    ! j
+             enddo    ! is
          call accum_hist_field(n_bgc_Sil-n3Dbcum, iblk, nzalyr,  &
                                   workz(:,:,1:nzalyr), a3Da)
          call accum_hist_field(n_bgc_Sil_cat1-n3Dbcum, iblk, nzalyr,  &
@@ -3006,24 +3069,27 @@
       if (f_bgc_hum   (1:1) /= 'x') then
          workz(:,:,:) = c0
          workz2(:,:,:) = c0
-            do j = jlo, jhi
-               do i = ilo, ihi
-                  if (aice(i,j,iblk) > puny) then
+            do is = 1, dynCnt(iblk)
+               ms = dynOff(iblk) + is
+               if (skipPhys(ms)) cycle
+               ij = dynIJ(ms)
+               j  = (ij-1)/nx_block + 1
+               i  = ij - (j-1)*nx_block
+                  if (aice_slot(ms) > puny) then
                     workz(i,j,1:2) =  &   !snow
-                         trcr(i,j,nt_bgc_hum+nblyr+1:nt_bgc_hum+nblyr+2,iblk)
+                         trcr_slot(ms,nt_bgc_hum+nblyr+1:nt_bgc_hum+nblyr+2)
                     workz(i,j,3:nblyr+3) = &  !ice
-                         trcr(i,j,nt_bgc_hum:nt_bgc_hum+nblyr,iblk)
+                         trcr_slot(ms,nt_bgc_hum:nt_bgc_hum+nblyr)
                     workz(i,j,nblyr+4) =  ocean_bio(i,j,nlt_bgc_hum,iblk) !ocean
                   endif
-                  if (aicen(i,j,1,iblk) > puny) then
+                  if (aicen_slot(ms,1) > puny) then
                     workz2(i,j,1:2) =  &   !snow
-                         trcrn(i,j,nt_bgc_hum+nblyr+1:nt_bgc_hum+nblyr+2,1,iblk)
+                         trcrn_slot(ms,nt_bgc_hum+nblyr+1:nt_bgc_hum+nblyr+2,1)
                     workz2(i,j,3:nblyr+3) = &  !ice
-                         trcrn(i,j,nt_bgc_hum:nt_bgc_hum+nblyr,1,iblk)
+                         trcrn_slot(ms,nt_bgc_hum:nt_bgc_hum+nblyr,1)
                     workz2(i,j,nblyr+4) =  ocean_bio(i,j,nlt_bgc_hum,iblk) !ocean
                   endif
-                enddo ! i
-             enddo    ! j
+             enddo    ! is
          call accum_hist_field(n_bgc_hum-n3Dbcum, iblk, nzalyr,  &
                                   workz(:,:,1:nzalyr), a3Da)
          call accum_hist_field(n_bgc_hum_cat1-n3Dbcum, iblk, nzalyr,  &
@@ -3033,24 +3099,27 @@
       if (f_bgc_DMSPd   (1:1) /= 'x') then
          workz(:,:,:) = c0
          workz2(:,:,:) = c0
-            do j = jlo, jhi
-               do i = ilo, ihi
-                  if (aice(i,j,iblk) > puny) then
+            do is = 1, dynCnt(iblk)
+               ms = dynOff(iblk) + is
+               if (skipPhys(ms)) cycle
+               ij = dynIJ(ms)
+               j  = (ij-1)/nx_block + 1
+               i  = ij - (j-1)*nx_block
+                  if (aice_slot(ms) > puny) then
                     workz(i,j,1:2) =  &   !snow
-                         trcr(i,j,nt_bgc_DMSPd+nblyr+1:nt_bgc_DMSPd+nblyr+2,iblk)
+                         trcr_slot(ms,nt_bgc_DMSPd+nblyr+1:nt_bgc_DMSPd+nblyr+2)
                     workz(i,j,3:nblyr+3) = &  !ice
-                         trcr(i,j,nt_bgc_DMSPd:nt_bgc_DMSPd+nblyr,iblk)
+                         trcr_slot(ms,nt_bgc_DMSPd:nt_bgc_DMSPd+nblyr)
                     workz(i,j,nblyr+4) = ocean_bio(i,j,nlt_bgc_DMSPd,iblk) !ocean
                   endif
-                  if (aicen(i,j,1,iblk) > puny) then
+                  if (aicen_slot(ms,1) > puny) then
                     workz2(i,j,1:2) =  &   !snow
-                         trcrn(i,j,nt_bgc_DMSPd+nblyr+1:nt_bgc_DMSPd+nblyr+2,1,iblk)
+                         trcrn_slot(ms,nt_bgc_DMSPd+nblyr+1:nt_bgc_DMSPd+nblyr+2,1)
                     workz2(i,j,3:nblyr+3) = &  !ice
-                         trcrn(i,j,nt_bgc_DMSPd:nt_bgc_DMSPd+nblyr,1,iblk)
+                         trcrn_slot(ms,nt_bgc_DMSPd:nt_bgc_DMSPd+nblyr,1)
                     workz2(i,j,nblyr+4) = ocean_bio(i,j,nlt_bgc_DMSPd,iblk) !ocean
                   endif
-                enddo ! i
-             enddo    ! j
+             enddo    ! is
          call accum_hist_field(n_bgc_DMSPd-n3Dbcum, iblk, nzalyr,  &
                                   workz(:,:,1:nzalyr), a3Da)
          call accum_hist_field(n_bgc_DMSPd_cat1-n3Dbcum, iblk, nzalyr,  &
@@ -3059,17 +3128,20 @@
 
       if (f_bgc_DMSPp   (1:1) /= 'x') then
          workz(:,:,:) = c0
-            do j = jlo, jhi
-               do i = ilo, ihi
-                  if (aice(i,j,iblk) > puny) then
+            do is = 1, dynCnt(iblk)
+               ms = dynOff(iblk) + is
+               if (skipPhys(ms)) cycle
+               ij = dynIJ(ms)
+               j  = (ij-1)/nx_block + 1
+               i  = ij - (j-1)*nx_block
+                  if (aice_slot(ms) > puny) then
                     workz(i,j,1:2) =  &   !snow
-                         trcr(i,j,nt_bgc_DMSPp+nblyr+1:nt_bgc_DMSPp+nblyr+2,iblk)
+                         trcr_slot(ms,nt_bgc_DMSPp+nblyr+1:nt_bgc_DMSPp+nblyr+2)
                     workz(i,j,3:nblyr+3) = &  !ice
-                         trcr(i,j,nt_bgc_DMSPp:nt_bgc_DMSPp+nblyr,iblk)
+                         trcr_slot(ms,nt_bgc_DMSPp:nt_bgc_DMSPp+nblyr)
                     workz(i,j,nblyr+4) =  ocean_bio(i,j,nlt_bgc_DMSPp,iblk) !ocean
                   endif
-                enddo ! i
-             enddo    ! j
+             enddo    ! is
          call accum_hist_field(n_bgc_DMSPp-n3Dbcum, iblk, nzalyr,  &
                                   workz(:,:,1:nzalyr), a3Da)
       endif
@@ -3077,24 +3149,27 @@
       if (f_bgc_DMS   (1:1) /= 'x') then
          workz(:,:,:) = c0
          workz2(:,:,:) = c0
-            do j = jlo, jhi
-               do i = ilo, ihi
-                  if (aice(i,j,iblk) > puny) then
+            do is = 1, dynCnt(iblk)
+               ms = dynOff(iblk) + is
+               if (skipPhys(ms)) cycle
+               ij = dynIJ(ms)
+               j  = (ij-1)/nx_block + 1
+               i  = ij - (j-1)*nx_block
+                  if (aice_slot(ms) > puny) then
                     workz(i,j,1:2) =  &   !snow
-                         trcr(i,j,nt_bgc_DMS+nblyr+1:nt_bgc_DMS+nblyr+2,iblk)
+                         trcr_slot(ms,nt_bgc_DMS+nblyr+1:nt_bgc_DMS+nblyr+2)
                     workz(i,j,3:nblyr+3) = &  !ice
-                         trcr(i,j,nt_bgc_DMS:nt_bgc_DMS+nblyr,iblk)
+                         trcr_slot(ms,nt_bgc_DMS:nt_bgc_DMS+nblyr)
                     workz(i,j,nblyr+4) =  ocean_bio(i,j,nlt_bgc_DMS,iblk) !ocean
                   endif
-                  if (aicen(i,j,1,iblk) > puny) then
+                  if (aicen_slot(ms,1) > puny) then
                     workz2(i,j,1:2) =  &   !snow
-                         trcrn(i,j,nt_bgc_DMS+nblyr+1:nt_bgc_DMS+nblyr+2,1,iblk)
+                         trcrn_slot(ms,nt_bgc_DMS+nblyr+1:nt_bgc_DMS+nblyr+2,1)
                     workz2(i,j,3:nblyr+3) = &  !ice
-                         trcrn(i,j,nt_bgc_DMS:nt_bgc_DMS+nblyr,1,iblk)
+                         trcrn_slot(ms,nt_bgc_DMS:nt_bgc_DMS+nblyr,1)
                     workz2(i,j,nblyr+4) =  ocean_bio(i,j,nlt_bgc_DMS,iblk) !ocean
                   endif
-                enddo ! i
-             enddo    ! j
+             enddo    ! is
          call accum_hist_field(n_bgc_DMS-n3Dbcum, iblk, nzalyr,  &
                                   workz(:,:,1:nzalyr), a3Da)
          call accum_hist_field(n_bgc_DMS_cat1-n3Dbcum, iblk, nzalyr,  &
@@ -3104,24 +3179,27 @@
       if (f_bgc_PON   (1:1) /= 'x') then
          workz(:,:,:) = c0
          workz2(:,:,:) = c0
-            do j = jlo, jhi
-               do i = ilo, ihi
-                  if (aice(i,j,iblk) > puny) then
+            do is = 1, dynCnt(iblk)
+               ms = dynOff(iblk) + is
+               if (skipPhys(ms)) cycle
+               ij = dynIJ(ms)
+               j  = (ij-1)/nx_block + 1
+               i  = ij - (j-1)*nx_block
+                  if (aice_slot(ms) > puny) then
                     workz(i,j,1:2) =  &   !snow
-                         trcr(i,j,nt_bgc_PON+nblyr+1:nt_bgc_PON+nblyr+2,iblk)
+                         trcr_slot(ms,nt_bgc_PON+nblyr+1:nt_bgc_PON+nblyr+2)
                     workz(i,j,3:nblyr+3) = &  !ice
-                         trcr(i,j,nt_bgc_PON:nt_bgc_PON+nblyr,iblk)
+                         trcr_slot(ms,nt_bgc_PON:nt_bgc_PON+nblyr)
                     workz(i,j,nblyr+4) =  ocean_bio(i,j,nlt_bgc_PON,iblk) !ocean
                   endif
-                  if (aicen(i,j,1,iblk) > puny) then
+                  if (aicen_slot(ms,1) > puny) then
                     workz2(i,j,1:2) =  &   !snow
-                         trcrn(i,j,nt_bgc_PON+nblyr+1:nt_bgc_PON+nblyr+2,1,iblk)
+                         trcrn_slot(ms,nt_bgc_PON+nblyr+1:nt_bgc_PON+nblyr+2,1)
                     workz2(i,j,3:nblyr+3) = &  !ice
-                         trcrn(i,j,nt_bgc_PON:nt_bgc_PON+nblyr,1,iblk)
+                         trcrn_slot(ms,nt_bgc_PON:nt_bgc_PON+nblyr,1)
                     workz2(i,j,nblyr+4) =  ocean_bio(i,j,nlt_bgc_PON,iblk) !ocean
                   endif
-                enddo ! i
-             enddo    ! j
+             enddo    ! is
          call accum_hist_field(n_bgc_PON-n3Dbcum, iblk, nzalyr,  &
                                   workz(:,:,1:nzalyr), a3Da)
          call accum_hist_field(n_bgc_PON_cat1-n3Dbcum, iblk, nzalyr,  &

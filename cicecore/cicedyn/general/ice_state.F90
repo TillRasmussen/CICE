@@ -257,6 +257,7 @@
          vicen_slot(nslot,ncat)       , & ! ice volume  (m), by category
          vsnon_slot(nslot,ncat)       , & ! snow volume (m), by category
          trcrn_slot(nslot,ntrcr,ncat) , & ! tracers
+         trcr_slot (nslot,ntrcr)      , & ! tracers, aggregated
          stat=ierr)
       if (ierr/=0) call abort_ice(error_message=trim(subname)//' ERROR: Out of memory', &
          file=__FILE__, line=__LINE__)
@@ -269,6 +270,7 @@
       vicen_slot = c0
       vsnon_slot = c0
       trcrn_slot = c0
+      trcr_slot  = c0
 
       ! A contiguous rank-2 view for the bundled compressed halo.  Rank
       ! remapping needs the target contiguous, which an allocatable is.

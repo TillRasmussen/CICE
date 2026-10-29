@@ -44,7 +44,7 @@
 
       implicit none
       private
-      public :: bound_state
+      public :: bound_state, pack_state_slots
 
 !=======================================================================
 
@@ -157,6 +157,36 @@
       ! go in ONE call and trcrn through its trcrn_flat view.  That needs
       ! every reader of the block forms converted first, and the
       ! maskhalo_bound branch needs its mask built from the slots.
+      call pack_state_slots
+
+      end subroutine bound_state
+
+!=======================================================================
+!
+! Refresh the compressed copies of the state from the block forms.
+!
+! bound_state calls this as its last act, so the slots track the block
+! arrays through the timestep.  ⚠ It is also needed OUTSIDE the step
+! loop: init_restart populates trcrn for fsd, bgc, aerosols, isotopes
+! and brine AFTER init_state has already run bound_state, so without a
+! refresh there the slot copies miss those tracers entirely and the
+! initial-condition history writes zeros for every field computed from
+! them.  That is a silent wrong answer, not a crash.
+
+      subroutine pack_state_slots
+
+      use ice_domain, only: nblocks
+      use ice_grid, only: dynMap, dynOff, dynCnt, &
+          pack_cat_to_slots, pack_trc_to_slots, pack_to_slots
+      use ice_state, only: aicen, vicen, vsnon, trcrn, &
+          aicen_slot, vicen_slot, vsnon_slot, trcrn_slot, &
+          aice, vice, vsno, aice0, trcr, &
+          aice_slot, vice_slot, vsno_slot, aice0_slot, trcr_slot
+
+      integer (kind=int_kind) :: iblk
+
+      character(len=*), parameter :: subname = '(pack_state_slots)'
+
       !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
       do iblk = 1, nblocks
          call pack_cat_to_slots(aicen(:,:,:,iblk), dynMap(:,iblk), &
@@ -167,10 +197,24 @@
               vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
          call pack_trc_to_slots(trcrn(:,:,:,:,iblk), dynMap(:,iblk), &
               trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:))
+         ! ⚠ The aggregates too.  update_state is their only other
+         ! producer and CICE_RunMod is its only caller, so without this
+         ! they are c0 at the initial-condition write and every history
+         ! field guarded by aice silently reads zero.
+         call pack_to_slots(aice (:,:,iblk), dynMap(:,iblk), &
+              aice_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         call pack_to_slots(vice (:,:,iblk), dynMap(:,iblk), &
+              vice_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         call pack_to_slots(vsno (:,:,iblk), dynMap(:,iblk), &
+              vsno_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         call pack_to_slots(aice0(:,:,iblk), dynMap(:,iblk), &
+              aice0_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         call pack_cat_to_slots(trcr(:,:,:,iblk), dynMap(:,iblk), &
+              trcr_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
       enddo
       !$OMP END PARALLEL DO
 
-      end subroutine bound_state
+      end subroutine pack_state_slots
 
 !=======================================================================
 

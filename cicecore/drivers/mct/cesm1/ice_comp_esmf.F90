@@ -150,6 +150,7 @@ end subroutine
     use ice_history_write,  only: ice_read_hist
     use ice_history_shared, only: history_dir, history_file
     use icepack_intfc, only: tr_aero, tr_zaero
+    use ice_bound_state, only: pack_state_slots
 !
 ! !ARGUMENTS:
     type(ESMF_GridComp)          :: comp
@@ -384,6 +385,10 @@ end subroutine
     end if
 
     call calendar(time)     ! update calendar info
+    ! ⚠ init_restart fills trcrn for fsd/bgc/aerosols/isotopes/brine
+    ! AFTER init_state ran bound_state, so refresh the slot copies
+    ! before anything reads them.  Without this the IC history is zero.
+    call pack_state_slots
     if (write_ic) call accum_hist(dt) ! write initial conditions
     call ice_read_hist  ! read history restarts
 

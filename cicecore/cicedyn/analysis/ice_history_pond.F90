@@ -463,10 +463,10 @@
       use ice_flux, only: dpnd_dlid, dpnd_melt,dpnd_ridge, dpnd_dlidn
       use ice_flux, only: dpnd_flushn, dpnd_exponn, dpnd_freebdn, dpnd_initialn
       use ice_history_shared, only: n2D, a2D, a3Dc, ncat_hist, &
-          accum_hist_field
-      use ice_state, only: aice, aice_init3d, trcr, trcrn, &
-          trcrn_slot
-      use ice_grid, only: dynOff, dynCnt
+          accum_hist_field, accum_hist_field_2D_slotin
+      use ice_state, only: aice, aice_init3d, aice_init, trcr, trcrn, &
+          trcrn_slot, trcr_slot, aice_slot
+      use ice_grid, only: dynOff, dynCnt, dynIJ, skipPhys
 
       integer (kind=int_kind), intent(in) :: &
            iblk                 ! block index
@@ -479,6 +479,16 @@
 
       real (kind=dbl_kind), dimension (nx_block,ny_block) :: &
          worka
+
+      ! Slot-shaped siblings of worka.  aiinit gathers aice_init, which is
+      ! stored block-flattened at (ij,iblk), so a slot form of it is not
+      ! needed -- dynIJ gives the cell and the value is the same one.
+      real (kind=dbl_kind), dimension (dynCnt(iblk)+1) :: &
+         workas, aiinit
+
+      integer (kind=int_kind) :: &
+         is, ms, ij2, &       ! slot loop, global slot, flattened cell
+         s1, s2               ! this block's slot slice
 
       integer (kind=int_kind) :: &
          nt_apnd, nt_hpnd, nt_alvl, nt_ipnd
@@ -508,38 +518,49 @@
 
          if (allocated(a2D)) then
 
-         worka(:,:) = c0
+         s1 = dynOff(iblk) + 1
+         s2 = dynOff(iblk) + dynCnt(iblk) + 1
+
+         workas(:) = c0
          if (tr_pond_lvl) then
-            worka(:,:) = trcr(:,:,nt_alvl,iblk) * trcr(:,:,nt_apnd,iblk)
+            workas(:) = trcr_slot(s1:s2,nt_alvl) * trcr_slot(s1:s2,nt_apnd)
          elseif (tr_pond_sealvl .or. tr_pond_topo) then
-            worka(:,:) = trcr(:,:,nt_apnd,iblk)
+            workas(:) = trcr_slot(s1:s2,nt_apnd)
          endif
 
+         aiinit(:) = c0
+         do is = 1, dynCnt(iblk)
+            ms  = dynOff(iblk) + is
+            if (skipPhys(ms)) cycle
+            ij2 = dynIJ(ms)
+            aiinit(is) = aice_init(ij2,iblk)
+         enddo
+
          if (f_apond(1:1)/= 'x') &
-             call accum_hist_field(n_apond, iblk, worka(:,:), a2D)
+             call accum_hist_field_2D_slotin(n_apond, iblk, workas, a2D)
          if (f_apond_ai(1:1)/= 'x') &
-             call accum_hist_field(n_apond_ai, iblk, aice_init3d(:,:,iblk)*worka(:,:), a2D)
+             call accum_hist_field_2D_slotin(n_apond_ai, iblk, aiinit*workas, a2D)
          if (f_hpond(1:1)/= 'x') &
-             call accum_hist_field(n_hpond, iblk, worka(:,:)*trcr(:,:,nt_hpnd,iblk), a2D)
+             call accum_hist_field_2D_slotin(n_hpond, iblk, workas*trcr_slot(s1:s2,nt_hpnd), a2D)
          if (f_hpond_ai(1:1)/= 'x') &
-             call accum_hist_field(n_hpond_ai, iblk, aice_init3d(:,:,iblk)*worka(:,:)*trcr(:,:,nt_hpnd,iblk), a2D)
+             call accum_hist_field_2D_slotin(n_hpond_ai, iblk, aiinit*workas*trcr_slot(s1:s2,nt_hpnd), a2D)
          if (f_ipond(1:1)/= 'x') &
-             call accum_hist_field(n_ipond, iblk, worka(:,:)*trcr(:,:,nt_ipnd,iblk), a2D)
+             call accum_hist_field_2D_slotin(n_ipond, iblk, workas*trcr_slot(s1:s2,nt_ipnd), a2D)
          if (f_ipond_ai(1:1)/= 'x') &
-             call accum_hist_field(n_ipond_ai, iblk, aice_init3d(:,:,iblk)*worka(:,:)*trcr(:,:,nt_ipnd,iblk), a2D)
+             call accum_hist_field_2D_slotin(n_ipond_ai, iblk, aiinit*workas*trcr_slot(s1:s2,nt_ipnd), a2D)
 
          ! CMIP pond related variables
          if (f_simpeffconc (1:1) /= 'x') &
              call accum_hist_field(n_simpeffconc, iblk, apeff_ai(:,:,iblk), a2D)
 
          if (f_simpconc(1:1)/= 'x') &
-             call accum_hist_field(n_simpconc, iblk, worka(:,:), a2D)
+             call accum_hist_field_2D_slotin(n_simpconc, iblk, workas, a2D)
 
          if (f_simpthick(1:1)/= 'x') &
-             call accum_hist_field(n_simpthick, iblk, aice_init3d(:,:,iblk)*worka(:,:)*trcr(:,:,nt_hpnd,iblk), a2D)
+             call accum_hist_field_2D_slotin(n_simpthick, iblk, aiinit*workas*trcr_slot(s1:s2,nt_hpnd), a2D)
 
          if (f_simprefrozen(1:1)/= 'x') &
-             call accum_hist_field(n_simprefrozen, iblk, aice_init3d(:,:,iblk)*worka(:,:)*trcr(:,:,nt_ipnd,iblk), a2D)
+             call accum_hist_field_2D_slotin(n_simprefrozen, iblk, aiinit*workas*trcr_slot(s1:s2,nt_ipnd), a2D)
 
          this_block = get_block(blocks_ice(iblk),iblk)
          ilo = this_block%ilo
@@ -549,11 +570,14 @@
 
          if (f_apeff (1:1) /= 'x') then
              worka(:,:) = c0
-             do j = jlo, jhi
-             do i = ilo, ihi
-                if (aice(i,j,iblk) > puny) worka(i,j) = apeff_ai(i,j,iblk) &
-                                                      / aice(i,j,iblk)
-             enddo
+             do is = 1, dynCnt(iblk)
+                ms  = dynOff(iblk) + is
+                if (skipPhys(ms)) cycle
+                ij2 = dynIJ(ms)
+                j   = (ij2-1)/nx_block + 1
+                i   = ij2 - (j-1)*nx_block
+                if (aice_slot(ms) > puny) worka(i,j) = apeff_ai(i,j,iblk) &
+                                                     / aice_slot(ms)
              enddo
              call accum_hist_field(n_apeff, iblk, worka(:,:), a2D)
          endif

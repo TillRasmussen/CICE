@@ -359,9 +359,10 @@
       subroutine accum_hist_mechred (iblk)
 
       use ice_history_shared, only: n2D, a2D, a3Dc, ncat_hist, &
-          accum_hist_field
+          accum_hist_field, accum_hist_field_2D_slotin
       use ice_state, only: aice, vice, trcr, aicen, vicen, trcrn, &
-          aicen_slot, vicen_slot, trcrn_slot
+          aicen_slot, vicen_slot, trcrn_slot, &
+          aice_slot, vice_slot, trcr_slot
       use ice_grid, only: dynOff, dynCnt
       use ice_flux, only: dardg1dt, dardg2dt, dvirdgdt, dardg1ndt,&
           dardg2ndt, dvirdgndt, krdgn, aparticn, aredistn, vredistn, &
@@ -374,12 +375,17 @@
 
       integer (kind=int_kind) :: &
            nt_alvl, nt_vlvl
+      integer (kind=int_kind) :: &
+           s1, s2               ! this block's slot slice
       character(len=*), parameter :: subname = '(accum_hist_mechred)'
 
       call icepack_query_tracer_indices(nt_alvl_out=nt_alvl, nt_vlvl_out=nt_vlvl)
       call icepack_warnings_flush(nu_diag)
       if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
          file=__FILE__, line=__LINE__)
+
+      s1 = dynOff(iblk) + 1
+      s2 = dynOff(iblk) + dynCnt(iblk) + 1
 
       !---------------------------------------------------------------
       ! increment field
@@ -389,17 +395,17 @@
          if (allocated(a2D)) then
 
          if (f_alvl(1:1)/= 'x') &
-             call accum_hist_field(n_alvl,   iblk, &
-                                   aice(:,:,iblk) * trcr(:,:,nt_alvl,iblk), a2D)
+             call accum_hist_field_2D_slotin(n_alvl,   iblk, &
+                                   aice_slot(s1:s2) * trcr_slot(s1:s2,nt_alvl), a2D)
          if (f_vlvl(1:1)/= 'x') &
-             call accum_hist_field(n_vlvl,   iblk, &
-                                   vice(:,:,iblk) * trcr(:,:,nt_vlvl,iblk), a2D)
+             call accum_hist_field_2D_slotin(n_vlvl,   iblk, &
+                                   vice_slot(s1:s2) * trcr_slot(s1:s2,nt_vlvl), a2D)
          if (f_ardg(1:1)/= 'x') &
-             call accum_hist_field(n_ardg,   iblk, &
-                             aice(:,:,iblk) * (c1 - trcr(:,:,nt_alvl,iblk)), a2D)
+             call accum_hist_field_2D_slotin(n_ardg,   iblk, &
+                             aice_slot(s1:s2) * (c1 - trcr_slot(s1:s2,nt_alvl)), a2D)
          if (f_vrdg(1:1)/= 'x') &
-             call accum_hist_field(n_vrdg,   iblk, &
-                             vice(:,:,iblk) * (c1 - trcr(:,:,nt_vlvl,iblk)), a2D)
+             call accum_hist_field_2D_slotin(n_vrdg,   iblk, &
+                             vice_slot(s1:s2) * (c1 - trcr_slot(s1:s2,nt_vlvl)), a2D)
          if (f_dardg1dt(1:1)/= 'x') &
              call accum_hist_field(n_dardg1dt,iblk, dardg1dt(:,:,iblk), a2D)
          if (f_dardg2dt(1:1)/= 'x') &
@@ -410,12 +416,12 @@
              call accum_hist_field(n_opening, iblk, opening(:,:,iblk), a2D)
 
          if (f_sirdgconc(1:1)/= 'x') &
-             call accum_hist_field(n_sirdgconc,   iblk, &
-                             aice(:,:,iblk) * (c1 - trcr(:,:,nt_alvl,iblk)), a2D)
+             call accum_hist_field_2D_slotin(n_sirdgconc,   iblk, &
+                             aice_slot(s1:s2) * (c1 - trcr_slot(s1:s2,nt_alvl)), a2D)
 
          if (f_sirdgthick(1:1)/= 'x') then
-             call accum_hist_field(n_sirdgthick,  iblk, &
-                             vice(:,:,iblk) * (c1 - trcr(:,:,nt_vlvl,iblk)), a2D)
+             call accum_hist_field_2D_slotin(n_sirdgthick,  iblk, &
+                             vice_slot(s1:s2) * (c1 - trcr_slot(s1:s2,nt_vlvl)), a2D)
          endif
 
          endif ! allocated(a2D)

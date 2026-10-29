@@ -97,6 +97,7 @@
       use ice_restoring, only: restore_ice, ice_restoring_init
       use ice_timers, only: timer_total, init_ice_timers, ice_timer_start
       use ice_transport_driver, only: init_transport
+      use ice_bound_state, only: pack_state_slots
 
       integer (kind=int_kind), optional, intent(in) :: &
          mpi_comm ! communicator for sequential ccsm
@@ -258,6 +259,10 @@
       call init_flux_atm        ! initialize atmosphere fluxes sent to coupler
       call init_flux_ocn        ! initialize ocean fluxes sent to coupler
 
+      ! ⚠ init_restart fills trcrn for fsd/bgc/aerosols/isotopes/brine
+      ! AFTER init_state ran bound_state, so refresh the slot copies
+      ! before anything reads them.  Without this the IC history is zero.
+      call pack_state_slots
       if (write_ic) call accum_hist(dt) ! write initial conditions
       call ice_read_hist  ! read history restarts
 
