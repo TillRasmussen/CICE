@@ -7127,10 +7127,23 @@
       ! slot held, and the configurations that already pass are unchanged.
       ! The cost is the land part of each block's ghost rim, a few percent.
       ! ------------------------------------------------------------------
+      ! ⚠ TWO ghost widths, not one.  The rim itself is the DESTINATION of
+      ! a halo copy; the cells one rim further in are its SOURCE on the
+      ! neighbouring block.  ice_HaloUpdate*_compressed writes c0 when a
+      ! copy's source has no slot -- "source is land, therefore zero" --
+      ! and that is false for trcrn, which carries a non-zero default
+      ! enthalpy at land.  Measured on evpB: 5500 ghost values differed
+      ! from the block halo, all traced to sources with dynMap == 0.
+      !
+      ! Forcing the source frame as well as the rim makes every cell a
+      ! local copy can read representable, so the substitution never
+      ! happens and bound_state can halo the slot forms bit-for-bit.
+      ! Same argument as the rim above: a slot that is mapped but never
+      ! written holds what the dead slot held.
       do j = 1, ny_block
       do i = 1, nx_block
-         if (i <= nghost .or. i > nx_block-nghost .or. &
-             j <= nghost .or. j > ny_block-nghost) then
+         if (i <= 2*nghost .or. i > nx_block-2*nghost .or. &
+             j <= 2*nghost .or. j > ny_block-2*nghost) then
             mask_any((j-1)*nx_block+i,1:nblocks) = .true.
          endif
       enddo

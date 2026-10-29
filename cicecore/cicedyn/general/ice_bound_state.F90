@@ -63,13 +63,15 @@
                               restore)
 
       use ice_boundary, only: ice_halo, ice_HaloMask, ice_HaloUpdate, &
-          ice_HaloDestroy
+          ice_HaloDestroy, ice_HaloUpdate3DR8_compressed
       use ice_domain_size, only: max_blocks, ncat
       use ice_blocks, only: nx_block, ny_block
       use ice_domain, only: halo_info, maskhalo_bound, nblocks
       use ice_grid, only: dynMap, dynOff, dynCnt, &
-          pack_cat_to_slots, pack_trc_to_slots
-      use ice_state, only: aicen_slot, vicen_slot, vsnon_slot, trcrn_slot
+          pack_cat_to_slots, pack_trc_to_slots, &
+          unpack_cat_from_slots, unpack_trc_from_slots
+      use ice_state, only: aicen_slot, vicen_slot, vsnon_slot, trcrn_slot, &
+          trcrn_flat
       use ice_restoring, only: ice_restoring_halo
 
       integer (kind=int_kind), intent(in) :: &
@@ -105,10 +107,21 @@
          lrestore = .true.
       endif
 
-      call ice_HaloUpdate (aicen,            halo_info, &
-                           field_loc_center, field_type_scalar)
-
+      ! ⚠ The non-masked branch halos the COMPRESSED forms.  That is only
+      ! bit-for-bit because init_ragged_layout forces a 2*nghost frame:
+      ! the compressed halo writes c0 when a copy's SOURCE has no slot,
+      ! and trcrn carries a non-zero default at land, so without the
+      ! frame 5500 ghost values differed on evpB.  See the comment there
+      ! before narrowing that frame.
+      !
+      ! The block forms are still authoritative for every unconverted
+      ! consumer, so the slots are unpacked back afterwards.  That makes
+      ! this a pack + halo + unpack where it used to be a halo + pack --
+      ! the same number of passes.  The saving arrives when the exit
+      ! unpacks in ice_step_mod can be gated, which this unblocks.
       if (maskhalo_bound) then
+         call ice_HaloUpdate (aicen,            halo_info, &
+                              field_loc_center, field_type_scalar)
          halomask(:,:,:) = 0
 
          !$OMP PARALLEL DO PRIVATE(iblk,n,i,j)
@@ -134,12 +147,31 @@
          call ice_HaloDestroy(halo_info_aicemask)
 
       else
-         call ice_HaloUpdate (trcrn(:,:,:,:,:), halo_info, &
-                              field_loc_center, field_type_scalar)
-         call ice_HaloUpdate (vicen,            halo_info, &
-                              field_loc_center, field_type_scalar)
-         call ice_HaloUpdate (vsnon,            halo_info, &
-                              field_loc_center, field_type_scalar)
+         call pack_state_slots
+
+         call ice_HaloUpdate3DR8_compressed(aicen_slot, halo_info,      &
+                  field_loc_center, field_type_scalar, dynMap, dynOff)
+         call ice_HaloUpdate3DR8_compressed(vicen_slot, halo_info,      &
+                  field_loc_center, field_type_scalar, dynMap, dynOff)
+         call ice_HaloUpdate3DR8_compressed(vsnon_slot, halo_info,      &
+                  field_loc_center, field_type_scalar, dynMap, dynOff)
+         ! trcrn_slot is (slot,ntrcr,ncat); trcrn_flat is its contiguous
+         ! (slot, ntrcr*ncat) view, so all levels go in ONE call.
+         call ice_HaloUpdate3DR8_compressed(trcrn_flat, halo_info,      &
+                  field_loc_center, field_type_scalar, dynMap, dynOff)
+
+         !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
+         do iblk = 1, nblocks
+            call unpack_cat_from_slots(aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
+                 dynMap(:,iblk), aicen(:,:,:,iblk))
+            call unpack_cat_from_slots(vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
+                 dynMap(:,iblk), vicen(:,:,:,iblk))
+            call unpack_cat_from_slots(vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
+                 dynMap(:,iblk), vsnon(:,:,:,iblk))
+            call unpack_trc_from_slots(trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:), &
+                 dynMap(:,iblk), trcrn(:,:,:,:,iblk))
+         enddo
+         !$OMP END PARALLEL DO
       endif
 
       if (lrestore) then
@@ -177,7 +209,8 @@
 
       use ice_domain, only: nblocks
       use ice_grid, only: dynMap, dynOff, dynCnt, &
-          pack_cat_to_slots, pack_trc_to_slots, pack_to_slots
+          pack_cat_to_slots, pack_trc_to_slots, pack_to_slots, &
+          unpack_cat_from_slots, unpack_trc_from_slots
       use ice_state, only: aicen, vicen, vsnon, trcrn, &
           aicen_slot, vicen_slot, vsnon_slot, trcrn_slot, &
           aice, vice, vsno, aice0, trcr, &
