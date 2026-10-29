@@ -145,6 +145,14 @@
       real (kind=dbl_kind), dimension(:,:,:), allocatable, target, public :: &
          trcrn_slot     ! tracers                  (slot,ntrcr,ncat)
 
+      ! Compressed companions of the _init arrays.  save_init builds these
+      ! from the SLOT state, so it no longer reads the block state -- which
+      ! is what pinned the exit unpacks in ice_step_mod.
+      real (kind=dbl_kind), dimension(:,:), allocatable, public :: &
+         aicen_init_slot , & ! initial ice concentration, for linear ITD
+         vicen_init_slot , & ! initial ice volume (m), for linear ITD
+         vsnon_init_slot     ! initial snow volume (m), for aerosol
+
       real (kind=dbl_kind), dimension(:,:), pointer, public :: &
          trcrn_flat => null()   ! trcrn_slot viewed as (slot, ntrcr*ncat)
 
@@ -258,6 +266,13 @@
          vsnon_slot(nslot,ncat)       , & ! snow volume (m), by category
          trcrn_slot(nslot,ntrcr,ncat) , & ! tracers
          trcr_slot (nslot,ntrcr)      , & ! tracers, aggregated
+         ! ⚠ Tsfcn_init has NO slot companion on purpose.  It is built from
+         ! trcrn, which is the one state array carrying non-zero values at
+         ! land, and its only reader is the MAPL/GEOS coupler, which cannot
+         ! be built or tested here.  See cice-tsfcn-init-geos-edge.
+         aicen_init_slot(nslot,ncat)  , & ! initial concentration, compressed
+         vicen_init_slot(nslot,ncat)  , & ! initial ice volume  (m), compressed
+         vsnon_init_slot(nslot,ncat)  , & ! initial snow volume (m), compressed
          stat=ierr)
       if (ierr/=0) call abort_ice(error_message=trim(subname)//' ERROR: Out of memory', &
          file=__FILE__, line=__LINE__)
@@ -271,6 +286,9 @@
       vsnon_slot = c0
       trcrn_slot = c0
       trcr_slot  = c0
+      aicen_init_slot = c0
+      vicen_init_slot = c0
+      vsnon_init_slot = c0
 
       ! A contiguous rank-2 view for the bundled compressed halo.  Rank
       ! remapping needs the target contiguous, which an allocatable is.

@@ -60,10 +60,15 @@
 ! saves initial values for aice, aicen, vicen, vsnon
 
       use ice_state, only: aice, aicen, aice_init3d, aicen_init, &
-         vicen, vicen_init, vsnon, vsnon_init, trcrn, Tsfcn_init
+         vicen, vicen_init, vsnon, vsnon_init, trcrn, Tsfcn_init, &
+         aicen_slot, vicen_slot, vsnon_slot, &
+         aicen_init_slot, vicen_init_slot, vsnon_init_slot
+      use ice_grid, only: dynMap, dynOff, dynCnt, unpack_cat_from_slots
+      use ice_domain, only: nblocks
 
       integer (kind=int_kind) :: &
-         nt_Tsfc   ! Tsfc index in trcrn
+         nt_Tsfc, & ! Tsfc index in trcrn
+         iblk       ! block index
 
       character(len=*), parameter :: subname = '(save_init)'
 
@@ -76,9 +81,40 @@
          call icepack_query_tracer_indices(nt_Tsfc_out=nt_Tsfc)
 
           aice_init3d = aice
-         aicen_init = aicen
-         vicen_init = vicen
-         vsnon_init = vsnon
+
+         ! ⚠ Sourced from the SLOT state, not the block state.  Reading
+         ! the block arrays here is what pinned the exit unpacks in this
+         ! module: skip an unpack and save_init would silently save stale
+         ! values, and its only consumers are diagnostics, so the symptom
+         ! would be wrong numbers rather than a crash.
+         !
+         ! The block _init forms are still produced, by unpacking, because
+         ! consumers that have not converted -- including the coupled
+         ! drivers -- read them.  They are not state, so unpacking them
+         ! re-pins nothing.
+         !
+         ! Identical to the old whole-array copy because aicen, vicen and
+         ! vsnon are genuinely zero at land: the unpack leaves c0 exactly
+         ! where the copy put 0.  It is also cheaper -- slot cells only.
+         aicen_init_slot = aicen_slot
+         vicen_init_slot = vicen_slot
+         vsnon_init_slot = vsnon_slot
+
+         !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
+         do iblk = 1, nblocks
+            call unpack_cat_from_slots(aicen_init_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
+                 dynMap(:,iblk), aicen_init(:,:,:,iblk))
+            call unpack_cat_from_slots(vicen_init_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
+                 dynMap(:,iblk), vicen_init(:,:,:,iblk))
+            call unpack_cat_from_slots(vsnon_init_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
+                 dynMap(:,iblk), vsnon_init(:,:,:,iblk))
+         enddo
+         !$OMP END PARALLEL DO
+
+         ! ⚠ Tsfcn_init stays a BLOCK copy.  trcrn is the one state array
+         ! with non-zero values at land, and its only reader is the
+         ! MAPL/GEOS coupler, which cannot be tested here.  This keeps the
+         ! 7 unpack_trc calls pinned.  See cice-tsfcn-init-geos-edge.
          Tsfcn_init = trcrn(:,:,nt_Tsfc,:,:)
 
       end subroutine save_init
