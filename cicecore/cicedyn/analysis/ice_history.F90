@@ -2549,12 +2549,38 @@
              call accum_hist_field(n_flwdn,  iblk, flw(:,:,iblk), a2D)
          if (f_snow   (1:1) /= 'x') &
              call accum_hist_field(n_snow,   iblk, fsnow(:,:,iblk), a2D)
-         if (f_snow_ai(1:1) /= 'x') &
-             call accum_hist_field(n_snow_ai,iblk, fsnow(:,:,iblk)*workb(:,:), a2D)
+         if (f_snow_ai(1:1) /= 'x') then
+            ! Slot loop: the expression argument cost a block-sized
+            ! temporary every history step.  workas is declared, so
+            ! nothing is materialised, and only slot cells are read.
+            workas(:) = c0
+            do is = 1, dynCnt(iblk)
+               msh = dynOff(iblk) + is
+               if (skipPhys(msh)) cycle
+               ij = dynIJ(msh)
+               j  = (ij-1)/nx_block + 1
+               i  = ij - (j-1)*nx_block
+               workas(is) = fsnow(i,j,iblk)*workb(i,j)
+            enddo
+            call accum_hist_field_2D_slotin(n_snow_ai, iblk, workas, a2D)
+         endif
          if (f_rain   (1:1) /= 'x') &
              call accum_hist_field(n_rain,   iblk, frain(:,:,iblk), a2D)
-         if (f_rain_ai(1:1) /= 'x') &
-             call accum_hist_field(n_rain_ai,iblk, frain(:,:,iblk)*workb(:,:), a2D)
+         if (f_rain_ai(1:1) /= 'x') then
+            ! Slot loop: the expression argument cost a block-sized
+            ! temporary every history step.  workas is declared, so
+            ! nothing is materialised, and only slot cells are read.
+            workas(:) = c0
+            do is = 1, dynCnt(iblk)
+               msh = dynOff(iblk) + is
+               if (skipPhys(msh)) cycle
+               ij = dynIJ(msh)
+               j  = (ij-1)/nx_block + 1
+               i  = ij - (j-1)*nx_block
+               workas(is) = frain(i,j,iblk)*workb(i,j)
+            enddo
+            call accum_hist_field_2D_slotin(n_rain_ai, iblk, workas, a2D)
+         endif
 
          if (f_sst    (1:1) /= 'x') &
              call accum_hist_field(n_sst,    iblk, sst(:,:,iblk), a2D)
@@ -2708,10 +2734,36 @@
          if (f_strtlty(1:1) /= 'x') &
              call accum_hist_field(n_strtlty, iblk, strtltyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                                    dynMap(:,iblk), a2D)
-         if (f_strcorx(1:1) /= 'x') &
-             call accum_hist_field(n_strcorx, iblk, reshape(fmU(:,iblk),(/nx_block,ny_block/))*reshape(vvel(:,iblk),(/nx_block,ny_block/)), a2D)
-         if (f_strcory(1:1) /= 'x') &
-             call accum_hist_field(n_strcory, iblk,-reshape(fmU(:,iblk),(/nx_block,ny_block/))*reshape(uvel(:,iblk),(/nx_block,ny_block/)), a2D)
+         if (f_strcorx(1:1) /= 'x') then
+            ! Slot loop: the expression argument cost a block-sized
+            ! temporary every history step.  workas is declared, so
+            ! nothing is materialised, and only slot cells are read.
+            workas(:) = c0
+            do is = 1, dynCnt(iblk)
+               msh = dynOff(iblk) + is
+               if (skipPhys(msh)) cycle
+               ij = dynIJ(msh)
+               j  = (ij-1)/nx_block + 1
+               i  = ij - (j-1)*nx_block
+               workas(is) = fmU(ij,iblk)*vvel(ij,iblk)
+            enddo
+            call accum_hist_field_2D_slotin(n_strcorx, iblk, workas, a2D)
+         endif
+         if (f_strcory(1:1) /= 'x') then
+            ! Slot loop: the expression argument cost a block-sized
+            ! temporary every history step.  workas is declared, so
+            ! nothing is materialised, and only slot cells are read.
+            workas(:) = c0
+            do is = 1, dynCnt(iblk)
+               msh = dynOff(iblk) + is
+               if (skipPhys(msh)) cycle
+               ij = dynIJ(msh)
+               j  = (ij-1)/nx_block + 1
+               i  = ij - (j-1)*nx_block
+               workas(is) = -fmU(ij,iblk)*uvel(ij,iblk)
+            enddo
+            call accum_hist_field_2D_slotin(n_strcory, iblk, workas, a2D)
+         endif
          if (f_strocnx(1:1) /= 'x') &
              call accum_hist_field(n_strocnx, iblk, strocnxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                                    dynMap(:,iblk), a2D)
@@ -2754,14 +2806,66 @@
          if (f_strtltyE(1:1) /= 'x') &
              call accum_hist_field(n_strtltyE, iblk, strtltyE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                                    dynMap(:,iblk), a2D)
-         if (f_strcorxN(1:1) /= 'x') &
-             call accum_hist_field(n_strcorxN, iblk, reshape(fmN(:,iblk),(/nx_block,ny_block/))*vvelN(:,:,iblk), a2D)
-         if (f_strcoryN(1:1) /= 'x') &
-             call accum_hist_field(n_strcoryN, iblk,-reshape(fmN(:,iblk),(/nx_block,ny_block/))*uvelN(:,:,iblk), a2D)
-         if (f_strcorxE(1:1) /= 'x') &
-             call accum_hist_field(n_strcorxE, iblk, reshape(fmE(:,iblk),(/nx_block,ny_block/))*vvelE(:,:,iblk), a2D)
-         if (f_strcoryE(1:1) /= 'x') &
-             call accum_hist_field(n_strcoryE, iblk,-reshape(fmE(:,iblk),(/nx_block,ny_block/))*uvelE(:,:,iblk), a2D)
+         if (f_strcorxN(1:1) /= 'x') then
+            ! Slot loop rather than an expression argument: a flat block
+            ! array times a 2-D one needed a reshape AND a block-sized
+            ! temporary.  workas is declared, so nothing is materialised.
+            workas(:) = c0
+            do is = 1, dynCnt(iblk)
+               msh = dynOff(iblk) + is
+               if (skipPhys(msh)) cycle
+               ij = dynIJ(msh)
+               j  = (ij-1)/nx_block + 1
+               i  = ij - (j-1)*nx_block
+               workas(is) = fmN(ij,iblk)*vvelN(i,j,iblk)
+            enddo
+            call accum_hist_field_2D_slotin(n_strcorxN, iblk, workas, a2D)
+         endif
+         if (f_strcoryN(1:1) /= 'x') then
+            ! Slot loop rather than an expression argument: a flat block
+            ! array times a 2-D one needed a reshape AND a block-sized
+            ! temporary.  workas is declared, so nothing is materialised.
+            workas(:) = c0
+            do is = 1, dynCnt(iblk)
+               msh = dynOff(iblk) + is
+               if (skipPhys(msh)) cycle
+               ij = dynIJ(msh)
+               j  = (ij-1)/nx_block + 1
+               i  = ij - (j-1)*nx_block
+               workas(is) = -fmN(ij,iblk)*uvelN(i,j,iblk)
+            enddo
+            call accum_hist_field_2D_slotin(n_strcoryN, iblk, workas, a2D)
+         endif
+         if (f_strcorxE(1:1) /= 'x') then
+            ! Slot loop rather than an expression argument: a flat block
+            ! array times a 2-D one needed a reshape AND a block-sized
+            ! temporary.  workas is declared, so nothing is materialised.
+            workas(:) = c0
+            do is = 1, dynCnt(iblk)
+               msh = dynOff(iblk) + is
+               if (skipPhys(msh)) cycle
+               ij = dynIJ(msh)
+               j  = (ij-1)/nx_block + 1
+               i  = ij - (j-1)*nx_block
+               workas(is) = fmE(ij,iblk)*vvelE(i,j,iblk)
+            enddo
+            call accum_hist_field_2D_slotin(n_strcorxE, iblk, workas, a2D)
+         endif
+         if (f_strcoryE(1:1) /= 'x') then
+            ! Slot loop rather than an expression argument: a flat block
+            ! array times a 2-D one needed a reshape AND a block-sized
+            ! temporary.  workas is declared, so nothing is materialised.
+            workas(:) = c0
+            do is = 1, dynCnt(iblk)
+               msh = dynOff(iblk) + is
+               if (skipPhys(msh)) cycle
+               ij = dynIJ(msh)
+               j  = (ij-1)/nx_block + 1
+               i  = ij - (j-1)*nx_block
+               workas(is) = -fmE(ij,iblk)*uvelE(i,j,iblk)
+            enddo
+            call accum_hist_field_2D_slotin(n_strcoryE, iblk, workas, a2D)
+         endif
          if (f_strocnxN(1:1) /= 'x') &
              call accum_hist_field(n_strocnxN, iblk, strocnxN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                                    dynMap(:,iblk), a2D)
@@ -2932,17 +3036,53 @@
          endif
 
          if (f_sitempbot(1:1) /= 'x') then
-           call accum_hist_field(n_sitempbot, iblk, aice_init3d(:,:,iblk)*Tbot(:,:,iblk), a2D)
+           ! Slot loop: the expression argument cost a block-sized
+           ! temporary every history step.  workas is declared, so
+           ! nothing is materialised, and only slot cells are read.
+           workas(:) = c0
+           do is = 1, dynCnt(iblk)
+              msh = dynOff(iblk) + is
+              if (skipPhys(msh)) cycle
+              ij = dynIJ(msh)
+              j  = (ij-1)/nx_block + 1
+              i  = ij - (j-1)*nx_block
+              workas(is) = aice_init3d(i,j,iblk)*Tbot(i,j,iblk)
+           enddo
+           call accum_hist_field_2D_slotin(n_sitempbot, iblk, workas, a2D)
          endif
 
          if (f_siu(1:1) /= 'x') then
-           call accum_hist_field_2D_aiflux(n_siu, iblk, reshape(uvel(:,iblk),(/nx_block,ny_block/)), &
-                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+           ! Slot loop rather than an expression argument: the operands
+              ! are a flat block array and a slot array, so the 2-D form
+              ! needed a reshape AND a block-sized temporary.  workas is a
+              ! declared array, so nothing is materialised here.
+              workas(:) = c0
+              do is = 1, dynCnt(iblk)
+                 msh = dynOff(iblk) + is
+                 if (skipPhys(msh)) cycle
+                 ij = dynIJ(msh)
+                 j  = (ij-1)/nx_block + 1
+                 i  = ij - (j-1)*nx_block
+                 workas(is) = uvel(ij,iblk)*aice_slot(msh)
+              enddo
+              call accum_hist_field_2D_slotin(n_siu, iblk, workas, a2D)
          endif
 
          if (f_siv(1:1) /= 'x') then
-           call accum_hist_field_2D_aiflux(n_siv, iblk, reshape(vvel(:,iblk),(/nx_block,ny_block/)), &
-                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+           ! Slot loop rather than an expression argument: the operands
+              ! are a flat block array and a slot array, so the 2-D form
+              ! needed a reshape AND a block-sized temporary.  workas is a
+              ! declared array, so nothing is materialised here.
+              workas(:) = c0
+              do is = 1, dynCnt(iblk)
+                 msh = dynOff(iblk) + is
+                 if (skipPhys(msh)) cycle
+                 ij = dynIJ(msh)
+                 j  = (ij-1)/nx_block + 1
+                 i  = ij - (j-1)*nx_block
+                 workas(is) = vvel(ij,iblk)*aice_slot(msh)
+              enddo
+              call accum_hist_field_2D_slotin(n_siv, iblk, workas, a2D)
          endif
 
          if (f_sispeed(1:1) /= 'x') then
@@ -3099,43 +3239,163 @@
          endif
 
          if (f_sidmassth(1:1) /= 'x') then
-           call accum_hist_field(n_sidmassth, iblk, rho_ice(:,:)*dvidtt(:,:,iblk), a2D)
+           ! Slot loop: the expression argument cost a block-sized
+           ! temporary every history step.  workas is declared, so
+           ! nothing is materialised, and only slot cells are read.
+           workas(:) = c0
+           do is = 1, dynCnt(iblk)
+              msh = dynOff(iblk) + is
+              if (skipPhys(msh)) cycle
+              ij = dynIJ(msh)
+              j  = (ij-1)/nx_block + 1
+              i  = ij - (j-1)*nx_block
+              workas(is) = rho_ice(i,j)*dvidtt(i,j,iblk)
+           enddo
+           call accum_hist_field_2D_slotin(n_sidmassth, iblk, workas, a2D)
          endif
 
          if (f_sidmassdyn(1:1) /= 'x') then
-           call accum_hist_field(n_sidmassdyn, iblk, rho_ice(:,:)*dvidtd(:,:,iblk), a2D)
+           ! Slot loop: the expression argument cost a block-sized
+           ! temporary every history step.  workas is declared, so
+           ! nothing is materialised, and only slot cells are read.
+           workas(:) = c0
+           do is = 1, dynCnt(iblk)
+              msh = dynOff(iblk) + is
+              if (skipPhys(msh)) cycle
+              ij = dynIJ(msh)
+              j  = (ij-1)/nx_block + 1
+              i  = ij - (j-1)*nx_block
+              workas(is) = rho_ice(i,j)*dvidtd(i,j,iblk)
+           enddo
+           call accum_hist_field_2D_slotin(n_sidmassdyn, iblk, workas, a2D)
          endif
 
          if (f_sidmassgrowthwat(1:1) /= 'x') then
-           call accum_hist_field(n_sidmassgrowthwat, iblk, rho_ice(:,:)*frazil(:,:,iblk)/dt, a2D)
+           ! Slot loop: the expression argument cost a block-sized
+           ! temporary every history step.  workas is declared, so
+           ! nothing is materialised, and only slot cells are read.
+           workas(:) = c0
+           do is = 1, dynCnt(iblk)
+              msh = dynOff(iblk) + is
+              if (skipPhys(msh)) cycle
+              ij = dynIJ(msh)
+              j  = (ij-1)/nx_block + 1
+              i  = ij - (j-1)*nx_block
+              workas(is) = rho_ice(i,j)*frazil(i,j,iblk)/dt
+           enddo
+           call accum_hist_field_2D_slotin(n_sidmassgrowthwat, iblk, workas, a2D)
          endif
 
          if (f_sidmassgrowthbot(1:1) /= 'x') then
-           call accum_hist_field(n_sidmassgrowthbot, iblk, rho_ice(:,:)*congel(:,:,iblk)/dt, a2D)
+           ! Slot loop: the expression argument cost a block-sized
+           ! temporary every history step.  workas is declared, so
+           ! nothing is materialised, and only slot cells are read.
+           workas(:) = c0
+           do is = 1, dynCnt(iblk)
+              msh = dynOff(iblk) + is
+              if (skipPhys(msh)) cycle
+              ij = dynIJ(msh)
+              j  = (ij-1)/nx_block + 1
+              i  = ij - (j-1)*nx_block
+              workas(is) = rho_ice(i,j)*congel(i,j,iblk)/dt
+           enddo
+           call accum_hist_field_2D_slotin(n_sidmassgrowthbot, iblk, workas, a2D)
          endif
 
          if (f_sidmassgrowthsi(1:1) /= 'x') then
-           call accum_hist_field(n_sidmassgrowthsi, iblk, rho_ice(:,:)*snoice(:,:,iblk)/dt, a2D)
+           ! Slot loop: the expression argument cost a block-sized
+           ! temporary every history step.  workas is declared, so
+           ! nothing is materialised, and only slot cells are read.
+           workas(:) = c0
+           do is = 1, dynCnt(iblk)
+              msh = dynOff(iblk) + is
+              if (skipPhys(msh)) cycle
+              ij = dynIJ(msh)
+              j  = (ij-1)/nx_block + 1
+              i  = ij - (j-1)*nx_block
+              workas(is) = rho_ice(i,j)*snoice(i,j,iblk)/dt
+           enddo
+           call accum_hist_field_2D_slotin(n_sidmassgrowthsi, iblk, workas, a2D)
          endif
 
          if (f_sisndmasssi(1:1) /= 'x') then
-           call accum_hist_field(n_sisndmasssi, iblk, -snoice(:,:,iblk)*rhos/dt, a2D)
+           ! Slot loop: the expression argument cost a block-sized
+           ! temporary every history step.  workas is declared, so
+           ! nothing is materialised, and only slot cells are read.
+           workas(:) = c0
+           do is = 1, dynCnt(iblk)
+              msh = dynOff(iblk) + is
+              if (skipPhys(msh)) cycle
+              ij = dynIJ(msh)
+              j  = (ij-1)/nx_block + 1
+              i  = ij - (j-1)*nx_block
+              workas(is) = -snoice(i,j,iblk)*rhos/dt
+           enddo
+           call accum_hist_field_2D_slotin(n_sisndmasssi, iblk, workas, a2D)
          endif
 
          if (f_sidmassevapsubl(1:1) /= 'x') then
-           call accum_hist_field(n_sidmassevapsubl, iblk, rho_ice(:,:)*evapi(:,:,iblk), a2D)
+           ! Slot loop: the expression argument cost a block-sized
+           ! temporary every history step.  workas is declared, so
+           ! nothing is materialised, and only slot cells are read.
+           workas(:) = c0
+           do is = 1, dynCnt(iblk)
+              msh = dynOff(iblk) + is
+              if (skipPhys(msh)) cycle
+              ij = dynIJ(msh)
+              j  = (ij-1)/nx_block + 1
+              i  = ij - (j-1)*nx_block
+              workas(is) = rho_ice(i,j)*evapi(i,j,iblk)
+           enddo
+           call accum_hist_field_2D_slotin(n_sidmassevapsubl, iblk, workas, a2D)
          endif
 
          if (f_sidmassmelttop(1:1) /= 'x') then
-           call accum_hist_field(n_sidmassmelttop, iblk, -rho_ice(:,:)*meltt(:,:,iblk)/dt, a2D)
+           ! Slot loop: the expression argument cost a block-sized
+           ! temporary every history step.  workas is declared, so
+           ! nothing is materialised, and only slot cells are read.
+           workas(:) = c0
+           do is = 1, dynCnt(iblk)
+              msh = dynOff(iblk) + is
+              if (skipPhys(msh)) cycle
+              ij = dynIJ(msh)
+              j  = (ij-1)/nx_block + 1
+              i  = ij - (j-1)*nx_block
+              workas(is) = -rho_ice(i,j)*meltt(i,j,iblk)/dt
+           enddo
+           call accum_hist_field_2D_slotin(n_sidmassmelttop, iblk, workas, a2D)
          endif
 
          if (f_sidmassmeltbot(1:1) /= 'x') then
-           call accum_hist_field(n_sidmassmeltbot, iblk, -rho_ice(:,:)*meltb(:,:,iblk)/dt, a2D)
+           ! Slot loop: the expression argument cost a block-sized
+           ! temporary every history step.  workas is declared, so
+           ! nothing is materialised, and only slot cells are read.
+           workas(:) = c0
+           do is = 1, dynCnt(iblk)
+              msh = dynOff(iblk) + is
+              if (skipPhys(msh)) cycle
+              ij = dynIJ(msh)
+              j  = (ij-1)/nx_block + 1
+              i  = ij - (j-1)*nx_block
+              workas(is) = -rho_ice(i,j)*meltb(i,j,iblk)/dt
+           enddo
+           call accum_hist_field_2D_slotin(n_sidmassmeltbot, iblk, workas, a2D)
          endif
 
          if (f_sidmassmeltlat(1:1) /= 'x') then
-           call accum_hist_field(n_sidmassmeltlat, iblk, -rho_ice(:,:)*meltl(:,:,iblk)/dt, a2D)
+           ! Slot loop: the expression argument cost a block-sized
+           ! temporary every history step.  workas is declared, so
+           ! nothing is materialised, and only slot cells are read.
+           workas(:) = c0
+           do is = 1, dynCnt(iblk)
+              msh = dynOff(iblk) + is
+              if (skipPhys(msh)) cycle
+              ij = dynIJ(msh)
+              j  = (ij-1)/nx_block + 1
+              i  = ij - (j-1)*nx_block
+              workas(is) = -rho_ice(i,j)*meltl(i,j,iblk)/dt
+           enddo
+           call accum_hist_field_2D_slotin(n_sidmassmeltlat, iblk, workas, a2D)
          endif
 
          if (f_sisndmasssubl(1:1) /= 'x') then
@@ -3147,15 +3407,51 @@
          endif
 
          if (f_sisndmassmelt(1:1) /= 'x') then
-           call accum_hist_field(n_sisndmassmelt, iblk, -melts(:,:,iblk)*rhos/dt, a2D)
+           ! Slot loop: the expression argument cost a block-sized
+           ! temporary every history step.  workas is declared, so
+           ! nothing is materialised, and only slot cells are read.
+           workas(:) = c0
+           do is = 1, dynCnt(iblk)
+              msh = dynOff(iblk) + is
+              if (skipPhys(msh)) cycle
+              ij = dynIJ(msh)
+              j  = (ij-1)/nx_block + 1
+              i  = ij - (j-1)*nx_block
+              workas(is) = -melts(i,j,iblk)*rhos/dt
+           enddo
+           call accum_hist_field_2D_slotin(n_sisndmassmelt, iblk, workas, a2D)
          endif
 
          if (f_sisndmassdyn(1:1) /= 'x') then
-           call accum_hist_field(n_sisndmassdyn, iblk, dvsdtd(:,:,iblk)*rhos, a2D)
+           ! Slot loop: the expression argument cost a block-sized
+           ! temporary every history step.  workas is declared, so
+           ! nothing is materialised, and only slot cells are read.
+           workas(:) = c0
+           do is = 1, dynCnt(iblk)
+              msh = dynOff(iblk) + is
+              if (skipPhys(msh)) cycle
+              ij = dynIJ(msh)
+              j  = (ij-1)/nx_block + 1
+              i  = ij - (j-1)*nx_block
+              workas(is) = dvsdtd(i,j,iblk)*rhos
+           enddo
+           call accum_hist_field_2D_slotin(n_sisndmassdyn, iblk, workas, a2D)
          endif
 
          if (f_siflswdtop(1:1) /= 'x') then
-           call accum_hist_field(n_siflswdtop, iblk, aice_init3d(:,:,iblk)*fsw(:,:,iblk), a2D)
+           ! Slot loop: the expression argument cost a block-sized
+           ! temporary every history step.  workas is declared, so
+           ! nothing is materialised, and only slot cells are read.
+           workas(:) = c0
+           do is = 1, dynCnt(iblk)
+              msh = dynOff(iblk) + is
+              if (skipPhys(msh)) cycle
+              ij = dynIJ(msh)
+              j  = (ij-1)/nx_block + 1
+              i  = ij - (j-1)*nx_block
+              workas(is) = aice_init3d(i,j,iblk)*fsw(i,j,iblk)
+           enddo
+           call accum_hist_field_2D_slotin(n_siflswdtop, iblk, workas, a2D)
          endif
 
          if (f_siflswutop(1:1) /= 'x') then
@@ -3163,11 +3459,35 @@
          endif
 
          if (f_siflswdbot(1:1) /= 'x') then
-           call accum_hist_field(n_siflswdbot, iblk, aice_init3d(:,:,iblk)*fswthru(:,:,iblk), a2D)
+           ! Slot loop: the expression argument cost a block-sized
+           ! temporary every history step.  workas is declared, so
+           ! nothing is materialised, and only slot cells are read.
+           workas(:) = c0
+           do is = 1, dynCnt(iblk)
+              msh = dynOff(iblk) + is
+              if (skipPhys(msh)) cycle
+              ij = dynIJ(msh)
+              j  = (ij-1)/nx_block + 1
+              i  = ij - (j-1)*nx_block
+              workas(is) = aice_init3d(i,j,iblk)*fswthru(i,j,iblk)
+           enddo
+           call accum_hist_field_2D_slotin(n_siflswdbot, iblk, workas, a2D)
          endif
 
          if (f_sifllwdtop(1:1) /= 'x') then
-           call accum_hist_field(n_sifllwdtop, iblk, aice_init3d(:,:,iblk)*flw(:,:,iblk), a2D)
+           ! Slot loop: the expression argument cost a block-sized
+           ! temporary every history step.  workas is declared, so
+           ! nothing is materialised, and only slot cells are read.
+           workas(:) = c0
+           do is = 1, dynCnt(iblk)
+              msh = dynOff(iblk) + is
+              if (skipPhys(msh)) cycle
+              ij = dynIJ(msh)
+              j  = (ij-1)/nx_block + 1
+              i  = ij - (j-1)*nx_block
+              workas(is) = aice_init3d(i,j,iblk)*flw(i,j,iblk)
+           enddo
+           call accum_hist_field_2D_slotin(n_sifllwdtop, iblk, workas, a2D)
          endif
 
          if (f_sifllwutop(1:1) /= 'x') then
@@ -3301,11 +3621,35 @@
          endif
 
          if (f_sidragtop(1:1) /= 'x') then
-           call accum_hist_field(n_sidragtop, iblk, aice_init3d(:,:,iblk)*Cdn_atm(:,:,iblk), a2D)
+           ! Slot loop: the expression argument cost a block-sized
+           ! temporary every history step.  workas is declared, so
+           ! nothing is materialised, and only slot cells are read.
+           workas(:) = c0
+           do is = 1, dynCnt(iblk)
+              msh = dynOff(iblk) + is
+              if (skipPhys(msh)) cycle
+              ij = dynIJ(msh)
+              j  = (ij-1)/nx_block + 1
+              i  = ij - (j-1)*nx_block
+              workas(is) = aice_init3d(i,j,iblk)*Cdn_atm(i,j,iblk)
+           enddo
+           call accum_hist_field_2D_slotin(n_sidragtop, iblk, workas, a2D)
          endif
 
          if (f_sidragbot(1:1) /= 'x') then
-           call accum_hist_field(n_sidragbot, iblk, aice_init(:,iblk)*Cdn_ocn(:,iblk), a2D)
+           ! Slot loop: the expression argument cost a block-sized
+           ! temporary every history step.  workas is declared, so
+           ! nothing is materialised, and only slot cells are read.
+           workas(:) = c0
+           do is = 1, dynCnt(iblk)
+              msh = dynOff(iblk) + is
+              if (skipPhys(msh)) cycle
+              ij = dynIJ(msh)
+              j  = (ij-1)/nx_block + 1
+              i  = ij - (j-1)*nx_block
+              workas(is) = aice_init(ij,iblk)*Cdn_ocn(ij,iblk)
+           enddo
+           call accum_hist_field_2D_slotin(n_sidragbot, iblk, workas, a2D)
          endif
 
          if (f_siforcetiltx(1:1) /= 'x') then
@@ -3552,7 +3896,9 @@
                 endif              ! tmask
                enddo                ! i
                enddo                ! j
-               call pack_to_slots(reshape(worka,(/nx_block*ny_block/)), dynMap(:,iblk), &
+               ! worka is already the shape pack_to_slots declares; the
+               ! reshape only forced a copy in and out.
+               call pack_to_slots(worka, dynMap(:,iblk), &
                                   a2D(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,n_fmeltt_ai(ns)))
             endif
           enddo
