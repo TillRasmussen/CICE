@@ -2534,8 +2534,8 @@
                              icellU,   Cw,       &
                              indxUi,   indxUj,   &
                              uvel,     vvel,     &
-                             uocn,     vocn,     &
-                             aiX,      fm,       &
+                             uocn_s,   vocn_s,   &
+                             aiX_s,    fm,       &
                              Xmap,     strocnx,  strocny)
 
       integer (kind=int_kind), intent(in) :: &
@@ -2546,16 +2546,17 @@
          indxUi  , & ! compressed index in i-direction
          indxUj      ! compressed index in j-direction
 
-      ! aiX is assumed shape, 1D over the block in Fortran storage order,
-      ! i.e. element (i,j) is stored at (j-1)*nx_block+i
+      ! ⚠ Compressed, indexed by Xmap(ijb) exactly as strocnx/strocny are.
+      ! Their producer is grid_average_X2Y('S',...) on the X-grid, so the
+      ! slot form is the same arithmetic evaluated at the slot cells only.
       real (kind=dbl_kind), dimension (:), intent(in) :: &
-         aiX         ! ice fraction on X-grid
+         aiX_s   , & ! ice fraction on X-grid
+         uocn_s  , & ! ocean current, x-direction (m/s)
+         vocn_s      ! ocean current, y-direction (m/s)
 
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
          uvel    , & ! x-component of velocity (m/s)
          vvel    , & ! y-component of velocity (m/s)
-         uocn    , & ! ocean current, x-direction (m/s)
-         vocn    , & ! ocean current, y-direction (m/s)
          fm          ! Coriolis param. * mass in U-cell (kg/s)
 
       ! ⚠ Compressed.  Indexed by Xmap(ijb), the block-local slot, the same
@@ -2575,7 +2576,8 @@
 
       integer (kind=int_kind) :: &
          i, j, ij       , & ! ij is the compressed cell counter
-         ijb                ! 1D index of (i,j) in the block
+         ijb            , & ! 1D index of (i,j) in the block
+         ms                 ! block-local slot of (i,j)
 
       real (kind=dbl_kind) :: &
          vrel    , & !
@@ -2593,21 +2595,22 @@
          i = indxUi(ij)
          j = indxUj(ij)
          ijb = (j-1)*nx_block + i
+         ms  = Xmap(ijb)
 
-          vrel = rhow*Cw(i,j)*sqrt((uocn(i,j) - uvel(i,j))**2 + &
-                 (vocn(i,j) - vvel(i,j))**2)  ! m/s
+          vrel = rhow*Cw(i,j)*sqrt((uocn_s(ms) - uvel(i,j))**2 + &
+                 (vocn_s(ms) - vvel(i,j))**2)  ! m/s
 
 !        strocnx(i,j) = strocnx(i,j) &
-!                     - vrel*(uvel(i,j)*cosw - vvel(i,j)*sinw) * aiX(ijb)
+!                     - vrel*(uvel(i,j)*cosw - vvel(i,j)*sinw) * aiX_s(ms)
 !        strocny(i,j) = strocny(i,j) &
-!                     - vrel*(vvel(i,j)*cosw + uvel(i,j)*sinw) * aiX(ijb)
+!                     - vrel*(vvel(i,j)*cosw + uvel(i,j)*sinw) * aiX_s(ms)
 
          ! update strocnx to most recent iterate and complete the term
-         vrel = vrel * aiX(ijb)
-         strocnx(Xmap(ijb)) = vrel*((uocn(i,j) - uvel(i,j))*cosw &
-                            - (vocn(i,j) - vvel(i,j))*sinw*sign(c1,fm(i,j)))
-         strocny(Xmap(ijb)) = vrel*((vocn(i,j) - vvel(i,j))*cosw &
-                            + (uocn(i,j) - uvel(i,j))*sinw*sign(c1,fm(i,j)))
+         vrel = vrel * aiX_s(ms)
+         strocnx(ms) = vrel*((uocn_s(ms) - uvel(i,j))*cosw &
+                     - (vocn_s(ms) - vvel(i,j))*sinw*sign(c1,fm(i,j)))
+         strocny(ms) = vrel*((vocn_s(ms) - vvel(i,j))*cosw &
+                     + (uocn_s(ms) - uvel(i,j))*sinw*sign(c1,fm(i,j)))
 
          ! Hibler/Bryan stress
          ! the sign is reversed later, therefore negative here

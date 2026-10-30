@@ -4042,8 +4042,8 @@
 
       character(len=*), parameter :: subname = '(grid_average_X2Y_base_toslot)'
 
-      if (trim(type) /= 'F') then
-         call abort_ice(subname//' ERROR: only type F has a slot form', &
+      if (trim(type) /= 'F' .and. trim(type) /= 'S') then
+         call abort_ice(subname//' ERROR: only types F and S have a slot form', &
             file=__FILE__, line=__LINE__)
       endif
 
@@ -4340,6 +4340,13 @@
             call grid_average_X2YF_toslot('E',work1,narea,work2,uarea_slot)
          case('N2EF')
             call grid_average_X2YF_toslot('SE',work1,narea,work2,earea_slot)
+
+         case('T2US')
+            call grid_average_X2YS_toslot('NE',work1,tarea,hm,work2)
+         case('T2ES')
+            call grid_average_X2YS_toslot('E' ,work1,tarea,hm,work2)
+         case('T2NS')
+            call grid_average_X2YS_toslot('N' ,work1,tarea,hm,work2)
 
          case default
             call abort_ice(subname//' ERROR: unknown X2Y '//trim(X2Y), &
@@ -5342,6 +5349,131 @@
       end select
 
       end subroutine grid_average_X2YF_toslot
+
+!=======================================================================
+!
+! Masked area-weighted average written straight into the compressed
+! layout.  The mirror of grid_average_X2YS, which writes a block array
+! that then has to be packed -- aiU was computed that way and packed in
+! ice_dyn_evp, a round trip this removes.
+!
+! ⚠ Safe from the land-nonzero-sum class: mask1 is hm, zero over land,
+! so the masked weight is zero there and the dead slot's c0 is correct.
+! NOT true of X2YA, whose denominator is the bare weight summed over
+! neighbours.  Do not copy this pattern for it.  See
+! cice-x2y-family-safety.
+
+      subroutine grid_average_X2YS_toslot(dir,work1,wght1,mask1,work2)
+
+      character(len=*) , intent(in) :: dir
+
+      real (kind=dbl_kind), intent(in) :: work1(:,:,:)  ! block-shaped source
+      real (kind=dbl_kind), intent(in) :: wght1(:,:)    ! weight, i/j flattened
+      real (kind=dbl_kind), intent(in) :: mask1(:,:)    ! mask,   i/j flattened
+
+      real (kind=dbl_kind), intent(out) :: work2(:)     ! dynTot
+
+      integer (kind=int_kind) :: i, j, iblk, ms, ij, ilo, ihi, jlo, jhi
+      real (kind=dbl_kind) :: wtmp
+      type (block) :: this_block
+
+      character(len=*), parameter :: subname = '(grid_average_X2YS_toslot)'
+
+      if (size(wght1,dim=1) /= nx_block*ny_block .or. &
+          size(mask1,dim=1) /= nx_block*ny_block) then
+         call abort_ice(subname//' ERROR: first dimension is not nx_block*ny_block', &
+            file=__FILE__, line=__LINE__)
+      endif
+
+      work2(:) = c0
+
+      select case (trim(dir))
+
+         case('NE')
+            !$OMP PARALLEL DO PRIVATE(iblk,i,j,ij,ms,wtmp,ilo,ihi,jlo,jhi,this_block)
+            do iblk = 1, nblocks
+               this_block = get_block(blocks_ice(iblk),iblk)
+               ilo = this_block%ilo
+               ihi = this_block%ihi
+               jlo = this_block%jlo
+               jhi = this_block%jhi
+               do j = jlo, jhi
+               do i = ilo, ihi
+                  ms = dynMap((j-1)*nx_block + i, iblk)
+                  if (ms < 1) cycle
+                  ms = dynOff(iblk) + ms
+                  ij = (j-1)*nx_block + i
+                  wtmp = (mask1(ij            ,iblk)*wght1(ij            ,iblk)  &
+                        + mask1(ij+1          ,iblk)*wght1(ij+1          ,iblk)  &
+                        + mask1(ij  +nx_block ,iblk)*wght1(ij  +nx_block ,iblk)  &
+                        + mask1(ij+1+nx_block ,iblk)*wght1(ij+1+nx_block ,iblk))
+                  if (wtmp /= c0) &
+                     work2(ms) = (mask1(ij           ,iblk)*work1(i  ,j  ,iblk)*wght1(ij           ,iblk)  &
+                                + mask1(ij+1         ,iblk)*work1(i+1,j  ,iblk)*wght1(ij+1         ,iblk)  &
+                                + mask1(ij  +nx_block,iblk)*work1(i  ,j+1,iblk)*wght1(ij  +nx_block,iblk)  &
+                                + mask1(ij+1+nx_block,iblk)*work1(i+1,j+1,iblk)*wght1(ij+1+nx_block,iblk)) &
+                                / wtmp
+               enddo
+               enddo
+            enddo
+            !$OMP END PARALLEL DO
+
+         case('E')
+            !$OMP PARALLEL DO PRIVATE(iblk,i,j,ij,ms,wtmp,ilo,ihi,jlo,jhi,this_block)
+            do iblk = 1, nblocks
+               this_block = get_block(blocks_ice(iblk),iblk)
+               ilo = this_block%ilo
+               ihi = this_block%ihi
+               jlo = this_block%jlo
+               jhi = this_block%jhi
+               do j = jlo, jhi
+               do i = ilo, ihi
+                  ms = dynMap((j-1)*nx_block + i, iblk)
+                  if (ms < 1) cycle
+                  ms = dynOff(iblk) + ms
+                  ij = (j-1)*nx_block + i
+                  wtmp = (mask1(ij  ,iblk)*wght1(ij  ,iblk)  &
+                        + mask1(ij+1,iblk)*wght1(ij+1,iblk))
+                  if (wtmp /= c0) &
+                     work2(ms) = (mask1(ij  ,iblk)*work1(i  ,j,iblk)*wght1(ij  ,iblk)  &
+                                + mask1(ij+1,iblk)*work1(i+1,j,iblk)*wght1(ij+1,iblk)) &
+                                / wtmp
+               enddo
+               enddo
+            enddo
+            !$OMP END PARALLEL DO
+
+         case('N')
+            !$OMP PARALLEL DO PRIVATE(iblk,i,j,ij,ms,wtmp,ilo,ihi,jlo,jhi,this_block)
+            do iblk = 1, nblocks
+               this_block = get_block(blocks_ice(iblk),iblk)
+               ilo = this_block%ilo
+               ihi = this_block%ihi
+               jlo = this_block%jlo
+               jhi = this_block%jhi
+               do j = jlo, jhi
+               do i = ilo, ihi
+                  ms = dynMap((j-1)*nx_block + i, iblk)
+                  if (ms < 1) cycle
+                  ms = dynOff(iblk) + ms
+                  ij = (j-1)*nx_block + i
+                  wtmp = (mask1(ij         ,iblk)*wght1(ij         ,iblk)  &
+                        + mask1(ij+nx_block,iblk)*wght1(ij+nx_block,iblk))
+                  if (wtmp /= c0) &
+                     work2(ms) = (mask1(ij         ,iblk)*work1(i,j  ,iblk)*wght1(ij         ,iblk)  &
+                                + mask1(ij+nx_block,iblk)*work1(i,j+1,iblk)*wght1(ij+nx_block,iblk)) &
+                                / wtmp
+               enddo
+               enddo
+            enddo
+            !$OMP END PARALLEL DO
+
+         case default
+            call abort_ice(subname//' ERROR: unknown dir '//trim(dir), &
+               file=__FILE__, line=__LINE__)
+      end select
+
+      end subroutine grid_average_X2YS_toslot
 
 !=======================================================================
 ! Shifts quantities from one grid to another

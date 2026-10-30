@@ -746,8 +746,10 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                icellU      (iblk), Cdn_ocnU(:,:,iblk), &
                indxUi    (:,iblk), indxUj    (:,iblk), &
                uvel(:,iblk), vvel(:,iblk), &
-               uocnU   (:,:,iblk), vocnU   (:,:,iblk), &
-               aiU     (:,iblk),   fmU     (:,iblk), &
+               uocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+               vocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+               aiU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+               fmU(:,iblk), &
                dynMap(:,iblk), &
                strocnxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                strocnyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))

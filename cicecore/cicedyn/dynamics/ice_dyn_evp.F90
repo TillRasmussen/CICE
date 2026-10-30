@@ -590,6 +590,19 @@
       call grid_average_X2Y('S', ss_tltx  , grid_ocn_dynu, ss_tltxU, 'U')
       call grid_average_X2Y('S', ss_tlty  , grid_ocn_dynv, ss_tltyU, 'U')
 
+      ! ⚠ Packed HERE, beside the grid_average that produces them, not in the
+      ! grid_ice=="B" branch below.  dyn_finish reads the compressed U forms
+      ! unconditionally -- the C and CD paths call it for U as well as for N
+      ! and E -- so packing them under "B" left them unwritten on the C path
+      ! while the block originals were filled for every grid.
+      !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
+      do iblk = 1, nblocks
+         call pack_to_slots(aiU  (:,iblk)  , dynMap(:,iblk), aiU_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         call pack_to_slots(uocnU(:,:,iblk), dynMap(:,iblk), uocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         call pack_to_slots(vocnU(:,:,iblk), dynMap(:,iblk), vocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+      enddo
+      !$OMP END PARALLEL DO
+
       if (grid_ice == 'CD' .or. grid_ice == 'C') then
          call grid_average_X2Y('S', tmass    , 'T'          , emass   , 'E')
          call grid_average_X2Y('S', aice_init, 'T'          , aiE     , 'E')
@@ -1064,14 +1077,11 @@
             ! constant through the subcycling, so packed once and never
             ! unpacked; the block-layout originals stay for the consumers
             ! outside the dynamics
-            call pack_to_slots(aiU (:,iblk), dynMap(:,iblk), aiU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call pack_to_slots(fmU (:,iblk), dynMap(:,iblk), fmU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             ! umassdti, waterxU, wateryU, forcexU and forceyU are not packed
             ! here: dyn_prep2 already filled their compressed copies in the
             ! same loop that computed them, which costs one store instead of
             ! a second traversal of the block.
-            call pack_to_slots(uocnU(:,:,iblk), dynMap(:,iblk), uocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(vocnU(:,:,iblk), dynMap(:,iblk), vocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call pack_to_slots(Cdn_ocnU(:,:,iblk), dynMap(:,iblk), cdn_ocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             ! strength is constant through the subcycling; the twelve
             ! stress components are the subcycle's own state, read and
@@ -2098,8 +2108,10 @@
                icellU      (iblk), Cdn_ocnU(:,:,iblk), &
                indxUi    (:,iblk), indxUj    (:,iblk), &
                uvel(:,iblk), vvel(:,iblk), &
-               uocnU   (:,:,iblk), vocnU   (:,:,iblk), &
-               aiU     (:,iblk),   fmU     (:,iblk), &
+               uocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+               vocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+               aiU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+               fmU(:,iblk), &
                dynMap(:,iblk), &
                strocnxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                strocnyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
@@ -2116,8 +2128,10 @@
                   icellN      (iblk), Cdn_ocnN(:,:,iblk), &
                   indxNi    (:,iblk), indxNj    (:,iblk), &
                   uvelN   (:,:,iblk), vvelN   (:,:,iblk), &
-                  uocnN   (:,:,iblk), vocnN   (:,:,iblk), &
-                  aiN     (:,iblk),   fmN     (:,iblk), &
+                  uocnN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                  vocnN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                  aiN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                  fmN(:,iblk), &
                   dynMap(:,iblk), &
                   strocnxN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                   strocnyN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
@@ -2127,8 +2141,10 @@
                   icellE      (iblk), Cdn_ocnE(:,:,iblk), &
                   indxEi    (:,iblk), indxEj    (:,iblk), &
                   uvelE   (:,:,iblk), vvelE   (:,:,iblk), &
-                  uocnE   (:,:,iblk), vocnE   (:,:,iblk), &
-                  aiE     (:,iblk),   fmE     (:,iblk), &
+                  uocnE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                  vocnE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                  aiE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                  fmE(:,iblk), &
                   dynMap(:,iblk), &
                   strocnxE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                   strocnyE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
