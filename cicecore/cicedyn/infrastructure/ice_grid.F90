@@ -200,7 +200,8 @@
                           grid_average_X2Y_base_2d3d, &
                           grid_average_X2Y_userwghts, &
                          grid_average_X2Y_NEversion, &
-                         grid_average_X2Y_base_toslot
+                         grid_average_X2Y_base_toslot, &
+                         grid_average_X2Y_base_2dtoslot
       end interface
 
       ! The X2YS/X2YA/X2YF helpers below are overloaded on the shape of their
@@ -4146,6 +4147,45 @@
       call grid_average_X2Y_base(type,work1_3d,grid1,work2_3d,grid2)
 
       end subroutine grid_average_X2Y_base_2d
+
+!=======================================================================
+! As grid_average_X2Y_base_2d, for a FLATTENED input and a SLOT output.
+!
+! ⚠ Needed because the sources are not uniformly shaped: uocn and vocn are
+! rank 3, but aice_init is flattened (nx_block*ny_block,max_blocks).  Without
+! this specific the compressed form of an aiX average matches nothing in the
+! generic -- a compile error, not a silent one, so the two shapes cannot be
+! confused at a call site.
+
+      subroutine grid_average_X2Y_base_2dtoslot(type,work1,grid1,work2,grid2)
+
+      character(len=*) , intent(in) :: &
+         type, grid1, grid2
+
+      ! TARGET and CONTIGUOUS are required to alias this to rank 3 below
+      real (kind=dbl_kind), intent(in), target, contiguous :: &
+         work1(:,:)
+
+      real (kind=dbl_kind), intent(out) :: &
+         work2(:)            ! dynTot
+
+      ! local variables
+
+      real (kind=dbl_kind), pointer :: &
+         work1_3d(:,:,:)     ! rank-3 alias of work1
+
+      character(len=*), parameter :: subname = '(grid_average_X2Y_base_2dtoslot)'
+
+      if (size(work1,dim=1) /= nx_block*ny_block) then
+         call abort_ice(subname//' ERROR: first dimension is not nx_block*ny_block', &
+            file=__FILE__, line=__LINE__)
+      endif
+
+      work1_3d(1:nx_block,1:ny_block,1:size(work1,dim=2)) => work1
+
+      call grid_average_X2Y_base_toslot(type,work1_3d,grid1,work2,grid2)
+
+      end subroutine grid_average_X2Y_base_2dtoslot
 
 !=======================================================================
 ! As grid_average_X2Y_base_2d, for a rank-3 input and a flattened output.

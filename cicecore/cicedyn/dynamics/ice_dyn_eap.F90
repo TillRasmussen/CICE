@@ -322,6 +322,12 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       call grid_average_X2Y('S', ss_tltx  , grid_ocn_dynu, ss_tltxU, 'U')
       call grid_average_X2Y('S', ss_tlty  , grid_ocn_dynv, ss_tltyU, 'U')
 
+      ! dyn_finish reads these compressed; produced by the average itself
+      ! rather than packed from the block result further down.
+      call grid_average_X2Y('S', aice_init, 'T'          , aiU_slot  , 'U')
+      call grid_average_X2Y('S', uocn     , grid_ocn_dynu, uocnU_slot, 'U')
+      call grid_average_X2Y('S', vocn     , grid_ocn_dynv, vocnU_slot, 'U')
+
       !----------------------------------------------------------------
       ! Set wind stress to values supplied via NEMO or other forcing
       ! This wind stress is rotated on u grid and multiplied by aice
@@ -516,15 +522,12 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          ! strength changes every timestep (ridging), so it is packed here
          ! rather than once at init.  stress_eap reads it from the slots now.
          call pack_to_slots(strength(:,:,iblk), dynMap(:,iblk), strength_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(aiU (:,iblk), dynMap(:,iblk), aiU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
          call pack_to_slots(fmU (:,iblk), dynMap(:,iblk), fmU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
          call pack_to_slots(umassdti(:,iblk), dynMap(:,iblk), umassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
          call pack_to_slots(waterxU(:,iblk), dynMap(:,iblk), waterxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
          call pack_to_slots(wateryU(:,iblk), dynMap(:,iblk), wateryU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
          call pack_to_slots(forcexU(:,iblk), dynMap(:,iblk), forcexU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
          call pack_to_slots(forceyU(:,iblk), dynMap(:,iblk), forceyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(uocnU(:,:,iblk), dynMap(:,iblk), uocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(vocnU(:,:,iblk), dynMap(:,iblk), vocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
          call pack_to_slots(Cdn_ocnU(:,:,iblk), dynMap(:,iblk), cdn_ocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
 
          ! ⚠ The stresses are NOT packed any more.  The slot copies are the

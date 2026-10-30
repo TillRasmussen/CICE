@@ -590,18 +590,19 @@
       call grid_average_X2Y('S', ss_tltx  , grid_ocn_dynu, ss_tltxU, 'U')
       call grid_average_X2Y('S', ss_tlty  , grid_ocn_dynv, ss_tltyU, 'U')
 
-      ! ⚠ Packed HERE, beside the grid_average that produces them, not in the
-      ! grid_ice=="B" branch below.  dyn_finish reads the compressed U forms
-      ! unconditionally -- the C and CD paths call it for U as well as for N
-      ! and E -- so packing them under "B" left them unwritten on the C path
-      ! while the block originals were filled for every grid.
-      !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
-      do iblk = 1, nblocks
-         call pack_to_slots(aiU  (:,iblk)  , dynMap(:,iblk), aiU_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(uocnU(:,:,iblk), dynMap(:,iblk), uocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(vocnU(:,:,iblk), dynMap(:,iblk), vocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-      enddo
-      !$OMP END PARALLEL DO
+      ! ⚠ The compressed forms are produced HERE, by the average itself, not
+      ! packed from the block result afterwards and not inside the
+      ! grid_ice=="B" branch below.  dyn_finish reads them unconditionally --
+      ! the C and CD paths call it for U as well as for N and E -- so filling
+      ! them under "B" left them unwritten on the C path while the block
+      ! originals were filled for every grid.
+      !
+      ! Resolution is by the RANK of the destination: a rank-1 actual selects
+      ! grid_average_X2Y_base_toslot, a rank-2/3 one the block specifics.  A
+      ! mistake here is a compile error, not a silent one.
+      call grid_average_X2Y('S', aice_init, 'T'          , aiU_slot  , 'U')
+      call grid_average_X2Y('S', uocn     , grid_ocn_dynu, uocnU_slot, 'U')
+      call grid_average_X2Y('S', vocn     , grid_ocn_dynv, vocnU_slot, 'U')
 
       if (grid_ice == 'CD' .or. grid_ice == 'C') then
          call grid_average_X2Y('S', tmass    , 'T'          , emass   , 'E')
@@ -618,6 +619,16 @@
          call grid_average_X2Y('S', vocn     , grid_ocn_dynv, vocnN   , 'N')
          call grid_average_X2Y('S', ss_tltx  , grid_ocn_dynu, ss_tltxN, 'N')
          call grid_average_X2Y('S', ss_tlty  , grid_ocn_dynv, ss_tltyN, 'N')
+
+         ! Same here: produced compressed rather than packed from the block
+         ! result further down.  uocnE/N and vocnE/N have no block reader left
+         ! once dyn_finish takes the compressed form.
+         call grid_average_X2Y('S', aice_init, 'T'          , aiE_slot  , 'E')
+         call grid_average_X2Y('S', uocn     , grid_ocn_dynu, uocnE_slot, 'E')
+         call grid_average_X2Y('S', vocn     , grid_ocn_dynv, vocnE_slot, 'E')
+         call grid_average_X2Y('S', aice_init, 'T'          , aiN_slot  , 'N')
+         call grid_average_X2Y('S', uocn     , grid_ocn_dynu, uocnN_slot, 'N')
+         call grid_average_X2Y('S', vocn     , grid_ocn_dynv, vocnN_slot, 'N')
       endif
       !----------------------------------------------------------------
       ! Set wind stress to values supplied via NEMO or other forcing
@@ -1305,20 +1316,14 @@
             call pack_to_slots(strength(:,:,iblk), dynMap(:,iblk), strength_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             ! The step kernels read these every pass but nothing changes
             ! them during the subcycle, so one pack each is enough.
-            call pack_to_slots(aiE(:,iblk), dynMap(:,iblk), aiE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call pack_to_slots(Cdn_ocnE(:,:,iblk), dynMap(:,iblk), cdn_ocne_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(uocnE(:,:,iblk), dynMap(:,iblk), uocnE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(vocnE(:,:,iblk), dynMap(:,iblk), vocnE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call pack_to_slots(waterxE(:,iblk), dynMap(:,iblk), waterxE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call pack_to_slots(wateryE(:,iblk), dynMap(:,iblk), wateryE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call pack_to_slots(forcexE(:,iblk), dynMap(:,iblk), forcexE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call pack_to_slots(forceyE(:,iblk), dynMap(:,iblk), forceyE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call pack_to_slots(emassdti(:,iblk), dynMap(:,iblk), emassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call pack_to_slots(fmE(:,iblk), dynMap(:,iblk), fmE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(aiN(:,iblk), dynMap(:,iblk), aiN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call pack_to_slots(Cdn_ocnN(:,:,iblk), dynMap(:,iblk), cdn_ocnn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(uocnN(:,:,iblk), dynMap(:,iblk), uocnN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(vocnN(:,:,iblk), dynMap(:,iblk), vocnN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call pack_to_slots(waterxN(:,iblk), dynMap(:,iblk), waterxN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call pack_to_slots(wateryN(:,iblk), dynMap(:,iblk), wateryN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call pack_to_slots(forcexN(:,iblk), dynMap(:,iblk), forcexN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
@@ -1653,20 +1658,14 @@
             call pack_to_slots(strength(:,:,iblk), dynMap(:,iblk), strength_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             ! The step kernels read these every pass but nothing changes
             ! them during the subcycle, so one pack each is enough.
-            call pack_to_slots(aiE(:,iblk), dynMap(:,iblk), aiE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call pack_to_slots(Cdn_ocnE(:,:,iblk), dynMap(:,iblk), cdn_ocne_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(uocnE(:,:,iblk), dynMap(:,iblk), uocnE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(vocnE(:,:,iblk), dynMap(:,iblk), vocnE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call pack_to_slots(waterxE(:,iblk), dynMap(:,iblk), waterxE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call pack_to_slots(wateryE(:,iblk), dynMap(:,iblk), wateryE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call pack_to_slots(forcexE(:,iblk), dynMap(:,iblk), forcexE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call pack_to_slots(forceyE(:,iblk), dynMap(:,iblk), forceyE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call pack_to_slots(emassdti(:,iblk), dynMap(:,iblk), emassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call pack_to_slots(fmE(:,iblk), dynMap(:,iblk), fmE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(aiN(:,iblk), dynMap(:,iblk), aiN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call pack_to_slots(Cdn_ocnN(:,:,iblk), dynMap(:,iblk), cdn_ocnn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(uocnN(:,:,iblk), dynMap(:,iblk), uocnN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(vocnN(:,:,iblk), dynMap(:,iblk), vocnN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call pack_to_slots(waterxN(:,iblk), dynMap(:,iblk), waterxN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call pack_to_slots(wateryN(:,iblk), dynMap(:,iblk), wateryN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call pack_to_slots(forcexN(:,iblk), dynMap(:,iblk), forcexN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))

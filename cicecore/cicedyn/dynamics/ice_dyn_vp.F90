@@ -440,15 +440,12 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       call grid_average_X2Y('S',ss_tltx  , grid_ocn_dynu, ss_tltxU, 'U')
       call grid_average_X2Y('S',ss_tlty  , grid_ocn_dynv, ss_tltyU, 'U')
 
-      ! dyn_finish reads these compressed.  evp and eap pack them at the
-      ! same point; vp had no producer because it passed the block forms.
-      !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
-      do iblk = 1, nblocks
-         call pack_to_slots(aiU  (:,iblk)  , dynMap(:,iblk), aiU_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(uocnU(:,iblk) , dynMap(:,iblk), uocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(vocnU(:,iblk) , dynMap(:,iblk), vocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-      enddo
-      !$OMP END PARALLEL DO
+      ! dyn_finish reads these compressed.  Produced by the average itself,
+      ! as in evp and eap; vp had no producer at all because it passed the
+      ! block forms straight through.
+      call grid_average_X2Y('S',aice_init, 'T'          , aiU_slot  , 'U')
+      call grid_average_X2Y('S',uocn     , grid_ocn_dynu, uocnU_slot, 'U')
+      call grid_average_X2Y('S',vocn     , grid_ocn_dynv, vocnU_slot, 'U')
 
       !----------------------------------------------------------------
       ! Set wind stress to values supplied via NEMO or other forcing
