@@ -1614,7 +1614,75 @@
          taubx   , & ! seabed stress, x-direction (N/m^2)
          tauby       ! seabed stress, y-direction (N/m^2)
 
+      integer (kind=int_kind) :: &
+         nflat , & ! length of a block-flattened dummy, nx_block*ny_block
+         nslot , & ! length of a compressed dummy INCLUDING the dead slot
+         nact      ! length of a compressed dummy WITHOUT the dead slot
+
       character(len=*), parameter :: subname = '(dyn_prep2)'
+
+      !-----------------------------------------------------------------
+      ! Layout guard
+      !
+      ! ⚠ Many dummies here are assumed shape, so the declaration cannot say
+      ! whether an actual is BLOCK-FLATTENED (X(:,iblk), indexed ijb) or
+      ! COMPRESSED (X_slot(slice), indexed Xmap(ijb)) -- and both are rank-1
+      ! real.  A call site left on the wrong layout compiles cleanly and
+      ! computes wrong answers, at any of the six call sites.  Only the length
+      ! distinguishes them, so assert it.
+      !
+      ! Each array that converts to the compressed layout moves its own check
+      ! from nflat to nslot, which makes the conversion self-checking.
+      !
+      ! ⚠ Two compressed lengths are in use and they are not interchangeable:
+      ! the stress and force slices carry the trailing dead slot (dynCnt+1),
+      ! the skip flags and the initial velocities do not (dynCnt).
+      !
+      ! ⚠ Not a proof: a block-flattened actual passed where a compressed one
+      ! is expected escapes this if dynCnt+1 happens to equal nx_block*ny_block,
+      ! i.e. a block with no land at all.  Rare on a real grid, possible on a
+      ! box configuration.
+      !-----------------------------------------------------------------
+
+      nflat = nx_block*ny_block
+      nslot = size(TbU)        ! a dummy that is already compressed
+      nact  = nslot - 1
+
+      ! cross-check the reference itself before trusting it
+      call chk_len(size(strtltx), nslot, 'strtltx', subname)
+
+      call chk_len(size(Xmask)   , nflat, 'Xmask'   , subname)
+      call chk_len(size(iceTmask), nflat, 'iceTmask', subname)
+      call chk_len(size(iceXmask), nflat, 'iceXmask', subname)
+      call chk_len(size(aiX)     , nflat, 'aiX'     , subname)
+      call chk_len(size(Xmass)   , nflat, 'Xmass'   , subname)
+      call chk_len(size(fcor)    , nflat, 'fcor'    , subname)
+      call chk_len(size(Xmap)    , nflat, 'Xmap'    , subname)
+      call chk_len(size(Xmassdti), nflat, 'Xmassdti', subname)
+      call chk_len(size(waterx)  , nflat, 'waterx'  , subname)
+      call chk_len(size(watery)  , nflat, 'watery'  , subname)
+      call chk_len(size(forcex)  , nflat, 'forcex'  , subname)
+      call chk_len(size(forcey)  , nflat, 'forcey'  , subname)
+      call chk_len(size(taubx)   , nflat, 'taubx'   , subname)
+      call chk_len(size(tauby)   , nflat, 'tauby'   , subname)
+
+      call chk_len(size(strtlty) , nslot, 'strtlty' , subname)
+      call chk_len(size(strocnx) , nslot, 'strocnx' , subname)
+      call chk_len(size(strocny) , nslot, 'strocny' , subname)
+      call chk_len(size(strairx) , nslot, 'strairx' , subname)
+      call chk_len(size(strairy) , nslot, 'strairy' , subname)
+
+      call chk_len(size(skipTc)   , nact, 'skipTc'   , subname)
+      call chk_len(size(skipX)    , nact, 'skipX'    , subname)
+      call chk_len(size(uvel_init), nact, 'uvel_init', subname)
+      call chk_len(size(vvel_init), nact, 'vvel_init', subname)
+
+      if (present(rheofactX_s  )) call chk_len(size(rheofactX_s  ), nslot, 'rheofactX_s'  , subname)
+      if (present(Xmassdti_slot)) call chk_len(size(Xmassdti_slot), nslot, 'Xmassdti_slot', subname)
+      if (present(waterx_slot  )) call chk_len(size(waterx_slot  ), nslot, 'waterx_slot'  , subname)
+      if (present(watery_slot  )) call chk_len(size(watery_slot  ), nslot, 'watery_slot'  , subname)
+      if (present(forcex_slot  )) call chk_len(size(forcex_slot  ), nslot, 'forcex_slot'  , subname)
+      if (present(forcey_slot  )) call chk_len(size(forcey_slot  ), nslot, 'forcey_slot'  , subname)
 
       !-----------------------------------------------------------------
       ! Initialize
@@ -1826,6 +1894,32 @@
       enddo
 
       end subroutine dyn_prep2
+
+!=======================================================================
+!
+! Assert that an assumed-shape dummy has the length its layout implies.
+!
+! The block-flattened and compressed layouts are both rank-1 real, so the
+! compiler cannot tell them apart at a call site.  The length can.  See the
+! guard block at the top of dyn_prep2 for what this is defending against.
+
+      subroutine chk_len (n, nexp, nm, sub)
+
+      integer (kind=int_kind), intent(in) :: &
+         n    , & ! actual length
+         nexp     ! length the layout implies
+
+      character(len=*), intent(in) :: &
+         nm   , & ! name of the dummy, so the abort names the culprit
+         sub      ! calling routine
+
+      if (n /= nexp) then
+         write(nu_diag,*) sub//' '//nm//' length ',n,' expected ',nexp
+         call abort_ice(sub//' ERROR: '//nm//' has the wrong layout', &
+            file=__FILE__, line=__LINE__)
+      endif
+
+      end subroutine chk_len
 
 !=======================================================================
 ! Calculation of the surface stresses
