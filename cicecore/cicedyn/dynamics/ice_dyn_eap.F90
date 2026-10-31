@@ -144,6 +144,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
           stress12_1_slot, stress12_2_slot, stress12_3_slot, stress12_4_slot, &
           uvel_slot, vvel_slot, aiU_slot, fmU_slot, TbU_slot, &
           rheofactU_slot, &
+          ss_tltxU_slot, ss_tltyU_slot, &
           strintxU_slot, strintyU_slot, taubxU_slot, taubyU_slot, &
           umassdti_slot, waterxU_slot, wateryU_slot, &
           forcexU_slot, forceyU_slot, &
@@ -201,8 +202,6 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       real (kind=dbl_kind), dimension (nx_block,ny_block,max_blocks) :: &
          uocnU      , & ! i ocean current (m/s)
          vocnU      , & ! j ocean current (m/s)
-         ss_tltxU   , & ! sea surface slope, x-direction (m/m)
-         ss_tltyU   , & ! sea surface slope, y-direction (m/m)
          cdn_ocnU       ! ocn drag coefficient
 
       ! the i and j dimensions are flattened: element (i,j,iblk) of the block
@@ -319,8 +318,8 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       call grid_average_X2Y('S', cdn_ocn  , 'T'          , cdn_ocnU, 'U')
       call grid_average_X2Y('S', uocn     , grid_ocn_dynu, uocnU   , 'U')
       call grid_average_X2Y('S', vocn     , grid_ocn_dynv, vocnU   , 'U')
-      call grid_average_X2Y('S', ss_tltx  , grid_ocn_dynu, ss_tltxU, 'U')
-      call grid_average_X2Y('S', ss_tlty  , grid_ocn_dynv, ss_tltyU, 'U')
+      call grid_average_X2Y('S', ss_tltx  , grid_ocn_dynu, ss_tltxU_slot, 'U')
+      call grid_average_X2Y('S', ss_tlty  , grid_ocn_dynv, ss_tltyU_slot, 'U')
 
       ! dyn_finish reads these compressed; produced by the average itself
       ! rather than packed from the block result further down.
@@ -374,7 +373,8 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                          uocnU     (:,:,iblk), vocnU     (:,:,iblk), &
                          strairxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                          strairyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                         ss_tltxU  (:,:,iblk), ss_tltyU  (:,:,iblk), &
+                         ss_tltxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                         ss_tltyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                          iceTmask  (:,iblk),   iceUmask  (:,iblk),   &
                          fmU       (:,iblk), dt,                   &
                          strtltxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &

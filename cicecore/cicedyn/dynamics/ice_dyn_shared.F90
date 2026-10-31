@@ -269,6 +269,8 @@
       ! extra sweep per block.  uocnU/vocnU/cdn_ocnU are the first arrays
       ! compressed here that were still rank-3 rather than flat.
       real (kind=dbl_kind), dimension (:), allocatable, public :: &
+         ss_tltxU_slot   , & ! sea surface slope, x, compressed
+         ss_tltyU_slot   , & ! sea surface slope, y, compressed
          uocnU_slot      , & ! ocean current, x, compressed
          vocnU_slot      , & ! ocean current, y, compressed
          cdn_ocnU_slot       ! ocean-ice neutral drag coefficient, compressed
@@ -338,6 +340,8 @@
          ! loop -- so the driver packs them once.  With these compressed there
          ! is no rank-2 read left in stepu_C/stepv_C/stepuv_CD, which is what
          ! lets their cell loop run on slots like the B grid's stepu.
+         ss_tltxE_slot      , & ! sea surface slope, x, compressed
+         ss_tltyE_slot      , & ! sea surface slope, y, compressed
          aiE_slot           , & ! ice fraction
          cdn_ocnE_slot      , & ! ocean-ice neutral drag coefficient
          uocnE_slot         , & ! ocean current, x (m/s)
@@ -349,6 +353,8 @@
          emassdti_slot      , & ! mass of cell/dt (kg/m^2 s)
          fmE_slot           , & ! Coriolis param. * mass (kg/s)
          TbE_slot           , & ! seabed stress factor (N/m^2)
+         ss_tltxN_slot      , & ! sea surface slope, x, compressed
+         ss_tltyN_slot      , & ! sea surface slope, y, compressed
          aiN_slot           , & ! ice fraction
          cdn_ocnN_slot      , & ! ocean-ice neutral drag coefficient
          uocnN_slot         , & ! ocean current, x (m/s)
@@ -622,10 +628,13 @@
       forceyU_slot  = c0
 
       allocate(uocnU_slot(dynTot), vocnU_slot(dynTot), &
+               ss_tltxU_slot(dynTot), ss_tltyU_slot(dynTot), &
                cdn_ocnU_slot(dynTot), stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
       uocnU_slot    = c0
       vocnU_slot    = c0
+      ss_tltxU_slot = c0
+      ss_tltyU_slot = c0
       cdn_ocnU_slot = c0
 
       allocate( &
@@ -699,6 +708,7 @@
                   strintxN_slot(dynTot), strintyN_slot(dynTot), &
                   taubxE_slot(dynTot), taubyE_slot(dynTot), &
                   taubxN_slot(dynTot), taubyN_slot(dynTot), &
+                  ss_tltxE_slot(dynTot), ss_tltyE_slot(dynTot), &
                   aiE_slot(dynTot), &
                   cdn_ocnE_slot(dynTot), &
                   uocnE_slot(dynTot), &
@@ -710,6 +720,7 @@
                   emassdti_slot(dynTot), &
                   fmE_slot(dynTot), &
                   TbE_slot(dynTot), &
+                  ss_tltxN_slot(dynTot), ss_tltyN_slot(dynTot), &
                   aiN_slot(dynTot), &
                   cdn_ocnN_slot(dynTot), &
                   uocnN_slot(dynTot), &
@@ -748,6 +759,8 @@
          taubyE_slot    = c0
          taubxN_slot    = c0
          taubyN_slot    = c0
+         ss_tltxE_slot = c0
+         ss_tltyE_slot = c0
          aiE_slot = c0
          cdn_ocnE_slot = c0
          uocnE_slot = c0
@@ -759,6 +772,8 @@
          emassdti_slot = c0
          fmE_slot = c0
          TbE_slot = c0
+         ss_tltxN_slot = c0
+         ss_tltyN_slot = c0
          aiN_slot = c0
          cdn_ocnN_slot = c0
          uocnN_slot = c0
@@ -1479,7 +1494,13 @@
 
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
          uocn    , & ! ocean current, x-direction (m/s)
-         vocn    , & ! ocean current, y-direction (m/s)
+         vocn        ! ocean current, y-direction (m/s)
+
+      ! ⚠ Compressed, indexed by Xmap(ijb) -- the same slot their only
+      ! consumers, strtltx/strtlty, are already written at.  These were
+      ! rank-2, so the compiler used to catch a block actual here; as
+      ! assumed-shape it cannot, which is what the chk_len calls replace.
+      real (kind=dbl_kind), dimension (:), intent(in) :: &
          ss_tltx , & ! sea surface slope, x-direction (m/m)
          ss_tlty     ! sea surface slope, y-direction
 
@@ -1662,6 +1683,8 @@
       call chk_len(size(tauby)   , nflat, 'tauby'   , subname)
 
       call chk_len(size(strtlty) , nslot, 'strtlty' , subname)
+      call chk_len(size(ss_tltx) , nslot, 'ss_tltx' , subname)
+      call chk_len(size(ss_tlty) , nslot, 'ss_tlty' , subname)
       call chk_len(size(strairx) , nslot, 'strairx' , subname)
       call chk_len(size(strairy) , nslot, 'strairy' , subname)
 
@@ -1863,8 +1886,8 @@
             strtltx(Xmap(ijb)) = -fm(i,j)*vocn(i,j)
             strtlty(Xmap(ijb)) =  fm(i,j)*uocn(i,j)
          elseif (trim(ssh_stress) == 'coupled') then
-            strtltx(Xmap(ijb)) = -gravit*Xmass(ijb)*ss_tltx(i,j)
-            strtlty(Xmap(ijb)) = -gravit*Xmass(ijb)*ss_tlty(i,j)
+            strtltx(Xmap(ijb)) = -gravit*Xmass(ijb)*ss_tltx(Xmap(ijb))
+            strtlty(Xmap(ijb)) = -gravit*Xmass(ijb)*ss_tlty(Xmap(ijb))
          else
             call abort_ice(subname//' ERROR: unknown ssh_stress='//trim(ssh_stress), &
                file=__FILE__, line=__LINE__)

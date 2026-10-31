@@ -53,6 +53,7 @@
           uvel_slot, vvel_slot, tarear_slot, dxU_slot, dyU_slot, &
           cxm_slot, cym_slot, DminTarea_slot, strength_slot, &
           aiU_slot, uocnU_slot, vocnU_slot, &
+          ss_tltxU_slot, ss_tltyU_slot, &
           seabed_stress_factor_LKD, seabed_stress_factor_prob, seabed_stress_method, &
           seabed_stress, Ktens, stack_fields,  unstack_fields, fld2, fld3, fld4, fld2c
       use ice_fileunits, only: nu_diag
@@ -305,13 +306,6 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          ilo,ihi,jlo,jhi, & ! beginning and end of physical domain
          i, j, ij
 
-      ! Flattened, as the group below already is: element (i,j,iblk) lives at
-      ! ((j-1)*nx_block + i, iblk).  grid_average_X2Y resolves to its 3d-in,
-      ! flat-out specific, and dyn_prep2 takes the slice directly.
-      real (kind=dbl_kind), dimension (nx_block*ny_block,max_blocks) :: &
-         ss_tltxU , & ! sea surface slope, x-direction (m/m)
-         ss_tltyU     ! sea surface slope, y-direction (m/m)
-
       ! flattened like the group below: element (i,j,iblk) at
       ! ((j-1)*nx_block + i, iblk)
       real (kind=dbl_kind), dimension (nx_block*ny_block,max_blocks) :: &
@@ -437,8 +431,8 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       call grid_average_X2Y('S',cdn_ocn  , 'T'          , cdn_ocnU, 'U')
       call grid_average_X2Y('S',uocn     , grid_ocn_dynu, uocnU   , 'U')
       call grid_average_X2Y('S',vocn     , grid_ocn_dynv, vocnU   , 'U')
-      call grid_average_X2Y('S',ss_tltx  , grid_ocn_dynu, ss_tltxU, 'U')
-      call grid_average_X2Y('S',ss_tlty  , grid_ocn_dynv, ss_tltyU, 'U')
+      call grid_average_X2Y('S',ss_tltx  , grid_ocn_dynu, ss_tltxU_slot, 'U')
+      call grid_average_X2Y('S',ss_tlty  , grid_ocn_dynv, ss_tltyU_slot, 'U')
 
       ! dyn_finish reads these compressed.  Produced by the average itself,
       ! as in evp and eap; vp had no producer at all because it passed the
@@ -492,7 +486,8 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                          uocnU     (:,iblk), vocnU     (:,iblk),                                                                       &
                          strairxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                          strairyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),                                                                   &
-                         ss_tltxU  (:,  iblk), ss_tltyU  (:,  iblk),                                                                   &
+                         ss_tltxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                         ss_tltyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                          iceTmask  (:,iblk),   iceUmask  (:,iblk),                                                                     &
                          fmU       (:,iblk), dt,                                                                                       &
                          strtltxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &

@@ -77,8 +77,6 @@
       real (kind=dbl_kind), allocatable :: &
          uocnN    (:,:,:) , & ! i ocean current (m/s)
          vocnN    (:,:,:) , & ! j ocean current (m/s)
-         ss_tltxN (:,:,:) , & ! sea surface slope, x-direction (m/m)
-         ss_tltyN (:,:,:) , & ! sea surface slope, y-direction (m/m)
          cdn_ocnN (:,:,:) , & ! ocn drag coefficient
          waterxN  (:,:)   , & ! for ocean stress calculation, x (m/s)
          wateryN  (:,:)   , & ! for ocean stress calculation, y (m/s)
@@ -89,8 +87,6 @@
       real (kind=dbl_kind), allocatable :: &
          uocnE    (:,:,:) , & ! i ocean current (m/s)
          vocnE    (:,:,:) , & ! j ocean current (m/s)
-         ss_tltxE (:,:,:) , & ! sea surface slope, x-direction (m/m)
-         ss_tltyE (:,:,:) , & ! sea surface slope, y-direction (m/m)
          cdn_ocnE (:,:,:) , & ! ocn drag coefficient
          waterxE  (:,:)   , & ! for ocean stress calculation, x (m/s)
          wateryE  (:,:)   , & ! for ocean stress calculation, y (m/s)
@@ -143,8 +139,6 @@
       real (kind=dbl_kind), allocatable :: &
          uocnU    (:,:,:) , & ! i ocean current (m/s)
          vocnU    (:,:,:) , & ! j ocean current (m/s)
-         ss_tltxU (:,:,:) , & ! sea surface slope, x-direction (m/m)
-         ss_tltyU (:,:,:) , & ! sea surface slope, y-direction (m/m)
          cdn_ocnU (:,:,:) , & ! ocn drag coefficient
          waterxU  (:,:)   , & ! for ocean stress calculation, x (m/s)
          wateryU  (:,:)   , & ! for ocean stress calculation, y (m/s)
@@ -211,8 +205,6 @@
 
       allocate( uocnU    (nx_block,ny_block,max_blocks), & ! i ocean current (m/s)
                 vocnU    (nx_block,ny_block,max_blocks), & ! j ocean current (m/s)
-                ss_tltxU (nx_block,ny_block,max_blocks), & ! sea surface slope, x-direction (m/m)
-                ss_tltyU (nx_block,ny_block,max_blocks), & ! sea surface slope, y-direction (m/m)
                 cdn_ocnU (nx_block,ny_block,max_blocks), & ! ocn drag coefficient
                 tmass    (nx_block*ny_block,max_blocks), & ! total mass of ice and snow (kg/m^2)
                 waterxU  (nx_block*ny_block,max_blocks), & ! for ocean stress calculation, x (m/s)
@@ -241,8 +233,6 @@
 
          allocate( uocnN    (nx_block,ny_block,max_blocks), &
                    vocnN    (nx_block,ny_block,max_blocks), &
-                   ss_tltxN (nx_block,ny_block,max_blocks), &
-                   ss_tltyN (nx_block,ny_block,max_blocks), &
                    cdn_ocnN (nx_block,ny_block,max_blocks), &
                    waterxN  (nx_block*ny_block,max_blocks), &
                    wateryN  (nx_block*ny_block,max_blocks), &
@@ -257,8 +247,6 @@
 
          allocate( uocnE    (nx_block,ny_block,max_blocks), &
                    vocnE    (nx_block,ny_block,max_blocks), &
-                   ss_tltxE (nx_block,ny_block,max_blocks), &
-                   ss_tltyE (nx_block,ny_block,max_blocks), &
                    cdn_ocnE (nx_block,ny_block,max_blocks), &
                    waterxE  (nx_block*ny_block,max_blocks), &
                    wateryE  (nx_block*ny_block,max_blocks), &
@@ -404,6 +392,9 @@
           strintxE_slot, strintyE_slot, strintxN_slot, strintyN_slot, &
           taubxE_slot, taubyE_slot, taubxN_slot, taubyN_slot, &
           aiE_slot, cdn_ocnE_slot, uocnE_slot, vocnE_slot, &
+          ss_tltxU_slot, ss_tltyU_slot, &
+          ss_tltxE_slot, ss_tltyE_slot, &
+          ss_tltxN_slot, ss_tltyN_slot, &
           waterxE_slot, wateryE_slot, forcexE_slot, forceyE_slot, &
           emassdti_slot, fmE_slot, TbE_slot, &
           aiN_slot, cdn_ocnN_slot, uocnN_slot, vocnN_slot, &
@@ -578,8 +569,8 @@
       call grid_average_X2Y('S', cdn_ocn  , 'T'          , cdn_ocnU, 'U')
       call grid_average_X2Y('S', uocn     , grid_ocn_dynu, uocnU   , 'U')
       call grid_average_X2Y('S', vocn     , grid_ocn_dynv, vocnU   , 'U')
-      call grid_average_X2Y('S', ss_tltx  , grid_ocn_dynu, ss_tltxU, 'U')
-      call grid_average_X2Y('S', ss_tlty  , grid_ocn_dynv, ss_tltyU, 'U')
+      call grid_average_X2Y('S', ss_tltx  , grid_ocn_dynu, ss_tltxU_slot, 'U')
+      call grid_average_X2Y('S', ss_tlty  , grid_ocn_dynv, ss_tltyU_slot, 'U')
 
       ! ⚠ The compressed forms are produced HERE, by the average itself, not
       ! packed from the block result afterwards and not inside the
@@ -601,15 +592,15 @@
          call grid_average_X2Y('S', cdn_ocn  , 'T'          , cdn_ocnE, 'E')
          call grid_average_X2Y('S', uocn     , grid_ocn_dynu, uocnE   , 'E')
          call grid_average_X2Y('S', vocn     , grid_ocn_dynv, vocnE   , 'E')
-         call grid_average_X2Y('S', ss_tltx  , grid_ocn_dynu, ss_tltxE, 'E')
-         call grid_average_X2Y('S', ss_tlty  , grid_ocn_dynv, ss_tltyE, 'E')
+         call grid_average_X2Y('S', ss_tltx  , grid_ocn_dynu, ss_tltxE_slot, 'E')
+         call grid_average_X2Y('S', ss_tlty  , grid_ocn_dynv, ss_tltyE_slot, 'E')
          call grid_average_X2Y('S', tmass    , 'T'          , nmass   , 'N')
          call grid_average_X2Y('S', aice_init, 'T'          , aiN     , 'N')
          call grid_average_X2Y('S', cdn_ocn  , 'T'          , cdn_ocnN, 'N')
          call grid_average_X2Y('S', uocn     , grid_ocn_dynu, uocnN   , 'N')
          call grid_average_X2Y('S', vocn     , grid_ocn_dynv, vocnN   , 'N')
-         call grid_average_X2Y('S', ss_tltx  , grid_ocn_dynu, ss_tltxN, 'N')
-         call grid_average_X2Y('S', ss_tlty  , grid_ocn_dynv, ss_tltyN, 'N')
+         call grid_average_X2Y('S', ss_tltx  , grid_ocn_dynu, ss_tltxN_slot, 'N')
+         call grid_average_X2Y('S', ss_tlty  , grid_ocn_dynv, ss_tltyN_slot, 'N')
 
          ! Same here: produced compressed rather than packed from the block
          ! result further down.  uocnE/N and vocnE/N have no block reader left
@@ -682,7 +673,8 @@
                             uocnU     (:,:,iblk), vocnU     (:,:,iblk), &
                             strairxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strairyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            ss_tltxU  (:,:,iblk), ss_tltyU  (:,:,iblk), &
+                            ss_tltxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            ss_tltyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             iceTmask  (:,iblk),   iceUmask  (:,iblk),   &
                             fmU       (:,iblk), dt                  , &
                             strtltxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -757,7 +749,8 @@
                             uocnU     (:,:,iblk), vocnU     (:,:,iblk), &
                             strairxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strairyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            ss_tltxU  (:,:,iblk), ss_tltyU  (:,:,iblk), &
+                            ss_tltxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            ss_tltyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             iceTmask  (:,iblk),   iceUmask  (:,iblk),   &
                             fmU       (:,iblk), dt,                   &
                             strtltxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -819,7 +812,8 @@
                             uocnN     (:,:,iblk), vocnN     (:,:,iblk), &
                             strairxN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strairyN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            ss_tltxN  (:,:,iblk), ss_tltyN  (:,:,iblk), &
+                            ss_tltxN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            ss_tltyN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             iceTmask  (:,iblk),   iceNmask  (:,iblk),   &
                             fmN       (:,iblk), dt                  , &
                             strtltxN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -856,7 +850,8 @@
                             uocnE     (:,:,iblk), vocnE     (:,:,iblk), &
                             strairxE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strairyE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            ss_tltxE  (:,:,iblk), ss_tltyE  (:,:,iblk), &
+                            ss_tltxE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            ss_tltyE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             iceTmask  (:,iblk),   iceEmask  (:,iblk),   &
                             fmE       (:,iblk), dt                  , &
                             strtltxE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
