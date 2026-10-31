@@ -497,8 +497,6 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                          fmU       (:,iblk), dt,                                                                                       &
                          strtltxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                          strtltyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                         strocnxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                         strocnyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),                                                                   &
                          strintxU  (:,iblk), strintyU  (:,iblk),                                                                   &
                          taubxU    (:,iblk)  , taubyU    (:,iblk)  ,                                                                   &
                          waterxU   (:,iblk)  , wateryU   (:,iblk)  ,                                                                   &

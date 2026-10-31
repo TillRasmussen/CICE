@@ -1420,7 +1420,6 @@
                             iceTmask,   iceXmask,   &
                             fm,         dt,         &
                             strtltx,    strtlty,    &
-                            strocnx,    strocny,    &
                             strintx,    strinty,    &
                             taubx,      tauby,      &
                             waterx,     watery,     &
@@ -1436,7 +1435,7 @@
                             Xmap,       Xoff,       &
                             skipX,      &
                             skipTc,                 &
-                            TbU,        rheofactX,  &
+                            TbU,        &
                             rheofactX_s,            &
                             Xmassdti_slot, waterx_slot, &
                             watery_slot,   forcex_slot, &
@@ -1529,8 +1528,6 @@
       real (kind=dbl_kind), dimension (:), intent(inout) :: &
          strtltx , & ! stress due to sea surface slope, x-direction
          strtlty , & ! stress due to sea surface slope, y-direction
-         strocnx , & ! ice-ocean stress, x-direction
-         strocny , & ! ice-ocean stress, y-direction
          strairx , & ! stress on ice by air, x-direction
          strairy     ! stress on ice by air, y-direction
 
@@ -1544,13 +1541,11 @@
          strintx , & ! divergence of internal ice stress, x (N/m^2)
          strinty     ! divergence of internal ice stress, y (N/m^2)
 
-      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(inout), optional :: &
-         rheofactX   ! 1, except 0 where aiU <= rheo_area_min
 
       ! the same thing compressed, filled in the same loop rather than by a
       ! second traversal of the block -- as Xmassdti_slot and the force and
       ! water terms above already are
-      real (kind=dbl_kind), dimension(:), intent(out), optional, contiguous :: &
+      real (kind=dbl_kind), dimension(:), intent(inout), optional, contiguous :: &
          rheofactX_s
 
       ! These five are in the BLOCK layout -- 1D over the block in Fortran
@@ -1667,8 +1662,6 @@
       call chk_len(size(tauby)   , nflat, 'tauby'   , subname)
 
       call chk_len(size(strtlty) , nslot, 'strtlty' , subname)
-      call chk_len(size(strocnx) , nslot, 'strocnx' , subname)
-      call chk_len(size(strocny) , nslot, 'strocny' , subname)
       call chk_len(size(strairx) , nslot, 'strairx' , subname)
       call chk_len(size(strairy) , nslot, 'strairy' , subname)
 
@@ -1848,13 +1841,11 @@
          j = indxXj(ij)
          ijb = (j-1)*nx_block + i
 
-         if (free_drift_approx .and. present(rheofactX)) then
+         if (free_drift_approx .and. present(rheofactX_s)) then
             if ( aiX (ijb) > rheo_area_min ) then
-               rheofactX(i,j) = c1
-               if (present(rheofactX_s)) rheofactX_s(Xmap(ijb)) = c1
+               rheofactX_s(Xmap(ijb)) = c1
             else
-               rheofactX(i,j) = c0
-               if (present(rheofactX_s)) rheofactX_s(Xmap(ijb)) = c0
+               rheofactX_s(Xmap(ijb)) = c0
             endif
          endif
 

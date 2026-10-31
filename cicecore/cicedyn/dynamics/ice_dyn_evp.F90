@@ -84,7 +84,6 @@
          wateryN  (:,:)   , & ! for ocean stress calculation, y (m/s)
          forcexN  (:,:)   , & ! work array: combined atm stress and ocn tilt, x
          forceyN  (:,:)   , & ! work array: combined atm stress and ocn tilt, y
-         rheofactN(:,:,:) , & ! mult. factor = 1, set to 0 if aiN <= rheo_area_min
          nmassdti (:,:)       ! mass of N-cell/dte (kg/m^2 s)
 ! all c or d
       real (kind=dbl_kind), allocatable :: &
@@ -97,7 +96,6 @@
          wateryE  (:,:)   , & ! for ocean stress calculation, y (m/s)
          forcexE  (:,:)   , & ! work array: combined atm stress and ocn tilt, x
          forceyE  (:,:)   , & ! work array: combined atm stress and ocn tilt, y
-         rheofactE(:,:,:) , & ! mult. factor = 1, set to 0 if aiE <= rheo_area_min
          emassdti (:,:)       ! mass of E-cell/dte (kg/m^2 s)
 
       ! the i and j dimensions are flattened: element (i,j,iblk) of the block
@@ -152,8 +150,6 @@
          wateryU  (:,:)   , & ! for ocean stress calculation, y (m/s)
          forcexU  (:,:)   , & ! work array: combined atm stress and ocn tilt, x
          forceyU  (:,:)       ! work array: combined atm stress and ocn tilt, y
-      real (kind=dbl_kind), allocatable :: &
-         rheofactU(:,:,:)     ! 1, except 0 where aiU <= rheo_area_min
 
       ! the i and j dimensions are flattened: element (i,j,iblk) of the block
       ! layout lives at ((j-1)*nx_block + i, iblk)
@@ -225,11 +221,9 @@
                 forceyU  (nx_block*ny_block,max_blocks), & ! work array: combined atm stress and ocn tilt, y
                 umass    (nx_block*ny_block,max_blocks), & ! total mass of ice and snow (u grid)
                 umassdti (nx_block*ny_block,max_blocks), & ! mass of U-cell/dte (kg/m^2 s)
-                rheofactU(nx_block,ny_block,max_blocks), & ! 1, except 0 where aiU <= rheo_area_min
                 stat=ierr)
       if (ierr/=0) call abort_ice(subname//' ERROR: Out of memory B-Grid evp')
 
-      rheofactU(:,:,:) = c1
 
       if (grid_ice == 'CD' .or. grid_ice == 'C') then
 
@@ -257,11 +251,9 @@
                    aiN      (nx_block*ny_block,max_blocks), &
                    nmass    (nx_block*ny_block,max_blocks), &
                    nmassdti (nx_block*ny_block,max_blocks), &
-                   rheofactN(nx_block,ny_block,max_blocks), &
                    stat=ierr)
          if (ierr/=0) call abort_ice(subname//' ERROR: Out of memory N evp')
 
-         rheofactN(:,:,:) = c1
 
          allocate( uocnE    (nx_block,ny_block,max_blocks), &
                    vocnE    (nx_block,ny_block,max_blocks), &
@@ -275,11 +267,9 @@
                    aiE      (nx_block*ny_block,max_blocks), &
                    emass    (nx_block*ny_block,max_blocks), &
                    emassdti (nx_block*ny_block,max_blocks), &
-                   rheofactE(nx_block,ny_block,max_blocks), &
                    stat=ierr)
          if (ierr/=0) call abort_ice(subname//' ERROR: Out of memory E evp')
 
-         rheofactE(:,:,:) = c1
 
          allocate( ratiodxN (nx_block,ny_block,max_blocks), &
                    ratiodyE (nx_block,ny_block,max_blocks), &
@@ -319,8 +309,9 @@
          ratiodyEr_slot = c0
          ! c1, not c0: since #1133 dyn_prep2 fills these only when
          ! free_drift_approx is set, so a c0 default would zero the internal
-         ! stress everywhere with the flag off.  Matches rheofactE(:,:,:) = c1
-         ! for the block-layout copies.
+         ! stress everywhere with the flag off.  This initialisation is now
+         ! the ONLY thing that makes the flag-off case correct -- the block
+         ! copies that used to carry the same c1 are gone.
          rheofactE_slot = c1
          rheofactN_slot = c1
 
@@ -696,8 +687,6 @@
                             fmU       (:,iblk), dt                  , &
                             strtltxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strtltyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            strocnxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            strocnyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strintxU  (:,iblk), strintyU  (:,iblk), &
                             taubxU    (:,iblk)  , taubyU    (:,iblk)  , &
                             waterxU   (:,iblk)  , wateryU   (:,iblk)  , &
@@ -712,7 +701,7 @@
                             uvel(:,iblk), vvel(:,iblk), &
                            dynMap(:,iblk), dynOff(iblk), skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
                            skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                            TbU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), rheofactU (:,:,iblk), &
+                            TbU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             rheofactU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             Xmassdti_slot = umassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             waterx_slot   = waterxU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -773,8 +762,6 @@
                             fmU       (:,iblk), dt,                   &
                             strtltxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strtltyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            strocnxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            strocnyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strintxU  (:,iblk), strintyU  (:,iblk), &
                             taubxU    (:,iblk)  , taubyU    (:,iblk)  , &
                             waterxU   (:,iblk)  , wateryU   (:,iblk)  , &
@@ -837,8 +824,6 @@
                             fmN       (:,iblk), dt                  , &
                             strtltxN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strtltyN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            strocnxN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            strocnyN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strintxN  (:,:,iblk), strintyN  (:,:,iblk), &
                             taubxN    (:,iblk)  , taubyN    (:,iblk)  , &
                             waterxN   (:,iblk)  , wateryN   (:,iblk)  , &
@@ -853,7 +838,7 @@
                             uvelN     (:,:,iblk), vvelN     (:,:,iblk), &
                            dynMap(:,iblk), dynOff(iblk), skipN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
                            skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                            TbN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), rheofactN (:,:,iblk), &
+                            TbN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             rheofactN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
 
             !-----------------------------------------------------------------
@@ -876,8 +861,6 @@
                             fmE       (:,iblk), dt                  , &
                             strtltxE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strtltyE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            strocnxE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            strocnyE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strintxE  (:,:,iblk), strintyE  (:,:,iblk), &
                             taubxE    (:,iblk)  , taubyE    (:,iblk)  , &
                             waterxE   (:,iblk)  , wateryE   (:,iblk)  , &
@@ -892,7 +875,7 @@
                             uvelE     (:,:,iblk), vvelE     (:,:,iblk), &
                            dynMap(:,iblk), dynOff(iblk), skipE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
                            skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                            TbE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), rheofactE (:,:,iblk), &
+                            TbE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             rheofactE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
 
             do i=1,nx_block
