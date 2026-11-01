@@ -1451,10 +1451,8 @@
                             skipX,      &
                             skipTc,                 &
                             TbU,        &
-                            rheofactX_s,            &
-                            Xmassdti_slot, waterx_slot, &
-                            watery_slot,   forcex_slot, &
-                            forcey_slot)
+                            rheofactX_s)
+
 
       integer (kind=int_kind), intent(in) :: &
          nx_block, ny_block, & ! block dimensions
@@ -1599,12 +1597,6 @@
       ! element m is block-local slot m and the last element is the dead slot,
       ! exactly what pack_to_slots writes.  Optional because only the B-grid
       ! momentum kernel consumes them; the C/CD, eap and vp callers omit them.
-      real (kind=dbl_kind), dimension (:), intent(out), optional :: &
-         Xmassdti_slot, & ! Xmassdti at the cell's compressed slot
-         waterx_slot  , & ! waterx   at the cell's compressed slot
-         watery_slot  , & ! watery   at the cell's compressed slot
-         forcex_slot  , & ! forcex   at the cell's compressed slot
-         forcey_slot      ! forcey   at the cell's compressed slot
 
       ! local variables
 
@@ -1621,8 +1613,6 @@
 
       ! the five compressed copies are supplied together or not at all, so one
       ! test taken once keeps the momentum loop free of present() checks
-      logical (kind=log_kind) :: &
-         do_slots          ! fill the compressed copies as well
 
       ! taubx and tauby are assumed shape, 1D over the block in Fortran
       ! storage order, i.e. element (i,j) is stored at (j-1)*nx_block+i
@@ -1674,11 +1664,11 @@
       call chk_len(size(Xmass)   , nflat, 'Xmass'   , subname)
       call chk_len(size(fcor)    , nflat, 'fcor'    , subname)
       call chk_len(size(Xmap)    , nflat, 'Xmap'    , subname)
-      call chk_len(size(Xmassdti), nflat, 'Xmassdti', subname)
-      call chk_len(size(waterx)  , nflat, 'waterx'  , subname)
-      call chk_len(size(watery)  , nflat, 'watery'  , subname)
-      call chk_len(size(forcex)  , nflat, 'forcex'  , subname)
-      call chk_len(size(forcey)  , nflat, 'forcey'  , subname)
+      call chk_len(size(Xmassdti), nslot, 'Xmassdti', subname)
+      call chk_len(size(waterx)  , nslot, 'waterx'  , subname)
+      call chk_len(size(watery)  , nslot, 'watery'  , subname)
+      call chk_len(size(forcex)  , nslot, 'forcex'  , subname)
+      call chk_len(size(forcey)  , nslot, 'forcey'  , subname)
       call chk_len(size(taubx)   , nflat, 'taubx'   , subname)
       call chk_len(size(tauby)   , nflat, 'tauby'   , subname)
 
@@ -1694,11 +1684,6 @@
       call chk_len(size(vvel_init), nact, 'vvel_init', subname)
 
       if (present(rheofactX_s  )) call chk_len(size(rheofactX_s  ), nslot, 'rheofactX_s'  , subname)
-      if (present(Xmassdti_slot)) call chk_len(size(Xmassdti_slot), nslot, 'Xmassdti_slot', subname)
-      if (present(waterx_slot  )) call chk_len(size(waterx_slot  ), nslot, 'waterx_slot'  , subname)
-      if (present(watery_slot  )) call chk_len(size(watery_slot  ), nslot, 'watery_slot'  , subname)
-      if (present(forcex_slot  )) call chk_len(size(forcex_slot  ), nslot, 'forcex_slot'  , subname)
-      if (present(forcey_slot  )) call chk_len(size(forcey_slot  ), nslot, 'forcey_slot'  , subname)
 
       !-----------------------------------------------------------------
       ! Initialize
@@ -1718,14 +1703,6 @@
       ! to zero and then copies every cell that owns a slot, and the block
       ! arrays it copies from have just been zeroed here, so the slots of cells
       ! without ice this step end up at zero either way.
-      do_slots = present(Xmassdti_slot)
-      if (do_slots) then
-         Xmassdti_slot(:) = c0
-         waterx_slot  (:) = c0
-         watery_slot  (:) = c0
-         forcex_slot  (:) = c0
-         forcey_slot  (:) = c0
-      endif
 
       TbU(:) = c0   ! whole slice, the block loop below zeroed every cell
 
@@ -1872,13 +1849,13 @@
             endif
          endif
 
-         Xmassdti(ijb) = Xmass(ijb)/dt ! kg/m^2 s
+         Xmassdti(Xmap(ijb)) = Xmass(ijb)/dt ! kg/m^2 s
 
          fm(i,j) = fcor(ijb)*Xmass(ijb)   ! Coriolis * mass
 
          ! for ocean stress
-         waterx(ijb) = uocn(i,j)*cosw - vocn(i,j)*sinw*sign(c1,fm(i,j))
-         watery(ijb) = vocn(i,j)*cosw + uocn(i,j)*sinw*sign(c1,fm(i,j))
+         waterx(Xmap(ijb)) = uocn(i,j)*cosw - vocn(i,j)*sinw*sign(c1,fm(i,j))
+         watery(Xmap(ijb)) = vocn(i,j)*cosw + uocn(i,j)*sinw*sign(c1,fm(i,j))
 
          ! combine tilt with wind stress
          if (trim(ssh_stress) == 'geostrophic') then
@@ -1893,18 +1870,11 @@
                file=__FILE__, line=__LINE__)
          endif
 
-         forcex(ijb) = strairx(Xmap(ijb)) + strtltx(Xmap(ijb))
-         forcey(ijb) = strairy(Xmap(ijb)) + strtlty(Xmap(ijb))
+         forcex(Xmap(ijb)) = strairx(Xmap(ijb)) + strtltx(Xmap(ijb))
+         forcey(Xmap(ijb)) = strairy(Xmap(ijb)) + strtlty(Xmap(ijb))
 
          ! copy, never relayout: the block arrays above keep every value, and
          ! these are read back from them so the two cannot drift apart
-         if (do_slots) then
-            Xmassdti_slot(Xmap(ijb)) = Xmassdti(ijb)
-            waterx_slot  (Xmap(ijb)) = waterx  (ijb)
-            watery_slot  (Xmap(ijb)) = watery  (ijb)
-            forcex_slot  (Xmap(ijb)) = forcex  (ijb)
-            forcey_slot  (Xmap(ijb)) = forcey  (ijb)
-         endif
       enddo
 
       end subroutine dyn_prep2
@@ -2018,7 +1988,6 @@
       ! local variables
 
       integer (kind=int_kind) :: &
-         i, j, ij          , & ! ij is the compressed cell counter
          is                  , & ! compressed slot
          isE, isN, isNE          ! its E, N and NE neighbour slots
 

@@ -54,6 +54,8 @@
           cxm_slot, cym_slot, DminTarea_slot, strength_slot, &
           aiU_slot, uocnU_slot, vocnU_slot, &
           ss_tltxU_slot, ss_tltyU_slot, &
+          umassdti_slot, waterxU_slot, wateryU_slot, &
+          forcexU_slot, forceyU_slot, &
           seabed_stress_factor_LKD, seabed_stress_factor_prob, seabed_stress_method, &
           seabed_stress, Ktens, stack_fields,  unstack_fields, fld2, fld3, fld4, fld2c
       use ice_fileunits, only: nu_diag
@@ -112,8 +114,6 @@
          stPr_s       ! stress combinations from replacement pressure, compressed
 
       real (kind=dbl_kind), dimension(:), allocatable :: &
-         waterx_s , & ! for ocean stress calculation, x (m/s), compressed
-         watery_s , & ! for ocean stress calculation, y (m/s), compressed
          bxfix_s  , & ! part of bx constant during Picard, compressed
          byfix_s  , & ! part of by constant during Picard, compressed
          bx_s     , & ! b vector, x, compressed
@@ -122,7 +122,6 @@
          mvv_s    , & ! matvec input velocity, y, compressed
          mvAu_s   , & ! matvec output, x, compressed
          mvAv_s   , & ! matvec output, y, compressed
-         umassdti_s,& ! mass of U-cell/dt (kg/m^2 s), compressed
          fmU_s    , & ! Coriolis param. * mass in U-cell (kg/s), compressed
          ! Krylov-side vectors.  Fx/Fy never leave the slot world; solx/soly,
          ! diagx/diagy and the fixed-point residual are packed per nonlinear
@@ -203,21 +202,18 @@
       etax2_s = c0
       repprs_s = c0
       stPr_s = c0
-      allocate(waterx_s(dynTot), watery_s(dynTot), bxfix_s(dynTot), &
+      allocate(bxfix_s(dynTot), &
                byfix_s (dynTot), bx_s    (dynTot), by_s   (dynTot))
-      waterx_s = c0
-      watery_s = c0
       bxfix_s = c0
       byfix_s  = c0
       bx_s     = c0
       by_s    = c0
       allocate(mvu_s(dynTot), mvv_s(dynTot), mvAu_s(dynTot), mvAv_s(dynTot), &
-               umassdti_s(dynTot), fmU_s(dynTot))
+               fmU_s(dynTot))
       mvu_s = c0
       mvv_s = c0
       mvAu_s = c0
       mvAv_s = c0
-      umassdti_s = c0
       fmU_s = c0
       ! Krylov-side vectors.  solx/soly and diagx/diagy are packed per
       ! nonlinear iteration because arrays_to_vec and the history still read
@@ -481,7 +477,8 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                          indxTi      (:,iblk), indxTj      (:,iblk),                                                                   &
                          indxUi      (:,iblk), indxUj      (:,iblk),                                                                   &
                          aiU       (:,iblk),   umass     (:,iblk),                                                                     &
-                         umassdti  (:,iblk),   fcor_blk  (:,iblk)  ,                                                                   &
+                         umassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                         fcor_blk(:,iblk), &
                          umask     (:,iblk)  ,                                                                                         &
                          uocnU     (:,iblk), vocnU     (:,iblk),                                                                       &
                          strairxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -494,8 +491,10 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                          strtltyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                          strintxU  (:,iblk), strintyU  (:,iblk),                                                                   &
                          taubxU    (:,iblk)  , taubyU    (:,iblk)  ,                                                                   &
-                         waterxU   (:,iblk)  , wateryU   (:,iblk)  ,                                                                   &
-                         forcexU   (:,iblk)  , forceyU   (:,iblk)  ,                                                                   &
+                         waterxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                         wateryU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                         forcexU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                         forceyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                          stressp_1 (:,iblk), stressp_2 (:,iblk),                                                                       &
                          stressp_3 (:,iblk), stressp_4 (:,iblk),                                                                       &
                          stressm_1 (:,iblk), stressm_2 (:,iblk),                                                                       &
@@ -511,8 +510,9 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          call calc_bfix (nx_block            , ny_block            ,           &
                          icellU(iblk)        ,                                 &
                          indxUi      (:,iblk), indxUj      (:,iblk),           &
-                         umassdti  (:,iblk),                                   &
-                         forcexU   (:,iblk)  , forceyU   (:,iblk)  ,           &
+                         umassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                         forcexU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                         forceyU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                          uvel_init (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
                          vvel_init (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
                          dynMap      (:,iblk),                                 &
@@ -1019,7 +1019,6 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
       do iblk = 1, nblocks
          if (dynCnt(iblk) == 0) cycle
-         call pack_to_slots(umassdti(:,iblk), dynMap(:,iblk), umassdti_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
          call pack_to_slots(fmU     (:,iblk), dynMap(:,iblk), fmU_s     (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
       enddo
       !$OMP END PARALLEL DO
@@ -1095,16 +1094,14 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
             ! prepare b vector (RHS)
             ! stPr and vrel are already compressed; uarear is compressed once
             ! per run.  Only the four still-block-layout inputs are packed.
-            call pack_to_slots(waterxU(:,iblk), dynMap(:,iblk), waterx_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(wateryU(:,iblk), dynMap(:,iblk), watery_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call pack_to_slots(bxfix  (:,iblk), dynMap(:,iblk), bxfix_s (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call pack_to_slots(byfix  (:,iblk), dynMap(:,iblk), byfix_s (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
 
             call calc_bvec (dynCnt(iblk), skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
                             stPr_s   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),       &
                             uarear_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),       &
-                            waterx_s (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),         &
-                            watery_s (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),         &
+                            waterxU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),         &
+                            wateryU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),         &
                             bxfix_s  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),         &
                             byfix_s  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),         &
                             bx_s     (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),         &
@@ -1128,7 +1125,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                          vrel_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), Cb_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),         &
                          zetax2_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),                                                       &
                          etax2_s (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),                                                       &
-                         umassdti_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), fmU_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),    &
+                         umassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), fmU_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),    &
                          uarear_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),                                                      &
                          mvAu_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), mvAv_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call residual_vec (dynCnt(iblk), skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),                                          &
@@ -1189,7 +1186,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                   call formDiag_step2 (dynCnt(iblk), skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
                                        diag_rheo(:,:),                                                &
                                        vrel_s     (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),       &
-                                       umassdti_s (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),       &
+                                       umassdti_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),       &
                                        uarear_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),       &
                                        Cb_s       (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),       &
                                        diagx_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), diagy_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
@@ -1200,7 +1197,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
             ! FGMRES linear solver.  Everything it touches is compressed, so
             ! the solver never leaves the slot layout at all.
             call fgmres (Cb_s          , vrel_s    , &
-                         umassdti_s    ,             &
+                         umassdti_slot    ,             &
                          halo_info_mask,             &
                          bx_s          , by_s      , &
                          diagx_s       , diagy_s   , &
@@ -2084,8 +2081,8 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          indxUi   , & ! compressed index in i-direction
          indxUj       ! compressed index in j-direction
 
-      ! umassdti is assumed shape, 1D over the block in Fortran storage order,
-      ! i.e. element((j-1)*nx_block+i) is stored at (j-1)*nx_block+i
+      ! ⚠ umassdti, forcexU and forceyU are COMPRESSED -- dyn_prep2 fills
+      ! only the slot form since group a.  Indexed by is = Xmap(ijb).
       real (kind=dbl_kind), dimension (:), intent(in) :: &
          umassdti, & ! mass of U-cell/dt (kg/m^2 s)
          uvel_init,& ! x-component of velocity (m/s), start of step, COMPRESSED
@@ -2116,8 +2113,8 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          ijb = (j-1)*nx_block + i
          is  = Xmap(ijb)
 
-         bxfix((j-1)*nx_block+i) = umassdti(ijb)*uvel_init(is) + forcexU(ijb)
-         byfix((j-1)*nx_block+i) = umassdti(ijb)*vvel_init(is) + forceyU(ijb)
+         bxfix((j-1)*nx_block+i) = umassdti(is)*uvel_init(is) + forcexU(is)
+         byfix((j-1)*nx_block+i) = umassdti(is)*vvel_init(is) + forceyU(is)
       enddo
 
       end subroutine calc_bfix
@@ -3181,7 +3178,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                       vrel_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), Cb_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),         &
                       zetax2_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),                                                       &
                       etax2_s (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),                                                       &
-                      umassdti_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), fmU_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),    &
+                      umassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), fmU_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),    &
                       uarear_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),                                                      &
                       workspace_x(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), workspace_y(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
          call residual_vec (dynCnt(iblk), skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),                                                    &
@@ -3274,7 +3271,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                             vrel_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), Cb_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),             &
                             zetax2_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),                                                           &
                             etax2_s (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),                                                           &
-                            umassdti_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), fmU_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),        &
+                            umassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), fmU_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),        &
                             uarear_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),                                                          &
                             arnoldi_basis_x(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,nextit),                                               &
                             arnoldi_basis_y(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,nextit))
@@ -3564,7 +3561,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                       vrel_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), Cb_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),         &
                       zetax2_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),                                                       &
                       etax2_s (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),                                                       &
-                      umassdti_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), fmU_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),    &
+                      umassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), fmU_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),    &
                       uarear_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),                                                      &
                       workspace_x(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), workspace_y(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
          call residual_vec (dynCnt(iblk), skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),                                                    &
@@ -3656,7 +3653,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                             vrel_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), Cb_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),             &
                             zetax2_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),                                                           &
                             etax2_s (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),                                                           &
-                            umassdti_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), fmU_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),        &
+                            umassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), fmU_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),        &
                             uarear_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),                                                          &
                             arnoldi_basis_x(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,nextit),                                               &
                             arnoldi_basis_y(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,nextit))

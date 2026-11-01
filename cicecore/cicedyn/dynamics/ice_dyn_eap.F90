@@ -368,7 +368,8 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                          indxTi      (:,iblk), indxTj      (:,iblk), &
                          indxUi      (:,iblk), indxUj      (:,iblk), &
                          aiU       (:,iblk),   umass     (:,iblk),   &
-                         umassdti  (:,iblk),   fcor_blk  (:,iblk)  , &
+                         umassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                         fcor_blk(:,iblk), &
                          umask     (:,iblk)  ,                       &
                          uocnU     (:,:,iblk), vocnU     (:,:,iblk), &
                          strairxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -381,8 +382,10 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                          strtltyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                          strintxU  (:,iblk), strintyU  (:,iblk), &
                          taubxU    (:,iblk)  , taubyU    (:,iblk)  , &
-                         waterxU   (:,iblk)  , wateryU   (:,iblk)  , &
-                         forcexU   (:,iblk)  , forceyU   (:,iblk)  , &
+                         waterxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                         wateryU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                         forcexU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                         forceyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                          stressp_1 (:,iblk), stressp_2 (:,iblk), &
                          stressp_3 (:,iblk), stressp_4 (:,iblk), &
                          stressm_1 (:,iblk), stressm_2 (:,iblk), &
@@ -521,11 +524,6 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          ! rather than once at init.  stress_eap reads it from the slots now.
          call pack_to_slots(strength(:,:,iblk), dynMap(:,iblk), strength_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
          call pack_to_slots(fmU (:,iblk), dynMap(:,iblk), fmU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(umassdti(:,iblk), dynMap(:,iblk), umassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(waterxU(:,iblk), dynMap(:,iblk), waterxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(wateryU(:,iblk), dynMap(:,iblk), wateryU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(forcexU(:,iblk), dynMap(:,iblk), forcexU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(forceyU(:,iblk), dynMap(:,iblk), forceyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
          call pack_to_slots(Cdn_ocnU(:,:,iblk), dynMap(:,iblk), cdn_ocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
 
          ! ⚠ The stresses are NOT packed any more.  The slot copies are the
@@ -2201,7 +2199,6 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       ! local variables
 
       integer (kind=int_kind) :: &
-         i, j, ij, &
          ijb      , & ! 1D index of (i,j) in the block
          is           ! compressed slot of that cell
 

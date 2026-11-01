@@ -668,7 +668,8 @@
                             indxTi      (:,iblk), indxTj      (:,iblk), &
                             indxUi      (:,iblk), indxUj      (:,iblk), &
                             aiU       (:,iblk),   umass     (:,iblk),   &
-                            umassdti  (:,iblk),   fcor_blk  (:,iblk)  , &
+                            umassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            fcor_blk(:,iblk), &
                             umask     (:,iblk)  ,                       &
                             uocnU     (:,:,iblk), vocnU     (:,:,iblk), &
                             strairxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -681,8 +682,10 @@
                             strtltyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strintxU  (:,iblk), strintyU  (:,iblk), &
                             taubxU    (:,iblk)  , taubyU    (:,iblk)  , &
-                            waterxU   (:,iblk)  , wateryU   (:,iblk)  , &
-                            forcexU   (:,iblk)  , forceyU   (:,iblk)  , &
+                            waterxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            wateryU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            forcexU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            forceyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             stressp_1 (:,iblk), stressp_2 (:,iblk), &
                             stressp_3 (:,iblk), stressp_4 (:,iblk), &
                             stressm_1 (:,iblk), stressm_2 (:,iblk), &
@@ -694,12 +697,7 @@
                            dynMap(:,iblk), dynOff(iblk), skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
                            skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
                             TbU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            rheofactU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            Xmassdti_slot = umassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            waterx_slot   = waterxU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            watery_slot   = wateryU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            forcex_slot   = forcexU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            forcey_slot   = forceyU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                            rheofactU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
 
             !-----------------------------------------------------------------
             ! ice strength
@@ -744,7 +742,8 @@
                             indxTi      (:,iblk), indxTj      (:,iblk), &
                             indxUi      (:,iblk), indxUj      (:,iblk), &
                             aiU       (:,iblk),   umass     (:,iblk),   &
-                            umassdti  (:,iblk),   fcor_blk  (:,iblk)  , &
+                            umassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            fcor_blk(:,iblk), &
                             umaskCD   (:,iblk)  ,                       &
                             uocnU     (:,:,iblk), vocnU     (:,:,iblk), &
                             strairxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -757,8 +756,10 @@
                             strtltyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strintxU  (:,iblk), strintyU  (:,iblk), &
                             taubxU    (:,iblk)  , taubyU    (:,iblk)  , &
-                            waterxU   (:,iblk)  , wateryU   (:,iblk)  , &
-                            forcexU   (:,iblk)  , forceyU   (:,iblk)  , &
+                            waterxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            wateryU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            forcexU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            forceyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             stressp_1 (:,iblk), stressp_2 (:,iblk), &
                             stressp_3 (:,iblk), stressp_4 (:,iblk), &
                             stressm_1 (:,iblk), stressm_2 (:,iblk), &
@@ -807,7 +808,8 @@
                             indxTi      (:,iblk), indxTj      (:,iblk), &
                             indxNi      (:,iblk), indxNj      (:,iblk), &
                             aiN       (:,iblk),   nmass     (:,iblk),   &
-                            nmassdti  (:,iblk),   fcorN_blk (:,iblk)  , &
+                            nmassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            fcorN_blk(:,iblk), &
                             nmask     (:,iblk)  ,                       &
                             uocnN     (:,:,iblk), vocnN     (:,:,iblk), &
                             strairxN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -820,8 +822,10 @@
                             strtltyN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strintxN  (:,:,iblk), strintyN  (:,:,iblk), &
                             taubxN    (:,iblk)  , taubyN    (:,iblk)  , &
-                            waterxN   (:,iblk)  , wateryN   (:,iblk)  , &
-                            forcexN   (:,iblk)  , forceyN   (:,iblk)  , &
+                            waterxN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            wateryN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            forcexN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            forceyN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             stressp_1 (:,iblk), stressp_2 (:,iblk), &
                             stressp_3 (:,iblk), stressp_4 (:,iblk), &
                             stressm_1 (:,iblk), stressm_2 (:,iblk), &
@@ -845,7 +849,8 @@
                             indxTi      (:,iblk), indxTj      (:,iblk), &
                             indxEi      (:,iblk), indxEj      (:,iblk), &
                             aiE       (:,iblk),   emass     (:,iblk),   &
-                            emassdti  (:,iblk),   fcorE_blk (:,iblk)  , &
+                            emassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            fcorE_blk(:,iblk), &
                             emask     (:,iblk)  ,                       &
                             uocnE     (:,:,iblk), vocnE     (:,:,iblk), &
                             strairxE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -858,8 +863,10 @@
                             strtltyE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strintxE  (:,:,iblk), strintyE  (:,:,iblk), &
                             taubxE    (:,iblk)  , taubyE    (:,iblk)  , &
-                            waterxE   (:,iblk)  , wateryE   (:,iblk)  , &
-                            forcexE   (:,iblk)  , forceyE   (:,iblk)  , &
+                            waterxE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            wateryE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            forcexE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            forceyE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             stressp_1 (:,iblk), stressp_2 (:,iblk), &
                             stressp_3 (:,iblk), stressp_4 (:,iblk), &
                             stressm_1 (:,iblk), stressm_2 (:,iblk), &
@@ -1295,18 +1302,8 @@
             ! The step kernels read these every pass but nothing changes
             ! them during the subcycle, so one pack each is enough.
             call pack_to_slots(Cdn_ocnE(:,:,iblk), dynMap(:,iblk), cdn_ocne_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(waterxE(:,iblk), dynMap(:,iblk), waterxE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(wateryE(:,iblk), dynMap(:,iblk), wateryE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(forcexE(:,iblk), dynMap(:,iblk), forcexE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(forceyE(:,iblk), dynMap(:,iblk), forceyE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(emassdti(:,iblk), dynMap(:,iblk), emassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call pack_to_slots(fmE(:,iblk), dynMap(:,iblk), fmE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call pack_to_slots(Cdn_ocnN(:,:,iblk), dynMap(:,iblk), cdn_ocnn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(waterxN(:,iblk), dynMap(:,iblk), waterxN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(wateryN(:,iblk), dynMap(:,iblk), wateryN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(forcexN(:,iblk), dynMap(:,iblk), forcexN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(forceyN(:,iblk), dynMap(:,iblk), forceyN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(nmassdti(:,iblk), dynMap(:,iblk), nmassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call pack_to_slots(fmN(:,iblk), dynMap(:,iblk), fmN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
          enddo
          !$OMP END PARALLEL DO
@@ -1637,18 +1634,8 @@
             ! The step kernels read these every pass but nothing changes
             ! them during the subcycle, so one pack each is enough.
             call pack_to_slots(Cdn_ocnE(:,:,iblk), dynMap(:,iblk), cdn_ocne_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(waterxE(:,iblk), dynMap(:,iblk), waterxE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(wateryE(:,iblk), dynMap(:,iblk), wateryE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(forcexE(:,iblk), dynMap(:,iblk), forcexE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(forceyE(:,iblk), dynMap(:,iblk), forceyE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(emassdti(:,iblk), dynMap(:,iblk), emassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call pack_to_slots(fmE(:,iblk), dynMap(:,iblk), fmE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call pack_to_slots(Cdn_ocnN(:,:,iblk), dynMap(:,iblk), cdn_ocnn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(waterxN(:,iblk), dynMap(:,iblk), waterxN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(wateryN(:,iblk), dynMap(:,iblk), wateryN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(forcexN(:,iblk), dynMap(:,iblk), forcexN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(forceyN(:,iblk), dynMap(:,iblk), forceyN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(nmassdti(:,iblk), dynMap(:,iblk), nmassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call pack_to_slots(fmN(:,iblk), dynMap(:,iblk), fmN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
          enddo
          !$OMP END PARALLEL DO

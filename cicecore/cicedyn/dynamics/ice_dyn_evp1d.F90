@@ -312,7 +312,7 @@ module ice_dyn_evp1d
     ltripole = (trim(ns_boundary_type) == 'tripole')
 
     call gather_dyn(&
-                    L_umass     , L_uvel      , L_vvel      ,               &
+                    L_umass     ,                                           &
                     L_iceTmask  , L_iceUmask  ,                             &
                     G_strintxU  , G_strintyU  , G_taubxU    , G_taubyU    , &
                     lstrint     , ltaub       ,                             &
@@ -1053,7 +1053,7 @@ module ice_dyn_evp1d
 
 !=============================================================================
 
-  subroutine gather_dyn(L_umass     , L_uvel      , L_vvel      ,               &
+  subroutine gather_dyn(L_umass     ,                                           &
                         L_icetmask  , L_iceUmask  ,                             &
                         G_strintxU  , G_strintyU  , G_taubxU    , G_taubyU    , &
                         lstrint     , ltaub       ,                             &
@@ -1069,9 +1069,6 @@ module ice_dyn_evp1d
            forcexU_slot, forceyU_slot, uvel_slot, vvel_slot
      use ice_domain, only : distrb_info
      implicit none
-     ! uvel/vvel flattened, as L_umass below
-     real(kind=dbl_kind)   , dimension(:,:)  , intent(in)  :: &
-        L_uvel      , L_vvel
      ! these have their i and j dimensions flattened, i.e. element (i,j,iblk)
      ! lives at ((j-1)*nx_block + i, iblk)
      real(kind=dbl_kind)   , dimension(:,:)  , intent(in)  :: &
