@@ -393,6 +393,9 @@
           taubxE_slot, taubyE_slot, taubxN_slot, taubyN_slot, &
           aiE_slot, cdn_ocnE_slot, uocnE_slot, vocnE_slot, &
           ss_tltxU_slot, ss_tltyU_slot, &
+          umass_slot, emass_slot, nmass_slot, &
+          fcor_slot, fcorE_slot, fcorN_slot, &
+          taubxU_slot, taubyU_slot, taubxE_slot, taubyE_slot, taubxN_slot, taubyN_slot, &
           ss_tltxE_slot, ss_tltyE_slot, &
           ss_tltxN_slot, ss_tltyN_slot, &
           waterxE_slot, wateryE_slot, forcexE_slot, forceyE_slot, &
@@ -565,6 +568,7 @@
       call unstack_fields(fld4, uocn, vocn, ss_tltx, ss_tlty)
 
       call grid_average_X2Y('S', tmass    , 'T'          , umass   , 'U')
+      call grid_average_X2Y('S', tmass    , 'T'          , umass_slot, 'U')
       call grid_average_X2Y('S', aice_init, 'T'          , aiU     , 'U')
       call grid_average_X2Y('S', cdn_ocn  , 'T'          , cdn_ocnU, 'U')
       call grid_average_X2Y('S', uocn     , grid_ocn_dynu, uocnU   , 'U')
@@ -588,6 +592,7 @@
 
       if (grid_ice == 'CD' .or. grid_ice == 'C') then
          call grid_average_X2Y('S', tmass    , 'T'          , emass   , 'E')
+         call grid_average_X2Y('S', tmass    , 'T'          , emass_slot, 'E')
          call grid_average_X2Y('S', aice_init, 'T'          , aiE     , 'E')
          call grid_average_X2Y('S', cdn_ocn  , 'T'          , cdn_ocnE, 'E')
          call grid_average_X2Y('S', uocn     , grid_ocn_dynu, uocnE   , 'E')
@@ -595,6 +600,7 @@
          call grid_average_X2Y('S', ss_tltx  , grid_ocn_dynu, ss_tltxE_slot, 'E')
          call grid_average_X2Y('S', ss_tlty  , grid_ocn_dynv, ss_tltyE_slot, 'E')
          call grid_average_X2Y('S', tmass    , 'T'          , nmass   , 'N')
+         call grid_average_X2Y('S', tmass    , 'T'          , nmass_slot, 'N')
          call grid_average_X2Y('S', aice_init, 'T'          , aiN     , 'N')
          call grid_average_X2Y('S', cdn_ocn  , 'T'          , cdn_ocnN, 'N')
          call grid_average_X2Y('S', uocn     , grid_ocn_dynu, uocnN   , 'N')
@@ -667,9 +673,9 @@
                             icellT        (iblk), icellU        (iblk), &
                             indxTi      (:,iblk), indxTj      (:,iblk), &
                             indxUi      (:,iblk), indxUj      (:,iblk), &
-                            aiU       (:,iblk),   umass     (:,iblk),   &
+                            aiU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   umass_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
                             umassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            fcor_blk(:,iblk), &
+                            fcor_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             umask     (:,iblk)  ,                       &
                             uocnU     (:,:,iblk), vocnU     (:,:,iblk), &
                             strairxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -681,7 +687,7 @@
                             strtltxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strtltyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strintxU  (:,iblk), strintyU  (:,iblk), &
-                            taubxU    (:,iblk)  , taubyU    (:,iblk)  , &
+                            taubxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)  , taubyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)  , &
                             waterxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             wateryU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             forcexU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -741,9 +747,9 @@
                             icellT        (iblk), icellU        (iblk), &
                             indxTi      (:,iblk), indxTj      (:,iblk), &
                             indxUi      (:,iblk), indxUj      (:,iblk), &
-                            aiU       (:,iblk),   umass     (:,iblk),   &
+                            aiU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   umass_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
                             umassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            fcor_blk(:,iblk), &
+                            fcor_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             umaskCD   (:,iblk)  ,                       &
                             uocnU     (:,:,iblk), vocnU     (:,:,iblk), &
                             strairxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -755,7 +761,7 @@
                             strtltxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strtltyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strintxU  (:,iblk), strintyU  (:,iblk), &
-                            taubxU    (:,iblk)  , taubyU    (:,iblk)  , &
+                            taubxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)  , taubyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)  , &
                             waterxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             wateryU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             forcexU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -807,9 +813,9 @@
                             icellT        (iblk), icellN        (iblk), &
                             indxTi      (:,iblk), indxTj      (:,iblk), &
                             indxNi      (:,iblk), indxNj      (:,iblk), &
-                            aiN       (:,iblk),   nmass     (:,iblk),   &
+                            aiN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   nmass_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
                             nmassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            fcorN_blk(:,iblk), &
+                            fcorN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             nmask     (:,iblk)  ,                       &
                             uocnN     (:,:,iblk), vocnN     (:,:,iblk), &
                             strairxN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -821,7 +827,7 @@
                             strtltxN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strtltyN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strintxN  (:,:,iblk), strintyN  (:,:,iblk), &
-                            taubxN    (:,iblk)  , taubyN    (:,iblk)  , &
+                            taubxN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)  , taubyN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)  , &
                             waterxN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             wateryN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             forcexN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -848,9 +854,9 @@
                             icellT        (iblk), icellE        (iblk), &
                             indxTi      (:,iblk), indxTj      (:,iblk), &
                             indxEi      (:,iblk), indxEj      (:,iblk), &
-                            aiE       (:,iblk),   emass     (:,iblk),   &
+                            aiE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   emass_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
                             emassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            fcorE_blk(:,iblk), &
+                            fcorE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             emask     (:,iblk)  ,                       &
                             uocnE     (:,:,iblk), vocnE     (:,:,iblk), &
                             strairxE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -862,7 +868,7 @@
                             strtltxE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strtltyE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strintxE  (:,:,iblk), strintyE  (:,:,iblk), &
-                            taubxE    (:,iblk)  , taubyE    (:,iblk)  , &
+                            taubxE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)  , taubyE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)  , &
                             waterxE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             wateryE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             forcexE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &

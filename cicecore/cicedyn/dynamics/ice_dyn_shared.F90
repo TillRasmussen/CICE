@@ -254,6 +254,8 @@
       ! whole block, and fmU feeds the strcorx/strcory history fields.
       real (kind=dbl_kind), dimension (:), allocatable, public :: &
          aiU_slot        , & ! ice fraction on U grid, compressed
+         fcor_slot       , & ! Coriolis parameter, compressed
+         umass_slot      , & ! total mass of ice and snow, U grid, compressed
          fmU_slot        , & ! Coriolis parameter * mass in U cell, compressed
          TbU_slot        , & ! seabed stress factor (N/m^2), compressed
          rheofactU_slot      ! 1, except 0 where aiU <= rheo_area_min, compressed
@@ -351,6 +353,10 @@
          forcexE_slot       , & ! atm stress + ocn tilt, x
          forceyE_slot       , & ! atm stress + ocn tilt, y
          emassdti_slot      , & ! mass of cell/dt (kg/m^2 s)
+         fcorE_slot         , & ! Coriolis parameter, compressed
+         emass_slot         , & ! total mass, E grid, compressed
+         fcorN_slot         , & ! Coriolis parameter, compressed
+         nmass_slot         , & ! total mass, N grid, compressed
          fmE_slot           , & ! Coriolis param. * mass (kg/s)
          TbE_slot           , & ! seabed stress factor (N/m^2)
          ss_tltxN_slot      , & ! sea surface slope, x, compressed
@@ -605,6 +611,11 @@
       str7_slot = c0
       str8_slot = c0
 
+      allocate(fcor_slot(dynTot), umass_slot(dynTot), stat=ierr)
+      if (ierr/=0) call abort_ice(subname//': Out of memory')
+      fcor_slot  = c0
+      umass_slot = c0
+
       allocate(aiU_slot(dynTot), fmU_slot(dynTot), TbU_slot(dynTot), &
                rheofactU_slot(dynTot), stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
@@ -718,7 +729,8 @@
                   forcexE_slot(dynTot), &
                   forceyE_slot(dynTot), &
                   emassdti_slot(dynTot), &
-                  fmE_slot(dynTot), &
+                           fcorE_slot(dynTot), emass_slot(dynTot), &
+         fmE_slot(dynTot), &
                   TbE_slot(dynTot), &
                   ss_tltxN_slot(dynTot), ss_tltyN_slot(dynTot), &
                   aiN_slot(dynTot), &
@@ -730,7 +742,8 @@
                   forcexN_slot(dynTot), &
                   forceyN_slot(dynTot), &
                   nmassdti_slot(dynTot), &
-                  fmN_slot(dynTot), &
+                           fcorN_slot(dynTot), nmass_slot(dynTot), &
+         fmN_slot(dynTot), &
                   TbN_slot(dynTot), &
                   stat=ierr)
          if (ierr/=0) call abort_ice(subname//': Out of memory')
@@ -1037,6 +1050,7 @@
 
       integer (kind=int_kind) :: &
          i, j  ,             & ! indices
+         msf   ,             & ! compressed slot of (i,j), 0 if none
          ij    ,             & ! 1D index of (i,j) in the block
          ijb   ,             & ! 1D index of (i,j) in the flattened block layout
          ilo, ihi, jlo, jhi, & !min and max index for interior of blocks
@@ -1078,12 +1092,13 @@
          write(nu_diag,*) 'halo_dynbundle =', halo_dynbundle
       endif
 
-      !$OMP PARALLEL DO PRIVATE(iblk,i,j,ij) SCHEDULE(runtime)
+      !$OMP PARALLEL DO PRIVATE(iblk,i,j,ij,msf) SCHEDULE(runtime)
       do iblk = 1, nblocks
       do j = 1, ny_block
       do i = 1, nx_block
 
          ij = (j-1)*nx_block + i
+         msf = dynMap(ij,iblk)   ! slot of this cell, 0 if none
 
          ! velocity
          uvel((j-1)*nx_block+i,iblk) = c0    ! m/s
@@ -1099,23 +1114,32 @@
          ! Coriolis parameter
          if (trim(coriolis) == 'constant') then
             fcor_blk(ij,iblk) = 1.46e-4_dbl_kind ! Hibler 1979, N. Hem; 1/s
+            if (msf > 0) fcor_slot(dynOff(iblk)+msf) = 1.46e-4_dbl_kind
          else if (trim(coriolis) == 'zero') then
             fcor_blk(ij,iblk) = c0
+            if (msf > 0) fcor_slot(dynOff(iblk)+msf) = c0
          else
             fcor_blk(ij,iblk) = c2*omega*sin(ULAT(ij,iblk)) ! 1/s
+            if (msf > 0) fcor_slot(dynOff(iblk)+msf) = c2*omega*sin(ULAT(ij,iblk))
          endif
 
          if (grid_ice == 'CD' .or. grid_ice == 'C') then
 
             if (trim(coriolis) == 'constant') then
                fcorE_blk(ij,iblk) = 1.46e-4_dbl_kind ! Hibler 1979, N. Hem; 1/s
+               if (msf > 0) fcorE_slot(dynOff(iblk)+msf) = 1.46e-4_dbl_kind
                fcorN_blk(ij,iblk) = 1.46e-4_dbl_kind ! Hibler 1979, N. Hem; 1/s
+               if (msf > 0) fcorN_slot(dynOff(iblk)+msf) = 1.46e-4_dbl_kind
             else if (trim(coriolis) == 'zero') then
                fcorE_blk(ij,iblk) = c0
+               if (msf > 0) fcorE_slot(dynOff(iblk)+msf) = c0
                fcorN_blk(ij,iblk) = c0
+               if (msf > 0) fcorN_slot(dynOff(iblk)+msf) = c0
             else
                fcorE_blk(ij,iblk) = c2*omega*sin(ELAT(ij,iblk)) ! 1/s
+               if (msf > 0) fcorE_slot(dynOff(iblk)+msf) = c2*omega*sin(ELAT(ij,iblk))
                fcorN_blk(ij,iblk) = c2*omega*sin(NLAT(ij,iblk)) ! 1/s
+               if (msf > 0) fcorN_slot(dynOff(iblk)+msf) = c2*omega*sin(NLAT(ij,iblk))
             endif
 
          endif
@@ -1603,7 +1627,8 @@
       integer (kind=int_kind) :: &
          mslotz        , & ! slot of a cell, for the stress reset
          i, j, ij       , & ! ij is the compressed cell counter
-         ijb                ! 1D index of (i,j) in the block
+         ijb            , & ! 1D index of (i,j) in the block
+         msx                ! compressed slot of (i,j), 0 if none
 
       real (kind=dbl_kind) :: &
          gravit
@@ -1660,17 +1685,17 @@
       call chk_len(size(Xmask)   , nflat, 'Xmask'   , subname)
       call chk_len(size(iceTmask), nflat, 'iceTmask', subname)
       call chk_len(size(iceXmask), nflat, 'iceXmask', subname)
-      call chk_len(size(aiX)     , nflat, 'aiX'     , subname)
-      call chk_len(size(Xmass)   , nflat, 'Xmass'   , subname)
-      call chk_len(size(fcor)    , nflat, 'fcor'    , subname)
+      call chk_len(size(aiX)     , nslot, 'aiX'     , subname)
+      call chk_len(size(Xmass)   , nslot, 'Xmass'   , subname)
+      call chk_len(size(fcor)    , nslot, 'fcor'    , subname)
       call chk_len(size(Xmap)    , nflat, 'Xmap'    , subname)
       call chk_len(size(Xmassdti), nslot, 'Xmassdti', subname)
       call chk_len(size(waterx)  , nslot, 'waterx'  , subname)
       call chk_len(size(watery)  , nslot, 'watery'  , subname)
       call chk_len(size(forcex)  , nslot, 'forcex'  , subname)
       call chk_len(size(forcey)  , nslot, 'forcey'  , subname)
-      call chk_len(size(taubx)   , nflat, 'taubx'   , subname)
-      call chk_len(size(tauby)   , nflat, 'tauby'   , subname)
+      call chk_len(size(taubx)   , nslot, 'taubx'   , subname)
+      call chk_len(size(tauby)   , nslot, 'tauby'   , subname)
 
       call chk_len(size(strtlty) , nslot, 'strtlty' , subname)
       call chk_len(size(ss_tltx) , nslot, 'ss_tltx' , subname)
@@ -1691,6 +1716,8 @@
 
       ! compressed arrays are cleared over their own extent; every slot starts
       ! inactive and is switched on below only where there is ice
+      taubx    (:) = c0
+      tauby    (:) = c0
       waterx   (:) = c0
       watery   (:) = c0
       forcex   (:) = c0
@@ -1709,8 +1736,6 @@
       do j = 1, ny_block
       do i = 1, nx_block
          ijb = (j-1)*nx_block + i
-         taubx    (ijb) = c0
-         tauby    (ijb) = c0
 
          if (.not.iceTmask(ijb)) then
             ! ⚠ This reset is PHYSICS, not bookkeeping: once a cell carries no
@@ -1787,8 +1812,17 @@
          ijb = (j-1)*nx_block + i
          iceXmask_old(i,j) = iceXmask(ijb) ! save
          ! ice extent mask (U-cells)
-         iceXmask(ijb) = (Xmask(ijb)) .and. (aiX  (ijb) > dyn_area_min) &
-                                      .and. (Xmass(ijb) > dyn_mass_min)
+         msx = Xmap(ijb)
+         if (msx < 1) then
+            ! No slot means the cell is outside tmask .or. umask, so Xmask
+            ! is false there and iceXmask would be false whatever aiX and
+            ! Xmass hold.  Same result, without indexing a compressed array
+            ! at a cell that has no entry.
+            iceXmask(ijb) = .false.
+         else
+            iceXmask(ijb) = (Xmask(ijb)) .and. (aiX  (msx) > dyn_area_min) &
+                                         .and. (Xmass(msx) > dyn_mass_min)
+         endif
 
          if (iceXmask(ijb)) then
             icellX = icellX + 1
@@ -1842,16 +1876,16 @@
          ijb = (j-1)*nx_block + i
 
          if (free_drift_approx .and. present(rheofactX_s)) then
-            if ( aiX (ijb) > rheo_area_min ) then
+            if ( aiX (Xmap(ijb)) > rheo_area_min ) then
                rheofactX_s(Xmap(ijb)) = c1
             else
                rheofactX_s(Xmap(ijb)) = c0
             endif
          endif
 
-         Xmassdti(Xmap(ijb)) = Xmass(ijb)/dt ! kg/m^2 s
+         Xmassdti(Xmap(ijb)) = Xmass(Xmap(ijb))/dt ! kg/m^2 s
 
-         fm(i,j) = fcor(ijb)*Xmass(ijb)   ! Coriolis * mass
+         fm(i,j) = fcor(Xmap(ijb))*Xmass(Xmap(ijb))   ! Coriolis * mass
 
          ! for ocean stress
          waterx(Xmap(ijb)) = uocn(i,j)*cosw - vocn(i,j)*sinw*sign(c1,fm(i,j))
@@ -1863,8 +1897,8 @@
             strtltx(Xmap(ijb)) = -fm(i,j)*vocn(i,j)
             strtlty(Xmap(ijb)) =  fm(i,j)*uocn(i,j)
          elseif (trim(ssh_stress) == 'coupled') then
-            strtltx(Xmap(ijb)) = -gravit*Xmass(ijb)*ss_tltx(Xmap(ijb))
-            strtlty(Xmap(ijb)) = -gravit*Xmass(ijb)*ss_tlty(Xmap(ijb))
+            strtltx(Xmap(ijb)) = -gravit*Xmass(Xmap(ijb))*ss_tltx(Xmap(ijb))
+            strtlty(Xmap(ijb)) = -gravit*Xmass(Xmap(ijb))*ss_tlty(Xmap(ijb))
          else
             call abort_ice(subname//' ERROR: unknown ssh_stress='//trim(ssh_stress), &
                file=__FILE__, line=__LINE__)
