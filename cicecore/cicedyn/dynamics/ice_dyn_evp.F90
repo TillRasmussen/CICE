@@ -102,15 +102,10 @@
          rheofactE_slot, rheofactN_slot
 
       real (kind=dbl_kind), allocatable :: &
-         strengthU(:,:,:) , & ! strength averaged to U points
          divergU  (:)   , & ! div array on U points, differentiate from divu
          tensionU (:)   , & ! tension array on U points
          shearU   (:,:) , & ! shear array on U points
-         deltaU   (:)   , & ! delta array on U points
-         zetax2T  (:,:) , & ! zetax2 = 2*zeta (bulk viscosity)
-         zetax2U  (:,:) , & ! zetax2T averaged to U points
-         etax2T   (:,:) , & ! etax2  = 2*eta  (shear viscosity)
-         etax2U   (:,:)     ! etax2T averaged to U points
+         deltaU   (:)      ! delta array on U points
 
       ! B grid
       real (kind=dbl_kind), allocatable :: &
@@ -192,15 +187,10 @@
 
       if (grid_ice == 'CD' .or. grid_ice == 'C') then
 
-         allocate( strengthU(nx_block,ny_block,max_blocks), &
-                   divergU  (dynTot), &
+         allocate( divergU  (dynTot), &
                    tensionU (dynTot), &
                    shearU   (nx_block*ny_block,max_blocks), &
                    deltaU   (dynTot), &
-                   zetax2T  (nx_block*ny_block,max_blocks), &
-                   zetax2U  (nx_block*ny_block,max_blocks), &
-                   etax2T   (nx_block*ny_block,max_blocks), &
-                   etax2U   (nx_block*ny_block,max_blocks), &
                    stat=ierr)
          if (ierr/=0) call abort_ice(subname//' ERROR: Out of memory U evp')
 
@@ -350,6 +340,7 @@
           ss_tltxU_slot, ss_tltyU_slot, &
           umass_slot, emass_slot, nmass_slot, &
           fcor_slot, fcorE_slot, fcorN_slot, &
+          cdn_ocnU_slot, cdn_ocnn_slot, cdn_ocne_slot, &
           taubxU_slot, taubyU_slot, taubxE_slot, taubyE_slot, taubxN_slot, taubyN_slot, &
           ss_tltxE_slot, ss_tltyE_slot, &
           ss_tltxN_slot, ss_tltyN_slot, &
@@ -440,15 +431,10 @@
 
       if (grid_ice == 'CD' .or. grid_ice == 'C') then
 
-         strengthU(:,:,:) = c0
          divergU  (:) = c0
          tensionU (:) = c0
          shearU   (:,:) = c0
          deltaU   (:) = c0
-         zetax2T  (:,:) = c0
-         zetax2U  (:,:) = c0
-         etax2T   (:,:) = c0
-         etax2U   (:,:) = c0
 
       endif
 
@@ -524,6 +510,7 @@
 
       call grid_average_X2Y('S', tmass    , 'T'          , umass   , 'U')
       call grid_average_X2Y('S', tmass    , 'T'          , umass_slot, 'U')
+      call grid_average_X2Y('S', cdn_ocn  , 'T'          , cdn_ocnU_slot, 'U')
       call grid_average_X2Y('S', aice_init, 'T'          , aiU     , 'U')
       call grid_average_X2Y('S', cdn_ocn  , 'T'          , cdn_ocnU, 'U')
       call grid_average_X2Y('S', ss_tltx  , grid_ocn_dynu, ss_tltxU_slot, 'U')
@@ -628,7 +615,7 @@
                             ss_tltxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             ss_tltyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             iceTmask  (:,iblk),   iceUmask  (:,iblk),   &
-                            fmU       (:,iblk), dt                  , &
+                            fmU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dt                  , &
                             strtltxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strtltyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strintxU  (:,iblk), strintyU  (:,iblk), &
@@ -702,7 +689,7 @@
                             ss_tltxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             ss_tltyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             iceTmask  (:,iblk),   iceUmask  (:,iblk),   &
-                            fmU       (:,iblk), dt,                   &
+                            fmU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dt,                   &
                             strtltxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strtltyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strintxU  (:,iblk), strintyU  (:,iblk), &
@@ -768,7 +755,7 @@
                             ss_tltxN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             ss_tltyN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             iceTmask  (:,iblk),   iceNmask  (:,iblk),   &
-                            fmN       (:,iblk), dt                  , &
+                            fmN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dt                  , &
                             strtltxN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strtltyN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strintxN  (:,:,iblk), strintyN  (:,:,iblk), &
@@ -809,7 +796,7 @@
                             ss_tltxE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             ss_tltyE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             iceTmask  (:,iblk),   iceEmask  (:,iblk),   &
-                            fmE       (:,iblk), dt                  , &
+                            fmE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dt                  , &
                             strtltxE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strtltyE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strintxE  (:,:,iblk), strintyE  (:,:,iblk), &
@@ -1024,12 +1011,10 @@
             ! constant through the subcycling, so packed once and never
             ! unpacked; the block-layout originals stay for the consumers
             ! outside the dynamics
-            call pack_to_slots(fmU (:,iblk), dynMap(:,iblk), fmU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             ! umassdti, waterxU, wateryU, forcexU and forceyU are not packed
             ! here: dyn_prep2 already filled their compressed copies in the
             ! same loop that computed them, which costs one store instead of
             ! a second traversal of the block.
-            call pack_to_slots(Cdn_ocnU(:,:,iblk), dynMap(:,iblk), cdn_ocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             ! strength is constant through the subcycling; the twelve
             ! stress components are the subcycle's own state, read and
             ! written every pass and unpacked once at the end for the
@@ -1253,9 +1238,7 @@
             ! The step kernels read these every pass but nothing changes
             ! them during the subcycle, so one pack each is enough.
             call pack_to_slots(Cdn_ocnE(:,:,iblk), dynMap(:,iblk), cdn_ocne_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(fmE(:,iblk), dynMap(:,iblk), fmE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call pack_to_slots(Cdn_ocnN(:,:,iblk), dynMap(:,iblk), cdn_ocnn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(fmN(:,iblk), dynMap(:,iblk), fmN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
          enddo
          !$OMP END PARALLEL DO
 
@@ -1585,9 +1568,7 @@
             ! The step kernels read these every pass but nothing changes
             ! them during the subcycle, so one pack each is enough.
             call pack_to_slots(Cdn_ocnE(:,:,iblk), dynMap(:,iblk), cdn_ocne_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(fmE(:,iblk), dynMap(:,iblk), fmE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call pack_to_slots(Cdn_ocnN(:,:,iblk), dynMap(:,iblk), cdn_ocnn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(fmN(:,iblk), dynMap(:,iblk), fmN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
          enddo
          !$OMP END PARALLEL DO
 
@@ -2020,13 +2001,13 @@
       do iblk = 1, nblocks
          call dyn_finish                               &
               (nx_block          , ny_block          , &
-               icellU      (iblk), Cdn_ocnU(:,:,iblk), &
+               icellU      (iblk), cdn_ocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                indxUi    (:,iblk), indxUj    (:,iblk), &
                uvel(:,iblk), vvel(:,iblk), &
                uocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                vocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                aiU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-               fmU(:,iblk), &
+               fmU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                dynMap(:,iblk), &
                strocnxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                strocnyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
@@ -2040,26 +2021,26 @@
 
             call dyn_finish                               &
                  (nx_block          , ny_block          , &
-                  icellN      (iblk), Cdn_ocnN(:,:,iblk), &
+                  icellN      (iblk), cdn_ocnn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                   indxNi    (:,iblk), indxNj    (:,iblk), &
                   uvelN   (:,:,iblk), vvelN   (:,:,iblk), &
                   uocnN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                   vocnN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                   aiN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                  fmN(:,iblk), &
+                  fmN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                   dynMap(:,iblk), &
                   strocnxN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                   strocnyN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
 
             call dyn_finish                               &
                  (nx_block          , ny_block          , &
-                  icellE      (iblk), Cdn_ocnE(:,:,iblk), &
+                  icellE      (iblk), cdn_ocne_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                   indxEi    (:,iblk), indxEj    (:,iblk), &
                   uvelE   (:,:,iblk), vvelE   (:,:,iblk), &
                   uocnE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                   vocnE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                   aiE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                  fmE(:,iblk), &
+                  fmE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                   dynMap(:,iblk), &
                   strocnxE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                   strocnyE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))

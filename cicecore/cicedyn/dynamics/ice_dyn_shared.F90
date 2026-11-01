@@ -1557,8 +1557,12 @@
          strairx , & ! stress on ice by air, x-direction
          strairy     ! stress on ice by air, y-direction
 
+      ! ⚠ Compressed.  Written at Xmap(ijb) and read there by the waterx,
+      ! watery and tilt terms in the same loop.
+      real (kind=dbl_kind), dimension (:), intent(inout) :: &
+         fm          ! Coriolis param. * mass in U-cell (kg/s)
+
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(inout) :: &
-         fm      , & ! Coriolis param. * mass in U-cell (kg/s)
          stressp_1, stressp_2, stressp_3, stressp_4 , & ! sigma11+sigma22
          stressm_1, stressm_2, stressm_3, stressm_4 , & ! sigma11-sigma22
          stress12_1,stress12_2,stress12_3,stress12_4, & ! sigma12
@@ -1870,17 +1874,17 @@
 
          Xmassdti(Xmap(ijb)) = Xmass(Xmap(ijb))/dt ! kg/m^2 s
 
-         fm(i,j) = fcor(Xmap(ijb))*Xmass(Xmap(ijb))   ! Coriolis * mass
+         fm(Xmap(ijb)) = fcor(Xmap(ijb))*Xmass(Xmap(ijb))   ! Coriolis * mass
 
          ! for ocean stress
-         waterx(Xmap(ijb)) = uocn(Xmap(ijb))*cosw - vocn(Xmap(ijb))*sinw*sign(c1,fm(i,j))
-         watery(Xmap(ijb)) = vocn(Xmap(ijb))*cosw + uocn(Xmap(ijb))*sinw*sign(c1,fm(i,j))
+         waterx(Xmap(ijb)) = uocn(Xmap(ijb))*cosw - vocn(Xmap(ijb))*sinw*sign(c1,fm(Xmap(ijb)))
+         watery(Xmap(ijb)) = vocn(Xmap(ijb))*cosw + uocn(Xmap(ijb))*sinw*sign(c1,fm(Xmap(ijb)))
 
          ! combine tilt with wind stress
          if (trim(ssh_stress) == 'geostrophic') then
             ! calculate tilt from geostrophic currents if needed
-            strtltx(Xmap(ijb)) = -fm(i,j)*vocn(Xmap(ijb))
-            strtlty(Xmap(ijb)) =  fm(i,j)*uocn(Xmap(ijb))
+            strtltx(Xmap(ijb)) = -fm(Xmap(ijb))*vocn(Xmap(ijb))
+            strtlty(Xmap(ijb)) =  fm(Xmap(ijb))*uocn(Xmap(ijb))
          elseif (trim(ssh_stress) == 'coupled') then
             strtltx(Xmap(ijb)) = -gravit*Xmass(Xmap(ijb))*ss_tltx(Xmap(ijb))
             strtlty(Xmap(ijb)) = -gravit*Xmass(Xmap(ijb))*ss_tlty(Xmap(ijb))
@@ -2652,7 +2656,10 @@
 
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
          uvel    , & ! x-component of velocity (m/s)
-         vvel    , & ! y-component of velocity (m/s)
+         vvel        ! y-component of velocity (m/s)
+
+      ! ⚠ Compressed, indexed by the same ms as uocn_s/vocn_s/aiX_s.
+      real (kind=dbl_kind), dimension (:), intent(in) :: &
          fm          ! Coriolis param. * mass in U-cell (kg/s)
 
       ! ⚠ Compressed.  Indexed by Xmap(ijb), the block-local slot, the same
@@ -2665,8 +2672,8 @@
          strocnx , & ! ice-ocean stress, x-direction
          strocny     ! ice-ocean stress, y-direction
 
-      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
-         Cw          ! ocean-ice neutral drag coefficient
+      real (kind=dbl_kind), dimension (:), intent(in) :: &
+         Cw          ! ocean-ice neutral drag coefficient, compressed
 
       ! local variables
 
@@ -2693,7 +2700,7 @@
          ijb = (j-1)*nx_block + i
          ms  = Xmap(ijb)
 
-          vrel = rhow*Cw(i,j)*sqrt((uocn_s(ms) - uvel(i,j))**2 + &
+          vrel = rhow*Cw(ms)*sqrt((uocn_s(ms) - uvel(i,j))**2 + &
                  (vocn_s(ms) - vvel(i,j))**2)  ! m/s
 
 !        strocnx(i,j) = strocnx(i,j) &
@@ -2704,9 +2711,9 @@
          ! update strocnx to most recent iterate and complete the term
          vrel = vrel * aiX_s(ms)
          strocnx(ms) = vrel*((uocn_s(ms) - uvel(i,j))*cosw &
-                     - (vocn_s(ms) - vvel(i,j))*sinw*sign(c1,fm(i,j)))
+                     - (vocn_s(ms) - vvel(i,j))*sinw*sign(c1,fm(ms)))
          strocny(ms) = vrel*((vocn_s(ms) - vvel(i,j))*cosw &
-                     + (uocn_s(ms) - uvel(i,j))*sinw*sign(c1,fm(i,j)))
+                     + (uocn_s(ms) - uvel(i,j))*sinw*sign(c1,fm(ms)))
 
          ! Hibler/Bryan stress
          ! the sign is reversed later, therefore negative here

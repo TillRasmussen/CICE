@@ -2225,6 +2225,7 @@
           stressp_1_slot, stressp_2_slot, stressp_3_slot, stressp_4_slot, &
           stressm_1_slot, stress12_1_slot, &
           dynMap, dynOff, dynCnt
+      use ice_dyn_shared, only: fmU_slot, fmN_slot, fmE_slot
       use ice_flux, only: fsw, flw, fsnow, frain, sst, sss, uocn, vocn, &
           frzmlt_init, scale_factor, fswabs, fswup, fswthru, alvdr, alvdf, alidr, alidf, &
           albice, albsno, albpnd, coszen, flat, fsens, flwout, evap, evaps, evapi, &
@@ -2745,7 +2746,7 @@
                ij = dynIJ(msh)
                j  = (ij-1)/nx_block + 1
                i  = ij - (j-1)*nx_block
-               workas(is) = fmU(ij,iblk)*vvel(ij,iblk)
+               workas(is) = fmU_slot(msh)*vvel(ij,iblk)
             enddo
             call accum_hist_field_2D_slotin(n_strcorx, iblk, workas, a2D)
          endif
@@ -2760,7 +2761,7 @@
                ij = dynIJ(msh)
                j  = (ij-1)/nx_block + 1
                i  = ij - (j-1)*nx_block
-               workas(is) = -fmU(ij,iblk)*uvel(ij,iblk)
+               workas(is) = -fmU_slot(msh)*uvel(ij,iblk)
             enddo
             call accum_hist_field_2D_slotin(n_strcory, iblk, workas, a2D)
          endif
@@ -2817,7 +2818,7 @@
                ij = dynIJ(msh)
                j  = (ij-1)/nx_block + 1
                i  = ij - (j-1)*nx_block
-               workas(is) = fmN(ij,iblk)*vvelN(i,j,iblk)
+               workas(is) = fmN_slot(msh)*vvelN(i,j,iblk)
             enddo
             call accum_hist_field_2D_slotin(n_strcorxN, iblk, workas, a2D)
          endif
@@ -2832,7 +2833,7 @@
                ij = dynIJ(msh)
                j  = (ij-1)/nx_block + 1
                i  = ij - (j-1)*nx_block
-               workas(is) = -fmN(ij,iblk)*uvelN(i,j,iblk)
+               workas(is) = -fmN_slot(msh)*uvelN(i,j,iblk)
             enddo
             call accum_hist_field_2D_slotin(n_strcoryN, iblk, workas, a2D)
          endif
@@ -2847,7 +2848,7 @@
                ij = dynIJ(msh)
                j  = (ij-1)/nx_block + 1
                i  = ij - (j-1)*nx_block
-               workas(is) = fmE(ij,iblk)*vvelE(i,j,iblk)
+               workas(is) = fmE_slot(msh)*vvelE(i,j,iblk)
             enddo
             call accum_hist_field_2D_slotin(n_strcorxE, iblk, workas, a2D)
          endif
@@ -2862,7 +2863,7 @@
                ij = dynIJ(msh)
                j  = (ij-1)/nx_block + 1
                i  = ij - (j-1)*nx_block
-               workas(is) = -fmE(ij,iblk)*uvelE(i,j,iblk)
+               workas(is) = -fmE_slot(msh)*uvelE(i,j,iblk)
             enddo
             call accum_hist_field_2D_slotin(n_strcoryE, iblk, workas, a2D)
          endif
@@ -3684,7 +3685,7 @@
               ij = dynIJ(msh)
               j  = (ij-1)/nx_block + 1
               i  = ij - (j-1)*nx_block
-              worka(i,j) = aice_slot(msh)*fmU((j-1)*nx_block+i,iblk)*vvel((j-1)*nx_block+i,iblk)
+              worka(i,j) = aice_slot(msh)*fmU_slot(msh)*vvel((j-1)*nx_block+i,iblk)
            enddo
            call accum_hist_field(n_siforcecoriolx, iblk, worka(:,:), a2D)
          endif
@@ -3697,7 +3698,7 @@
               ij = dynIJ(msh)
               j  = (ij-1)/nx_block + 1
               i  = ij - (j-1)*nx_block
-              worka(i,j) = -aice_slot(msh)*fmU((j-1)*nx_block+i,iblk)*uvel((j-1)*nx_block+i,iblk)
+              worka(i,j) = -aice_slot(msh)*fmU_slot(msh)*uvel((j-1)*nx_block+i,iblk)
            enddo
            call accum_hist_field(n_siforcecorioly, iblk, worka(:,:), a2D)
          endif

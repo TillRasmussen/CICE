@@ -147,6 +147,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
           ss_tltxU_slot, ss_tltyU_slot, &
           umass_slot, &
           fcor_slot, &
+          cdn_ocnU_slot, &
           taubxU_slot, taubyU_slot, &
           strintxU_slot, strintyU_slot, taubxU_slot, taubyU_slot, &
           umassdti_slot, waterxU_slot, wateryU_slot, &
@@ -381,7 +382,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                          ss_tltxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                          ss_tltyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                          iceTmask  (:,iblk),   iceUmask  (:,iblk),   &
-                         fmU       (:,iblk), dt,                   &
+                         fmU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dt,                   &
                          strtltxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                          strtltyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                          strintxU  (:,iblk), strintyU  (:,iblk), &
@@ -527,7 +528,6 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          ! strength changes every timestep (ridging), so it is packed here
          ! rather than once at init.  stress_eap reads it from the slots now.
          call pack_to_slots(strength(:,:,iblk), dynMap(:,iblk), strength_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(fmU (:,iblk), dynMap(:,iblk), fmU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
          call pack_to_slots(Cdn_ocnU(:,:,iblk), dynMap(:,iblk), cdn_ocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
 
          ! ⚠ The stresses are NOT packed any more.  The slot copies are the
@@ -746,13 +746,13 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
          call dyn_finish                               &
               (nx_block,           ny_block,           &
-               icellU      (iblk), Cdn_ocnU(:,:,iblk), &
+               icellU      (iblk), cdn_ocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                indxUi    (:,iblk), indxUj    (:,iblk), &
                uvel(:,iblk), vvel(:,iblk), &
                uocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                vocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                aiU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-               fmU(:,iblk), &
+               fmU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                dynMap(:,iblk), &
                strocnxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                strocnyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
