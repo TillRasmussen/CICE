@@ -928,9 +928,11 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       integer (kind=int_kind), parameter :: &
          inc = 1        ! increment value for BLAS calls
 
-      ! these four hold copies of uvel/vvel, so they carry its flattened
-      ! shape: element (i,j,iblk) at ((j-1)*nx_block + i, iblk)
-      real (kind=dbl_kind), dimension (nx_block*ny_block,max_blocks) :: &
+      ! ⚠ These four hold copies of uvel/vvel, which are COMPRESSED here, so
+      ! uvel_slot/vvel_slot must track block uvel/vvel at every point this
+      ! routine reads them: once on entry, and again after each iteration's
+      ! halo update.  Both packs are explicit; nothing else refreshes them.
+      real (kind=dbl_kind), dimension (dynTot) :: &
          uprev_k  , & ! uvel at previous Picard iteration
          vprev_k  , & ! vvel at previous Picard iteration
          ulin     , & ! uvel to linearize vrel
@@ -946,9 +948,9 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          Fy           ! y residual vector, Fy = by - Av
 
       ! Scratch for the progress-residual norm only: uvel - uprev_k is formed
-      ! here and packed for global_norm.  Local, because nothing outside this
-      ! routine ever reads it.
-      real (kind=dbl_kind), dimension (nx_block*ny_block,max_blocks) :: &
+      ! here for global_norm.  Local, because nothing outside this routine
+      ! ever reads it -- and compressed, like the operands it is formed from.
+      real (kind=dbl_kind), dimension (dynTot) :: &
          fpresx   , & ! fixed point residual, x: fx = uvel - uprev_k
          fpresy       ! fixed point residual, y: fy = vvel - vprev_k
 
@@ -994,10 +996,16 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       ! Initialization
       res_num = 0
 
+      ! ⚠ uvel_slot is NOT current on entry: the only other pack is in
+      ! implicit_solver's deformations block, which runs AFTER this routine
+      ! returns, so the slot copy still holds the previous timestep's
+      ! velocity.  Refresh it here before anything reads it.
       !$OMP PARALLEL DO PRIVATE(iblk)
       do iblk = 1, nblocks
-         uprev_k(:,iblk) = uvel(:,iblk)
-         vprev_k(:,iblk) = vvel(:,iblk)
+         call pack_to_slots(uvel(:,iblk), dynMap(:,iblk), uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         call pack_to_slots(vvel(:,iblk), dynMap(:,iblk), vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         uprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
+         vprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
       enddo
       !$OMP END PARALLEL DO
 
@@ -1020,19 +1028,19 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          do iblk = 1, nblocks
 
             if (use_mean_vrel) then
-               ulin(:,iblk) = p5*uprev_k(:,iblk) + p5*uvel(:,iblk)
-               vlin(:,iblk) = p5*vprev_k(:,iblk) + p5*vvel(:,iblk)
+               ulin(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = p5*uprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) + p5*uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
+               vlin(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = p5*vprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) + p5*vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
             else
-               ulin(:,iblk) = uvel(:,iblk)
-               vlin(:,iblk) = vvel(:,iblk)
+               ulin(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
+               vlin(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
             endif
-            uprev_k(:,iblk) = uvel(:,iblk)
-            vprev_k(:,iblk) = vvel(:,iblk)
+            uprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
+            vprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
 
             ! The T-cell metrics are packed once per run in ice_dyn_shared
             ! and ice_grid, so only what changes per iteration is packed here.
-            call pack_to_slots(uprev_k (:,iblk), dynMap(:,iblk), ulin_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(vprev_k (:,iblk), dynMap(:,iblk), vlin_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            ulin_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = uprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
+            vlin_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = vprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
             call pack_to_slots(strength(:,:,iblk), dynMap(:,iblk), strength_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
 
             call calc_zeta_dPr (dynCnt(iblk), skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
@@ -1059,8 +1067,8 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
             ! here and written back.  The pair disappears as those consumers
             ! convert.
             call pack_to_slots(cdn_ocn(:,iblk), dynMap(:,iblk), Cw_s  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(ulin   (:,iblk), dynMap(:,iblk), ulin_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(vlin   (:,iblk), dynMap(:,iblk), vlin_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            ulin_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = ulin(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
+            vlin_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = vlin(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
 
             call calc_vrel_Cb (dynCnt(iblk), skipU (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
                                Cw_s  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),             &
@@ -1098,8 +1106,8 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
             call unpack_from_slots(by_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), by(:,iblk))
 
             ! Compute nonlinear residual norm (PDE residual)
-            call pack_to_slots(uprev_k(:,iblk), dynMap(:,iblk), mvu_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(vprev_k(:,iblk), dynMap(:,iblk), mvv_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            mvu_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = uprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
+            mvv_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = vprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
             call matvec (dynCnt(iblk), skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),                                                &
                          skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), dynNbr(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:),          &
                          dxT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
@@ -1139,8 +1147,8 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          ! then stays compressed through fgmres and arrays_to_vec alike.
          !$OMP PARALLEL DO PRIVATE(iblk)
          do iblk = 1, nblocks
-            call pack_to_slots(uprev_k(:,iblk), dynMap(:,iblk), solx_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(vprev_k(:,iblk), dynMap(:,iblk), soly_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            solx_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = uprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
+            soly_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = vprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
          enddo
          !$OMP END PARALLEL DO
          call arrays_to_vec (ntot, solx_s, soly_s, sol(:))
@@ -1332,15 +1340,26 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          call ice_timer_stop(timer_bound)
          call unstack_fields(fld2, uvel, vvel)
 
+         ! ⚠ The compressed copies are taken HERE, not where vec_to_arrays
+         ! writes uvel: the halo update above changes the ghost cells, and
+         ! a slot copy made before it would carry un-haloed ghosts into the
+         ! next iteration while the block form had the haloed ones.
+         !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
+         do iblk = 1, nblocks
+            call pack_to_slots(uvel(:,iblk), dynMap(:,iblk), uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            call pack_to_slots(vvel(:,iblk), dynMap(:,iblk), vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         enddo
+         !$OMP END PARALLEL DO
+
          call ice_restoring_halo(setfld='velocity')
 
          ! Compute "progress" residual norm
          !$OMP PARALLEL DO PRIVATE(iblk)
          do iblk = 1, nblocks
-            fpresx(:,iblk) = uvel(:,iblk) - uprev_k(:,iblk)
-            fpresy(:,iblk) = vvel(:,iblk) - vprev_k(:,iblk)
-            call pack_to_slots(fpresx(:,iblk), dynMap(:,iblk), fpx_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(fpresy(:,iblk), dynMap(:,iblk), fpy_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            fpresx(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) - uprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
+            fpresy(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) - vprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
+            fpx_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = fpresx(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
+            fpy_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = fpresy(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
          enddo
          !$OMP END PARALLEL DO
          prog_norm = global_norm(fpx_s, fpy_s)
@@ -2881,6 +2900,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       real (kind=dbl_kind), dimension (nx_block*ny_block,max_blocks), intent(out) :: &
          tpu     , & ! x-component of vector
          tpv         ! y-component of vector
+
 
       ! local variables
 
