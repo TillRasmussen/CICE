@@ -463,9 +463,20 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
          file=__FILE__, line=__LINE__)
 
+      ! strength_slot is filled HERE, ahead of the halo, because the halo is
+      ! now compressed.  The packs that used to run after it -- one per solver
+      ! branch -- would have re-packed block ghosts the compressed halo no
+      ! longer updates, straight over the haloed values.
+      !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
+      do iblk = 1, nblocks
+         call pack_to_slots(strength(:,:,iblk), dynMap(:,iblk), strength_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+      enddo
+      !$OMP END PARALLEL DO
+
       call ice_timer_start(timer_bound)
-      call ice_HaloUpdate (strength,           halo_info, &
-                           field_loc_center,   field_type_scalar)
+      call ice_HaloUpdate2DR8_compressed (strength_slot,    halo_info,         &
+                                          field_loc_center, field_type_scalar, &
+                                          dynMap,           dynOff)
       ! velocities may have changed in dyn_prep2
       call stack_fields(uvel, vvel, fld2)
       call ice_HaloUpdate (fld2,               halo_info, &
@@ -527,7 +538,6 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          ! constant through the subcycling, so packed once and never unpacked
          ! strength changes every timestep (ridging), so it is packed here
          ! rather than once at init.  stress_eap reads it from the slots now.
-         call pack_to_slots(strength(:,:,iblk), dynMap(:,iblk), strength_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
          call pack_to_slots(Cdn_ocnU(:,:,iblk), dynMap(:,iblk), cdn_ocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
 
          ! ⚠ The stresses are NOT packed any more.  The slot copies are the

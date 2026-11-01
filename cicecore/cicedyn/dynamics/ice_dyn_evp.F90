@@ -870,9 +870,20 @@
          vvel(:,:) = vvel(:,:)*reshape(uvm, shape(vvel))
       endif
 
+      ! strength_slot is filled HERE, ahead of the halo, because the halo is
+      ! now compressed.  The packs that used to run after it -- one per solver
+      ! branch -- would have re-packed block ghosts the compressed halo no
+      ! longer updates, straight over the haloed values.
+      !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
+      do iblk = 1, nblocks
+         call pack_to_slots(strength(:,:,iblk), dynMap(:,iblk), strength_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+      enddo
+      !$OMP END PARALLEL DO
+
       call ice_timer_start(timer_bound)
-      call ice_HaloUpdate (strength,         halo_info, &
-                           field_loc_center, field_type_scalar)
+      call ice_HaloUpdate2DR8_compressed (strength_slot,    halo_info,         &
+                                          field_loc_center, field_type_scalar, &
+                                          dynMap,           dynOff)
 
       ! velocities may have changed in dyn_prep2
       call stack_fields(uvel, vvel, fld2)
@@ -1019,7 +1030,6 @@
             ! stress components are the subcycle's own state, read and
             ! written every pass and unpacked once at the end for the
             ! restart.
-            call pack_to_slots(strength(:,:,iblk), dynMap(:,iblk), strength_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             ! ⚠ The stresses are NOT packed from the block arrays any more.  The
             ! slot copies are the live state: they persist between timesteps,
             ! dyn_prep2 applies the no-ice reset to them directly, and the
@@ -1234,7 +1244,6 @@
             call pack_to_slots(stress12T(:,iblk), dynMap(:,iblk), stress12T_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call pack_to_slots(stress12U(:,iblk), dynMap(:,iblk), stress12U_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             ! constant through the subcycling, so packed once
-            call pack_to_slots(strength(:,:,iblk), dynMap(:,iblk), strength_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             ! The step kernels read these every pass but nothing changes
             ! them during the subcycle, so one pack each is enough.
             call pack_to_slots(Cdn_ocnE(:,:,iblk), dynMap(:,iblk), cdn_ocne_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
@@ -1564,7 +1573,6 @@
             call pack_to_slots(stressmU (:,iblk), dynMap(:,iblk), stressmU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call pack_to_slots(stress12U(:,iblk), dynMap(:,iblk), stress12U_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             ! constant through the subcycling, so packed once
-            call pack_to_slots(strength(:,:,iblk), dynMap(:,iblk), strength_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             ! The step kernels read these every pass but nothing changes
             ! them during the subcycle, so one pack each is enough.
             call pack_to_slots(Cdn_ocnE(:,:,iblk), dynMap(:,iblk), cdn_ocne_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))

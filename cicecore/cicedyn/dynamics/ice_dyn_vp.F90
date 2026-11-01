@@ -871,15 +871,15 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                                   Cb, halo_info_mask)
 
       use ice_blocks, only: nx_block, ny_block
-      use ice_boundary, only: ice_HaloUpdate
-      use ice_constants, only: c1
+      use ice_boundary, only: ice_HaloUpdate2DR8_compressed
+      use ice_constants, only: c0, c1
       use ice_domain, only: maskhalo_dyn, halo_info
       use ice_domain_size, only: max_blocks
       use ice_flux, only:   fmU
       use ice_grid, only: dxT, dyT, uarear
       use ice_dyn_shared, only: DminTarea, dxhy, dyhx, cxp, cyp, cxm, cym
       use ice_state, only: uvel, vvel, strength
-      use ice_restoring, only: ice_restoring_halo
+      use ice_restoring, only: ice_restoring_halo, restore_ice
       use ice_timers, only: ice_timer_start, ice_timer_stop, timer_bound
 
       integer (kind=int_kind), intent(in) :: &
@@ -1318,40 +1318,53 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          endif
 
          !-----------------------------------------------------------------------
-         !     Put vector sol in uvel and vvel arrays
+         !     Put vector sol in the compressed velocity arrays
          !-----------------------------------------------------------------------
-         call vec_to_arrays (nx_block    , ny_block    , &
-                             nblocks     , max_blocks  , &
-                             icellU   (:), ntot        , &
-                             indxUi (:,:), indxUj (:,:), &
-                             sol      (:),               &
-                             uvel(:,:), vvel(:,:))
+         ! vec_to_slots is the compressed counterpart of vec_to_arrays: both
+         ! zero their destination and then write the active U cells, which are
+         ! the same set.  The block forms are not needed inside the iteration
+         ! at all -- they are rebuilt once when the solver exits.
+         call vec_to_slots (ntot, sol(:), uvel_slot, vvel_slot)
 
          ! Do halo update so that halo cells contain up to date info for advection
-         call stack_fields(uvel, vvel, fld2)
          call ice_timer_start(timer_bound)
          if (maskhalo_dyn) then
-            call ice_HaloUpdate (fld2,               halo_info_mask, &
-                                 field_loc_NEcorner, field_type_vector)
+            call ice_HaloUpdate2DR8_compressed (uvel_slot,          halo_info_mask,    &
+                                                field_loc_NEcorner, field_type_vector, &
+                                                dynMap,             dynOff)
+            call ice_HaloUpdate2DR8_compressed (vvel_slot,          halo_info_mask,    &
+                                                field_loc_NEcorner, field_type_vector, &
+                                                dynMap,             dynOff)
          else
-            call ice_HaloUpdate (fld2,               halo_info, &
-                                 field_loc_NEcorner, field_type_vector)
+            call ice_HaloUpdate2DR8_compressed (uvel_slot,          halo_info,         &
+                                                field_loc_NEcorner, field_type_vector, &
+                                                dynMap,             dynOff)
+            call ice_HaloUpdate2DR8_compressed (vvel_slot,          halo_info,         &
+                                                field_loc_NEcorner, field_type_vector, &
+                                                dynMap,             dynOff)
          endif
          call ice_timer_stop(timer_bound)
-         call unstack_fields(fld2, uvel, vvel)
 
-         ! ⚠ The compressed copies are taken HERE, not where vec_to_arrays
-         ! writes uvel: the halo update above changes the ghost cells, and
-         ! a slot copy made before it would carry un-haloed ghosts into the
-         ! next iteration while the block form had the haloed ones.
-         !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
-         do iblk = 1, nblocks
-            call pack_to_slots(uvel(:,iblk), dynMap(:,iblk), uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(vvel(:,iblk), dynMap(:,iblk), vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         enddo
-         !$OMP END PARALLEL DO
-
-         call ice_restoring_halo(setfld='velocity')
+         ! ⚠ ice_restoring_halo works on the block arrays, so the velocity
+         ! has to visit the block layout and come back.  Guarded, because the
+         ! round trip is pure cost when restoring is off -- which it is in
+         ! every VP configuration available here, so this path is UNTESTED
+         ! locally and is written to be correct rather than assumed dead.
+         if (restore_ice) then
+            !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
+            do iblk = 1, nblocks
+               call unpack_from_slots(uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), uvel(:,iblk))
+               call unpack_from_slots(vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), vvel(:,iblk))
+            enddo
+            !$OMP END PARALLEL DO
+            call ice_restoring_halo(setfld='velocity')
+            !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
+            do iblk = 1, nblocks
+               call pack_to_slots(uvel(:,iblk), dynMap(:,iblk), uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+               call pack_to_slots(vvel(:,iblk), dynMap(:,iblk), vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            enddo
+            !$OMP END PARALLEL DO
+         endif
 
          ! Compute "progress" residual norm
          !$OMP PARALLEL DO PRIVATE(iblk)
@@ -1369,6 +1382,20 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          endif
 
       enddo ! nonlinear iteration loop
+
+      ! The iteration ran entirely on the compressed velocities.  Rebuild the
+      ! block forms once for the consumers outside this routine -- zeroed
+      ! first, because vec_to_arrays used to zero EVERY block cell each
+      ! iteration, including cells with no slot, and unpack_from_slots leaves
+      ! those untouched.  History and restart read the full block array.
+      !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
+      do iblk = 1, nblocks
+         uvel(:,iblk) = c0
+         vvel(:,iblk) = c0
+         call unpack_from_slots(uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), uvel(:,iblk))
+         call unpack_from_slots(vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), vvel(:,iblk))
+      enddo
+      !$OMP END PARALLEL DO
 
       end subroutine anderson_solver
 
