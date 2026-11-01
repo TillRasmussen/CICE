@@ -3124,8 +3124,8 @@
               ij = dynIJ(msh)
               j  = (ij-1)/nx_block + 1
               i  = ij - (j-1)*nx_block
-              worka(i,j) = (rho_ice(i,j)*p5*(vice_slot(dynNbr(msh,nbr_E))+vice_slot(msh))*dyU((j-1)*nx_block+i,iblk) &
-                         + rhos*p5*(vsno_slot(dynNbr(msh,nbr_E))+vsno_slot(msh))*dyU((j-1)*nx_block+i,iblk)) &
+              worka(i,j) = (rho_ice(i,j)*p5*(vice_slot(dynOff(iblk)+dynNbr(msh,nbr_E))+vice_slot(msh))*dyU((j-1)*nx_block+i,iblk) &
+                         + rhos*p5*(vsno_slot(dynOff(iblk)+dynNbr(msh,nbr_E))+vsno_slot(msh))*dyU((j-1)*nx_block+i,iblk)) &
                          *  p5*(uvel((j-1-1)*nx_block+i,iblk)+uvel((j-1)*nx_block+i,iblk))
            enddo
            call accum_hist_field(n_sidmasstranx, iblk, worka(:,:), a2D)
@@ -3139,8 +3139,8 @@
               ij = dynIJ(msh)
               j  = (ij-1)/nx_block + 1
               i  = ij - (j-1)*nx_block
-              worka(i,j) = (rho_ice(i,j)*p5*(vice_slot(dynNbr(msh,nbr_N))+vice_slot(msh))*dxU((j-1)*nx_block+i,iblk) &
-                         + rhos*p5*(vsno_slot(dynNbr(msh,nbr_N))+vsno_slot(msh))*dxU((j-1)*nx_block+i,iblk)) &
+              worka(i,j) = (rho_ice(i,j)*p5*(vice_slot(dynOff(iblk)+dynNbr(msh,nbr_N))+vice_slot(msh))*dxU((j-1)*nx_block+i,iblk) &
+                         + rhos*p5*(vsno_slot(dynOff(iblk)+dynNbr(msh,nbr_N))+vsno_slot(msh))*dxU((j-1)*nx_block+i,iblk)) &
                          *  p5*(vvel((j-1)*nx_block+i-1,iblk)+vvel((j-1)*nx_block+i,iblk))
            enddo
            call accum_hist_field(n_sidmasstrany, iblk, worka(:,:), a2D)
