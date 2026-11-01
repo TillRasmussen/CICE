@@ -46,7 +46,7 @@
       use ice_domain, only: nblocks, distrb_info
       use ice_domain_size, only: max_blocks
       use ice_dyn_shared, only: dyn_prep1, dyn_prep2, dyn_finish, &
-          cosw, sinw, fcor_blk, uvel_init, vvel_init, dynOff, dynCnt, dynMap, dynIJ, dynMaxCnt, skipT, skipU, &
+          cosw, sinw, uvel_init, vvel_init, dynOff, dynCnt, dynMap, dynIJ, dynMaxCnt, skipT, skipU, &
           dynTot, pack_to_slots, unpack_from_slots, calc_seabed_stress_slot, &
           dynNbr, nbr_W, nbr_S, nbr_SW, nbr_E, nbr_N, nbr_NE, uarear_slot, &
           dxT_slot, dyT_slot, dxhy_slot, dyhx_slot, cxp_slot, cyp_slot, &
@@ -93,10 +93,7 @@
       ! step.  Those pairs are transitional, not the destination.
       real (kind=dbl_kind), dimension(:), allocatable :: &
          Cw_s     , & ! ocean-ice neutral drag coefficient, compressed
-         aiU_s    , & ! ice fraction on u-grid, compressed
          TbU_s    , & ! seabed stress factor (N/m^2), compressed
-         uocn_s   , & ! ocean current, x-direction (m/s), compressed
-         vocn_s   , & ! ocean current, y-direction (m/s), compressed
          ulin_s   , & ! uvel used to linearize vrel, compressed
          vlin_s   , & ! vvel used to linearize vrel, compressed
          vrel_s   , & ! coeff for tauw, compressed
@@ -195,8 +192,8 @@
                indxUj(nx_block*ny_block, max_blocks))
 
       ! init_dyn_shared above has built the compressed layout, so dynTot is set
-      allocate(Cw_s  (dynTot), aiU_s (dynTot), TbU_s (dynTot), &
-               uocn_s(dynTot), vocn_s(dynTot), ulin_s(dynTot), &
+      allocate(Cw_s  (dynTot), TbU_s (dynTot), &
+               ulin_s(dynTot), &
                vlin_s(dynTot), vrel_s(dynTot), Cb_s  (dynTot), &
                taubx_s(dynTot), tauby_s(dynTot))
       allocate(zetax2_s(dynTot,4), etax2_s(dynTot,4), &
@@ -232,10 +229,7 @@
       solx_s = c0
       soly_s = c0
       Cw_s   = c0
-      aiU_s  = c0
       TbU_s = c0
-      uocn_s = c0
-      vocn_s = c0
       ulin_s = c0
       vlin_s = c0
       vrel_s = c0
@@ -308,8 +302,6 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       ! flattened like the group below: element (i,j,iblk) at
       ! ((j-1)*nx_block + i, iblk)
       real (kind=dbl_kind), dimension (nx_block*ny_block,max_blocks) :: &
-         uocnU    , & ! i ocean current (m/s)
-         vocnU    , & ! j ocean current (m/s)
          cdn_ocnU , & ! ocn drag coefficient
          bxfix    , & ! part of bx that is constant during Picard
          byfix    , & ! part of by that is constant during Picard
@@ -429,8 +421,6 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       call grid_average_X2Y('S',tmass    , 'T'          , umass_slot, 'U')
       call grid_average_X2Y('S',aice_init, 'T'          , aiU     , 'U')
       call grid_average_X2Y('S',cdn_ocn  , 'T'          , cdn_ocnU, 'U')
-      call grid_average_X2Y('S',uocn     , grid_ocn_dynu, uocnU   , 'U')
-      call grid_average_X2Y('S',vocn     , grid_ocn_dynv, vocnU   , 'U')
       call grid_average_X2Y('S',ss_tltx  , grid_ocn_dynu, ss_tltxU_slot, 'U')
       call grid_average_X2Y('S',ss_tlty  , grid_ocn_dynv, ss_tltyU_slot, 'U')
 
@@ -484,7 +474,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                          umassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                          fcor_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                          umask     (:,iblk)  ,                                                                                         &
-                         uocnU     (:,iblk), vocnU     (:,iblk),                                                                       &
+                         uocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), vocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),                                                                       &
                          strairxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                          strairyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),                                                                   &
                          ss_tltxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -630,7 +620,6 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       call anderson_solver (icellU , &
                             indxUi  , indxUj , &
                             aiU     , ntot   , &
-                            uocnU   , vocnU  , &
                             waterxU , wateryU, &
                             bxfix   , byfix  , &
                             umassdti, sol    , &
@@ -876,7 +865,6 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       subroutine anderson_solver (icellU , &
                                   indxUi  , indxUj , &
                                   aiU     , ntot   , &
-                                  uocn    , vocn   , &
                                   waterxU , wateryU, &
                                   bxfix   , byfix  , &
                                   umassdti, sol    , &
@@ -916,8 +904,6 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          wateryU      ! for ocean stress calculation, y (m/s)
 
       real (kind=dbl_kind), dimension (nx_block*ny_block,max_blocks), intent(in) :: &
-         uocn     , & ! i ocean current (m/s)
-         vocn     , & ! j ocean current (m/s)
          cdn_ocn  , & ! ocn drag coefficient
          bxfix    , & ! part of bx that is constant during Picard
          byfix        ! part of by that is constant during Picard
@@ -1075,18 +1061,15 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
             ! here and written back.  The pair disappears as those consumers
             ! convert.
             call pack_to_slots(cdn_ocn(:,iblk), dynMap(:,iblk), Cw_s  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(aiU    (:,iblk), dynMap(:,iblk), aiU_s (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(uocn   (:,iblk), dynMap(:,iblk), uocn_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(vocn   (:,iblk), dynMap(:,iblk), vocn_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call pack_to_slots(ulin   (:,iblk), dynMap(:,iblk), ulin_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call pack_to_slots(vlin   (:,iblk), dynMap(:,iblk), vlin_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
 
             call calc_vrel_Cb (dynCnt(iblk), skipU (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
                                Cw_s  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),             &
-                               aiU_s (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),             &
+                               aiU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),             &
                                TbU_s (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),             &
-                               uocn_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),             &
-                               vocn_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),             &
+                               uocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),             &
+                               vocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),             &
                                ulin_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),             &
                                vlin_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),             &
                                vrel_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),             &

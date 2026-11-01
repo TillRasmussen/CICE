@@ -128,13 +128,6 @@
          brlx            ! beta   for momentum
 
       real (kind=dbl_kind), allocatable, public :: &
-         fcor_blk(:,:)       ! Coriolis parameter (1/s)
-
-      real (kind=dbl_kind), allocatable, public :: &
-         fcorE_blk(:,:)  , & ! Coriolis parameter at E points (1/s)
-         fcorN_blk(:,:)      ! Coriolis parameter at N points  (1/s)
-
-      real (kind=dbl_kind), allocatable, public :: &
          fld2(:,:,:,:), & ! 2 bundled fields
          fld3(:,:,:,:), & ! 3 bundled fields
          fld4(:,:,:,:)    ! 4 bundled fields
@@ -653,7 +646,6 @@
          vvel_init (dynTot), & ! y-component of velocity (m/s), beginning of timestep
          iceTmask  (nx_block*ny_block,max_blocks), & ! T mask for dynamics
          iceUmask  (nx_block*ny_block,max_blocks), & ! U mask for dynamics
-         fcor_blk  (nx_block*ny_block,max_blocks), & ! Coriolis
          DminTarea (nx_block*ny_block,max_blocks), & !
          stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
@@ -662,7 +654,6 @@
       vvel_init  = c0
       iceTmask   = .false.
       iceUmask   = .false.
-      fcor_blk   = c0
       DminTarea  = c0
 
       allocate( &
@@ -806,8 +797,6 @@
             vvelN_init (dynTot), & ! y-component of velocity (m/s), beginning of timestep
             iceEmask   (nx_block*ny_block,max_blocks), & ! T mask for dynamics
             iceNmask   (nx_block*ny_block,max_blocks), & ! U mask for dynamics
-            fcorE_blk  (nx_block*ny_block,max_blocks), & ! Coriolis
-            fcorN_blk  (nx_block*ny_block,max_blocks), &   ! Coriolis
             stat=ierr)
          if (ierr/=0) call abort_ice(subname//': Out of memory')
          uvelE_init  = c0
@@ -816,8 +805,6 @@
          vvelN_init  = c0
          iceEmask    = .false.
          iceNmask    = .false.
-         fcorE_blk   = c0
-         fcorN_blk   = c0
       endif
 
       end subroutine alloc_dyn_shared
@@ -1113,32 +1100,23 @@
 
          ! Coriolis parameter
          if (trim(coriolis) == 'constant') then
-            fcor_blk(ij,iblk) = 1.46e-4_dbl_kind ! Hibler 1979, N. Hem; 1/s
             if (msf > 0) fcor_slot(dynOff(iblk)+msf) = 1.46e-4_dbl_kind
          else if (trim(coriolis) == 'zero') then
-            fcor_blk(ij,iblk) = c0
             if (msf > 0) fcor_slot(dynOff(iblk)+msf) = c0
          else
-            fcor_blk(ij,iblk) = c2*omega*sin(ULAT(ij,iblk)) ! 1/s
             if (msf > 0) fcor_slot(dynOff(iblk)+msf) = c2*omega*sin(ULAT(ij,iblk))
          endif
 
          if (grid_ice == 'CD' .or. grid_ice == 'C') then
 
             if (trim(coriolis) == 'constant') then
-               fcorE_blk(ij,iblk) = 1.46e-4_dbl_kind ! Hibler 1979, N. Hem; 1/s
                if (msf > 0) fcorE_slot(dynOff(iblk)+msf) = 1.46e-4_dbl_kind
-               fcorN_blk(ij,iblk) = 1.46e-4_dbl_kind ! Hibler 1979, N. Hem; 1/s
                if (msf > 0) fcorN_slot(dynOff(iblk)+msf) = 1.46e-4_dbl_kind
             else if (trim(coriolis) == 'zero') then
-               fcorE_blk(ij,iblk) = c0
                if (msf > 0) fcorE_slot(dynOff(iblk)+msf) = c0
-               fcorN_blk(ij,iblk) = c0
                if (msf > 0) fcorN_slot(dynOff(iblk)+msf) = c0
             else
-               fcorE_blk(ij,iblk) = c2*omega*sin(ELAT(ij,iblk)) ! 1/s
                if (msf > 0) fcorE_slot(dynOff(iblk)+msf) = c2*omega*sin(ELAT(ij,iblk))
-               fcorN_blk(ij,iblk) = c2*omega*sin(NLAT(ij,iblk)) ! 1/s
                if (msf > 0) fcorN_slot(dynOff(iblk)+msf) = c2*omega*sin(NLAT(ij,iblk))
             endif
 
@@ -1514,7 +1492,12 @@
          Xmass   , & ! total mass of ice and snow (X grid)
          fcor        ! Coriolis parameter (1/s)
 
-      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
+      ! ⚠ Compressed.  Indexed by Xmap(ijb) at every use: the four in the
+      ! icellX loop, and the new-ice initialisation, which sits inside
+      ! if (iceXmask(ijb)) and so is only reached where a slot exists --
+      ! the unguarded uvel_init(Xmap(ijb)) two lines below relies on the
+      ! same invariant.
+      real (kind=dbl_kind), dimension (:), intent(in) :: &
          uocn    , & ! ocean current, x-direction (m/s)
          vocn        ! ocean current, y-direction (m/s)
 
@@ -1698,6 +1681,8 @@
       call chk_len(size(tauby)   , nslot, 'tauby'   , subname)
 
       call chk_len(size(strtlty) , nslot, 'strtlty' , subname)
+      call chk_len(size(uocn)    , nslot, 'uocn'    , subname)
+      call chk_len(size(vocn)    , nslot, 'vocn'    , subname)
       call chk_len(size(ss_tltx) , nslot, 'ss_tltx' , subname)
       call chk_len(size(ss_tlty) , nslot, 'ss_tlty' , subname)
       call chk_len(size(strairx) , nslot, 'strairx' , subname)
@@ -1831,8 +1816,8 @@
 
             ! initialize velocity for new ice points to ocean sfc current
             if (.not. iceXmask_old(i,j)) then
-               uvel(i,j) = uocn(i,j)
-               vvel(i,j) = vocn(i,j)
+               uvel(i,j) = uocn(Xmap(ijb))
+               vvel(i,j) = vocn(Xmap(ijb))
             endif
 
             ! compressed: this cell owns slot Xmap(ijb) for the whole run
@@ -1888,14 +1873,14 @@
          fm(i,j) = fcor(Xmap(ijb))*Xmass(Xmap(ijb))   ! Coriolis * mass
 
          ! for ocean stress
-         waterx(Xmap(ijb)) = uocn(i,j)*cosw - vocn(i,j)*sinw*sign(c1,fm(i,j))
-         watery(Xmap(ijb)) = vocn(i,j)*cosw + uocn(i,j)*sinw*sign(c1,fm(i,j))
+         waterx(Xmap(ijb)) = uocn(Xmap(ijb))*cosw - vocn(Xmap(ijb))*sinw*sign(c1,fm(i,j))
+         watery(Xmap(ijb)) = vocn(Xmap(ijb))*cosw + uocn(Xmap(ijb))*sinw*sign(c1,fm(i,j))
 
          ! combine tilt with wind stress
          if (trim(ssh_stress) == 'geostrophic') then
             ! calculate tilt from geostrophic currents if needed
-            strtltx(Xmap(ijb)) = -fm(i,j)*vocn(i,j)
-            strtlty(Xmap(ijb)) =  fm(i,j)*uocn(i,j)
+            strtltx(Xmap(ijb)) = -fm(i,j)*vocn(Xmap(ijb))
+            strtlty(Xmap(ijb)) =  fm(i,j)*uocn(Xmap(ijb))
          elseif (trim(ssh_stress) == 'coupled') then
             strtltx(Xmap(ijb)) = -gravit*Xmass(Xmap(ijb))*ss_tltx(Xmap(ijb))
             strtlty(Xmap(ijb)) = -gravit*Xmass(Xmap(ijb))*ss_tlty(Xmap(ijb))

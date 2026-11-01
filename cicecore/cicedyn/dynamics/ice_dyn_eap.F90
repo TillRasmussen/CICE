@@ -132,7 +132,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       use ice_history_shared, only: hist_field_needed, &
           n_strintx, n_strinty, n_siforceintstrx, n_siforceintstry, &
           n_taubx  , n_tauby
-      use ice_dyn_shared, only: fcor_blk, ndte, dtei, &
+      use ice_dyn_shared, only: ndte, dtei, &
           calc_seabed_stress_slot, calc_strint_slot, &
           str1_slot, str2_slot, str3_slot, str4_slot, &
           str5_slot, str6_slot, str7_slot, str8_slot, &
@@ -375,7 +375,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                          umassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                          fcor_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                          umask     (:,iblk)  ,                       &
-                         uocnU     (:,:,iblk), vocnU     (:,:,iblk), &
+                         uocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), vocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                          strairxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                          strairyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                          ss_tltxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &

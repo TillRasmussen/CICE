@@ -828,7 +828,7 @@ module ice_dyn_evp1d
      use ice_domain, only : distrb_info
      use ice_grid, only: dyT, dxT, uarear, tmask, &
              dynMap, dynOff, uarear_slot, dxT_slot, dyT_slot
-     use ice_dyn_shared, only: DminTarea, fcor_blk, DminTarea_slot
+     use ice_dyn_shared, only: DminTarea, fcor_slot, DminTarea_slot
      implicit none
 
      ! nx, ny
@@ -868,9 +868,13 @@ module ice_dyn_evp1d
      ! Coriolis is constant, so it is a static like the metrics above.  With it
      ! here, fmU and umassdti need not be gathered every timestep: dyn_prep2
      ! forms them as fcor*umass and umass/dt, so umass alone yields both.
-     ! ⚠ fcor and Tmask keep the block gather: fcor_blk has no slot form,
-     ! and Tmask is logical where gather_globalR8_compressed is real.
-     call gather_global(G_fcor     , fcor_blk , master_task, distrb_info, grid_ext=.true.)
+     ! ⚠ Tmask keeps the block gather: it is logical, where
+     ! gather_globalR8_compressed is real.  fcor no longer does -- it has a
+     ! slot form now, so it follows DminTarea above.  G_fcor is read only at
+     ! active cells, which own slots, and it is never scattered back, so the
+     ! ownership question that pins uvel/vvel does not arise here.
+     call gather_globalR8_compressed(G_fcor, fcor_slot, dynMap, dynOff, &
+                 master_task, distrb_info, c0, grid_ext=.true.)
      call gather_global(G_Tmask , Tmask , master_task, distrb_info, grid_ext=.true.)
 
   end subroutine gather_static

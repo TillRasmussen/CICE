@@ -47,7 +47,7 @@
           str1_slot, str2_slot, str3_slot, str4_slot, &
           str5_slot, str6_slot, str7_slot, str8_slot, &
           dyn_prep1, dyn_prep2, dyn_finish, &
-          ndte, yield_curve, ecci, denom1, arlx1i, fcor_blk, fcorE_blk, fcorN_blk, &
+          ndte, yield_curve, ecci, denom1, arlx1i, &
           uvel_init, vvel_init, uvelE_init, vvelE_init, uvelN_init, vvelN_init, &
           dynOff, dynCnt, dynMap, dynNbr, &
           uvel_slot, vvel_slot, aiU_slot, fmU_slot, TbU_slot, &
@@ -75,33 +75,10 @@
 
       ! C or CD grid
       real (kind=dbl_kind), allocatable :: &
-         uocnN    (:,:,:) , & ! i ocean current (m/s)
-         vocnN    (:,:,:) , & ! j ocean current (m/s)
-         cdn_ocnN (:,:,:) , & ! ocn drag coefficient
-         waterxN  (:,:)   , & ! for ocean stress calculation, x (m/s)
-         wateryN  (:,:)   , & ! for ocean stress calculation, y (m/s)
-         forcexN  (:,:)   , & ! work array: combined atm stress and ocn tilt, x
-         forceyN  (:,:)   , & ! work array: combined atm stress and ocn tilt, y
-         nmassdti (:,:)       ! mass of N-cell/dte (kg/m^2 s)
+         cdn_ocnN (:,:,:)    ! ocn drag coefficient
 ! all c or d
       real (kind=dbl_kind), allocatable :: &
-         uocnE    (:,:,:) , & ! i ocean current (m/s)
-         vocnE    (:,:,:) , & ! j ocean current (m/s)
-         cdn_ocnE (:,:,:) , & ! ocn drag coefficient
-         waterxE  (:,:)   , & ! for ocean stress calculation, x (m/s)
-         wateryE  (:,:)   , & ! for ocean stress calculation, y (m/s)
-         forcexE  (:,:)   , & ! work array: combined atm stress and ocn tilt, x
-         forceyE  (:,:)   , & ! work array: combined atm stress and ocn tilt, y
-         emassdti (:,:)       ! mass of E-cell/dte (kg/m^2 s)
-
-      ! the i and j dimensions are flattened: element (i,j,iblk) of the block
-      ! layout lives at ((j-1)*nx_block + i, iblk).
-      ! TARGET is required: these are the targets of the rank-3 aliases below
-      real (kind=dbl_kind), allocatable, target :: &
-         nmass    (:,:)   , & ! total mass of ice and snow (N grid)
-         emass    (:,:)   , & ! total mass of ice and snow (E grid)
-         aiN      (:,:)   , & ! ice fraction on N-grid
-         aiE      (:,:)       ! ice fraction on E-grid
+         cdn_ocnE (:,:,:)    ! ocn drag coefficient
 
       real (kind=dbl_kind), dimension (:,:,:), allocatable, public :: &
          ratiodxN    , & ! - dxN(i+1,j)   / dxN(i,j)
@@ -137,8 +114,6 @@
 
       ! B grid
       real (kind=dbl_kind), allocatable :: &
-         uocnU    (:,:,:) , & ! i ocean current (m/s)
-         vocnU    (:,:,:) , & ! j ocean current (m/s)
          cdn_ocnU (:,:,:) , & ! ocn drag coefficient
          waterxU  (:,:)   , & ! for ocean stress calculation, x (m/s)
          wateryU  (:,:)   , & ! for ocean stress calculation, y (m/s)
@@ -203,9 +178,7 @@
          call dyn_evp1d_init
       endif
 
-      allocate( uocnU    (nx_block,ny_block,max_blocks), & ! i ocean current (m/s)
-                vocnU    (nx_block,ny_block,max_blocks), & ! j ocean current (m/s)
-                cdn_ocnU (nx_block,ny_block,max_blocks), & ! ocn drag coefficient
+      allocate( cdn_ocnU (nx_block,ny_block,max_blocks), & ! ocn drag coefficient
                 tmass    (nx_block*ny_block,max_blocks), & ! total mass of ice and snow (kg/m^2)
                 waterxU  (nx_block*ny_block,max_blocks), & ! for ocean stress calculation, x (m/s)
                 wateryU  (nx_block*ny_block,max_blocks), & ! for ocean stress calculation, y (m/s)
@@ -231,30 +204,12 @@
                    stat=ierr)
          if (ierr/=0) call abort_ice(subname//' ERROR: Out of memory U evp')
 
-         allocate( uocnN    (nx_block,ny_block,max_blocks), &
-                   vocnN    (nx_block,ny_block,max_blocks), &
-                   cdn_ocnN (nx_block,ny_block,max_blocks), &
-                   waterxN  (nx_block*ny_block,max_blocks), &
-                   wateryN  (nx_block*ny_block,max_blocks), &
-                   forcexN  (nx_block*ny_block,max_blocks), &
-                   forceyN  (nx_block*ny_block,max_blocks), &
-                   aiN      (nx_block*ny_block,max_blocks), &
-                   nmass    (nx_block*ny_block,max_blocks), &
-                   nmassdti (nx_block*ny_block,max_blocks), &
+         allocate( cdn_ocnN (nx_block,ny_block,max_blocks), &
                    stat=ierr)
          if (ierr/=0) call abort_ice(subname//' ERROR: Out of memory N evp')
 
 
-         allocate( uocnE    (nx_block,ny_block,max_blocks), &
-                   vocnE    (nx_block,ny_block,max_blocks), &
-                   cdn_ocnE (nx_block,ny_block,max_blocks), &
-                   waterxE  (nx_block*ny_block,max_blocks), &
-                   wateryE  (nx_block*ny_block,max_blocks), &
-                   forcexE  (nx_block*ny_block,max_blocks), &
-                   forceyE  (nx_block*ny_block,max_blocks), &
-                   aiE      (nx_block*ny_block,max_blocks), &
-                   emass    (nx_block*ny_block,max_blocks), &
-                   emassdti (nx_block*ny_block,max_blocks), &
+         allocate( cdn_ocnE (nx_block,ny_block,max_blocks), &
                    stat=ierr)
          if (ierr/=0) call abort_ice(subname//' ERROR: Out of memory E evp')
 
@@ -507,11 +462,11 @@
       !-----------------------------------------------------------------
 
 !      call ice_timer_start(timer_bound)
-!      call ice_HaloUpdate (aice,              halo_info, &
+!      call ice_HaloUpdate (aice,              halo_info &
 !                           field_loc_center,  field_type_scalar)
-!      call ice_HaloUpdate (vice,              halo_info, &
+!      call ice_HaloUpdate (vice,              halo_info &
 !                           field_loc_center,  field_type_scalar)
-!      call ice_HaloUpdate (vsno,              halo_info, &
+!      call ice_HaloUpdate (vsno,              halo_info &
 !                           field_loc_center,  field_type_scalar)
 !      call ice_timer_stop(timer_bound)
 
@@ -571,8 +526,6 @@
       call grid_average_X2Y('S', tmass    , 'T'          , umass_slot, 'U')
       call grid_average_X2Y('S', aice_init, 'T'          , aiU     , 'U')
       call grid_average_X2Y('S', cdn_ocn  , 'T'          , cdn_ocnU, 'U')
-      call grid_average_X2Y('S', uocn     , grid_ocn_dynu, uocnU   , 'U')
-      call grid_average_X2Y('S', vocn     , grid_ocn_dynv, vocnU   , 'U')
       call grid_average_X2Y('S', ss_tltx  , grid_ocn_dynu, ss_tltxU_slot, 'U')
       call grid_average_X2Y('S', ss_tlty  , grid_ocn_dynv, ss_tltyU_slot, 'U')
 
@@ -591,26 +544,18 @@
       call grid_average_X2Y('S', vocn     , grid_ocn_dynv, vocnU_slot, 'U')
 
       if (grid_ice == 'CD' .or. grid_ice == 'C') then
-         call grid_average_X2Y('S', tmass    , 'T'          , emass   , 'E')
          call grid_average_X2Y('S', tmass    , 'T'          , emass_slot, 'E')
-         call grid_average_X2Y('S', aice_init, 'T'          , aiE     , 'E')
          call grid_average_X2Y('S', cdn_ocn  , 'T'          , cdn_ocnE, 'E')
-         call grid_average_X2Y('S', uocn     , grid_ocn_dynu, uocnE   , 'E')
-         call grid_average_X2Y('S', vocn     , grid_ocn_dynv, vocnE   , 'E')
          call grid_average_X2Y('S', ss_tltx  , grid_ocn_dynu, ss_tltxE_slot, 'E')
          call grid_average_X2Y('S', ss_tlty  , grid_ocn_dynv, ss_tltyE_slot, 'E')
-         call grid_average_X2Y('S', tmass    , 'T'          , nmass   , 'N')
          call grid_average_X2Y('S', tmass    , 'T'          , nmass_slot, 'N')
-         call grid_average_X2Y('S', aice_init, 'T'          , aiN     , 'N')
          call grid_average_X2Y('S', cdn_ocn  , 'T'          , cdn_ocnN, 'N')
-         call grid_average_X2Y('S', uocn     , grid_ocn_dynu, uocnN   , 'N')
-         call grid_average_X2Y('S', vocn     , grid_ocn_dynv, vocnN   , 'N')
          call grid_average_X2Y('S', ss_tltx  , grid_ocn_dynu, ss_tltxN_slot, 'N')
          call grid_average_X2Y('S', ss_tlty  , grid_ocn_dynv, ss_tltyN_slot, 'N')
 
          ! Same here: produced compressed rather than packed from the block
-         ! result further down.  uocnE/N and vocnE/N have no block reader left
-         ! once dyn_finish takes the compressed form.
+         ! result further down.  The block forms of these are gone: nothing
+         ! reads them any more.
          call grid_average_X2Y('S', aice_init, 'T'          , aiE_slot  , 'E')
          call grid_average_X2Y('S', uocn     , grid_ocn_dynu, uocnE_slot, 'E')
          call grid_average_X2Y('S', vocn     , grid_ocn_dynv, vocnE_slot, 'E')
@@ -677,7 +622,7 @@
                             umassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             fcor_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             umask     (:,iblk)  ,                       &
-                            uocnU     (:,:,iblk), vocnU     (:,:,iblk), &
+                            uocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), vocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strairxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strairyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             ss_tltxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -751,7 +696,7 @@
                             umassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             fcor_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             umaskCD   (:,iblk)  ,                       &
-                            uocnU     (:,:,iblk), vocnU     (:,:,iblk), &
+                            uocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), vocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strairxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strairyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             ss_tltxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -817,7 +762,7 @@
                             nmassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             fcorN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             nmask     (:,iblk)  ,                       &
-                            uocnN     (:,:,iblk), vocnN     (:,:,iblk), &
+                            uocnN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), vocnN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strairxN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strairyN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             ss_tltxN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -858,7 +803,7 @@
                             emassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             fcorE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             emask     (:,iblk)  ,                       &
-                            uocnE     (:,:,iblk), vocnE     (:,:,iblk), &
+                            uocnE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), vocnE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strairxE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             strairyE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             ss_tltxE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -2348,7 +2293,7 @@
 
 !         call icepack_query_parameters(puny_out=puny)
 !         call icepack_warnings_flush(nu_diag)
-!         if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
+!         if (icepack_warnings_aborted()) call abort_ice(error_message=subname &
 !            file=__FILE__, line=__LINE__)
 
 !         stressp_1(is) = sign(max(abs(stressp_1(is)),puny),stressp_1(is))
