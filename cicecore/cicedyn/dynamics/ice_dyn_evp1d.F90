@@ -208,8 +208,8 @@ module ice_dyn_evp1d
                            L_stressp_1 , L_stressp_2 , L_stressp_3 , L_stressp_4 , &
                            L_stressm_1 , L_stressm_2 , L_stressm_3 , L_stressm_4 , &
                            L_stress12_1, L_stress12_2, L_stress12_3, L_stress12_4, &
-                           L_umass     , L_uvel      , &
-                           L_vvel      , L_icetmask  , L_iceUmask)
+                           L_uvel      , L_vvel      ,                     &
+                           L_icetmask  , L_iceUmask)
 
     use ice_blocks    , only: ns_boundary_type
     use ice_calendar, only : write_history, write_restart, write_ic
@@ -250,13 +250,6 @@ module ice_dyn_evp1d
       L_stress12_1, L_stress12_2, L_stress12_3, L_stress12_4
     real(kind=dbl_kind), intent(in) :: dt   ! dynamics timestep
 
-    ! flattened as above.  umass is the last block field this solver still
-    ! takes: strength, cdn_ocnU, aiU, uocnU, vocnU, forcexU and forceyU used
-    ! to come in too, and were never read -- dyn_prep2 fills the slots as
-    ! well as the blocks, and the gather has taken the slot copies since
-    ! 2677687.  Only the declaration outlived the use.
-    real(kind=dbl_kind)   , dimension(:,:)  , intent(in) ::    &
-      L_umass
     ! L_iceTmask and L_iceUmask have their i and j dimensions flattened,
     ! i.e. element (i,j,iblk) lives at ((j-1)*nx_block + i, iblk)
     logical(kind=log_kind), dimension(:,:), intent(in) ::      &
@@ -312,7 +305,6 @@ module ice_dyn_evp1d
     ltripole = (trim(ns_boundary_type) == 'tripole')
 
     call gather_dyn(&
-                    L_umass     ,                                           &
                     L_iceTmask  , L_iceUmask  ,                             &
                     G_strintxU  , G_strintyU  , G_taubxU    , G_taubyU    , &
                     lstrint     , ltaub       ,                             &
@@ -985,34 +977,6 @@ module ice_dyn_evp1d
   ! The same, for a field that still has only a block form.  umass is the one
   ! left: fmU is fcor*umass and umassdti is umass/dt, so gathering it covers
   ! both.
-  subroutine gather_blk_slot_r8(A_1d, L_blk, n)
-
-     use ice_communicate, only : my_task, master_task
-     use ice_gather_scatter, only : gather_global
-     use ice_domain, only : distrb_info
-     implicit none
-
-     ! allocatable for the same reason as in gather_slot_r8
-     real(kind=dbl_kind), allocatable, dimension(:), intent(inout) :: A_1d
-     ! i and j flattened: element (i,j,iblk) at ((j-1)*nx_block + i, iblk)
-     real(kind=dbl_kind), dimension(:,:), intent(in)    :: L_blk
-     integer(kind=int_kind), intent(in) :: n
-
-     integer(kind=int_kind) :: iw, i, j
-
-     character(len=*), parameter :: subname = '(gather_blk_slot_r8)'
-
-     call gather_global(G_work, L_blk, master_task, distrb_info, grid_ext=.true.)
-
-     if (my_task /= master_task) return
-
-     do iw = 1, n
-        j = int((indxTij(iw) - 1) / nx) + 1
-        i =      indxTij(iw) - (j - 1) * nx
-        A_1d(iw) = G_work(i,j)
-     end do
-
-  end subroutine gather_blk_slot_r8
 
 !=============================================================================
 
@@ -1057,7 +1021,7 @@ module ice_dyn_evp1d
 
 !=============================================================================
 
-  subroutine gather_dyn(L_umass     ,                                           &
+  subroutine gather_dyn(                                                      &
                         L_icetmask  , L_iceUmask  ,                             &
                         G_strintxU  , G_strintyU  , G_taubxU    , G_taubyU    , &
                         lstrint     , ltaub       ,                             &
@@ -1067,16 +1031,12 @@ module ice_dyn_evp1d
      use ice_gather_scatter, only : gather_global, gather_globalR8_compressed, &
           slot_gather_filter
      use ice_grid, only : dynMap, dynOff
-     use ice_dyn_shared, only : strintxU_slot, strintyU_slot, &
+     use ice_dyn_shared, only : umass_slot, strintxU_slot, strintyU_slot, &
           taubxU_slot, taubyU_slot, TbU_slot, &
            strength_slot, cdn_ocnU_slot, aiU_slot, uocnU_slot, vocnU_slot, &
            forcexU_slot, forceyU_slot, uvel_slot, vvel_slot
      use ice_domain, only : distrb_info
      implicit none
-     ! these have their i and j dimensions flattened, i.e. element (i,j,iblk)
-     ! lives at ((j-1)*nx_block + i, iblk)
-     real(kind=dbl_kind)   , dimension(:,:)  , intent(in)  :: &
-        L_umass
      ! L_iceTmask and L_iceUmask have their i and j dimensions flattened,
      ! i.e. element (i,j,iblk) lives at ((j-1)*nx_block + i, iblk)
      logical(kind=log_kind), dimension(:,:), intent(in)  :: &
@@ -1124,7 +1084,7 @@ module ice_dyn_evp1d
      call gather_slot_r8(forceyU , forceyU_slot  , nActive)
      ! umass alone: fmU is fcor*umass and umassdti is umass/dt, and fcor is a
      ! static gathered once, so one field here replaces the two that were.
-     call gather_blk_slot_r8(umass, L_umass      , nActive)
+     call gather_slot_r8(umass   , umass_slot    , nActive)
      ! TbU has no block form any more -- seabed_stress_factor_* write the
      ! slots directly -- so it is gathered the way strintxU already is.
      call gather_slot_r8(Tbu     , TbU_slot      , nActive)
