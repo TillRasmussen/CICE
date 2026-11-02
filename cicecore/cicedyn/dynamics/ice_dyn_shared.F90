@@ -23,7 +23,7 @@
       ! solvers that import it from ice_dyn_shared are unchanged.
       use ice_grid, only: grid_ice,                                   &
                           dynOff, dynCnt, dynTot, dynMaxCnt,          &
-                          dynMap, dynNbr, dynIJ,                      &
+                          dynMap, dynNbr, dynNbrG, dynIJ,             &
                           set_ragged_layout, set_neighbours,          &
                           set_slot_cells, pack_to_slots,              &
                           unpack_from_slots,                          &
@@ -43,7 +43,7 @@
       private
 
       ! re-exported from ice_grid, which owns the ragged layout
-      public :: dynOff, dynCnt, dynTot, dynMaxCnt, dynMap, dynNbr, dynIJ
+      public :: dynOff, dynCnt, dynTot, dynMaxCnt, dynMap, dynNbr, dynNbrG, dynIJ
       public :: nbr_W, nbr_SW, nbr_S, nbr_E, nbr_NE, nbr_N, nbr_NW, nbr_SE
       public :: nbr_num
       public :: uarear_slot, tarear_slot, dxN_slot, dyE_slot, uarea_slot

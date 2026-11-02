@@ -237,6 +237,12 @@
 !   dynMap(ij,iblk) block-local slot of a cell, 0 if not stored
 !   dynIJ(slot)     reverse of dynMap
 !   dynNbr(slot,d)  block-local slot one step in direction d
+!   dynNbrG(slot,d) the SAME neighbour as a global slot index
+!
+! ⚠ dynNbr is indexed GLOBALLY but valued LOCALLY, so its consumers must
+! add dynOff(iblk).  dynNbrG needs no composition and is what the
+! task-wide kernels take.  Both are filled from one scan; dynNbr goes when
+! its last consumer does.
 !
 ! Each block owns a DEAD SLOT at dynOff+dynCnt+1, held at zero, so a missing
 ! neighbour reads as zero with no branch.  Slices handed to kernels are
@@ -267,7 +273,7 @@
          dynOff, dynCnt, dynIJ
 
       integer (kind=int_kind), dimension(:,:), allocatable, public :: &
-         dynMap, dynNbr
+         dynMap, dynNbr, dynNbrG
 
       ! Grid metrics in compressed form.  Constant for the whole run, so they
       ! are packed once here at creation rather than by whichever solver wants
@@ -6925,7 +6931,7 @@
 ! why the layout includes the ghost ring; a halo update refreshes them
 ! between subcycles exactly as it does in the block layout.
 
-      subroutine set_neighbours(map, off, cnt, nbr)
+      subroutine set_neighbours(map, off, cnt, nbr, nbrG)
 
       use ice_domain, only: nblocks
 
@@ -6938,7 +6944,8 @@
          cnt                ! number of slots held by each block
 
       integer (kind=int_kind), dimension(:,:), intent(out) :: &
-         nbr                ! (slot, direction) -> neighbour slot, 0 if none
+         nbr            , & ! (slot, direction) -> neighbour slot, BLOCK-LOCAL
+         nbrG               ! the same neighbour as a GLOBAL slot index
 
       ! local variables
 
@@ -6972,7 +6979,8 @@
       di(nbr_SE) = +1
       dj(nbr_SE) = -1
 
-      nbr(:,:) = 0   ! overwritten per stored cell below
+      nbr (:,:) = 0   ! overwritten per stored cell below
+      nbrG(:,:) = 0
 
       do iblk = 1, nblocks
          if (cnt(iblk) == 0) cycle
@@ -6984,7 +6992,8 @@
 
             ! default every direction to this block's dead slot, so a missing
             ! neighbour reads zero with no branch in the kernels
-            nbr(is,:) = cnt(iblk) + 1
+            nbr (is,:) =             cnt(iblk) + 1
+            nbrG(is,:) = off(iblk) + cnt(iblk) + 1
 
             do d = 1, nbr_num
                ii = i + di(d)
@@ -6992,10 +7001,12 @@
                if (ii < 1 .or. ii > nx_block) cycle
                if (jj < 1 .or. jj > ny_block) cycle
                if (map((jj-1)*nx_block + ii, iblk) == 0) cycle
-               ! store the BLOCK-LOCAL slot: a neighbour never leaves its own
-               ! block, and block-local values compose with the per-block
-               ! slices the kernels are handed
-               nbr(is,d) = map((jj-1)*nx_block + ii, iblk)
+               ! a neighbour never leaves its own block, so both forms are
+               ! available from the same lookup: block-local composes with the
+               ! per-block slices the old kernels take, global is what the
+               ! task-wide ones take directly
+               nbr (is,d) =             map((jj-1)*nx_block + ii, iblk)
+               nbrG(is,d) = off(iblk) + map((jj-1)*nx_block + ii, iblk)
             enddo
          enddo
          enddo
@@ -7380,9 +7391,9 @@
       deallocate(mask_any)
       dynMaxCnt = max(maxval(dynCnt), 1)
 
-      allocate(dynNbr(dynTot,nbr_num), stat=ierr)
+      allocate(dynNbr(dynTot,nbr_num), dynNbrG(dynTot,nbr_num), stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
-      call set_neighbours(dynMap, dynOff, dynCnt, dynNbr)
+      call set_neighbours(dynMap, dynOff, dynCnt, dynNbr, dynNbrG)
 
       allocate(dynIJ(dynTot), stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
