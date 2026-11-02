@@ -236,12 +236,12 @@
 !   dynTot          total slots over all local blocks
 !   dynMap(ij,iblk) block-local slot of a cell, 0 if not stored
 !   dynIJ(slot)     reverse of dynMap
-!   dynNbr(slot,d)  block-local slot one step in direction d
-!   dynNbrG(slot,d) the SAME neighbour as a global slot index
+!   Nbr_Local(slot,d)  block-local slot one step in direction d
+!   Nbr_Task(slot,d) the SAME neighbour as a global slot index
 !
-! ⚠ dynNbr is indexed GLOBALLY but valued LOCALLY, so its consumers must
-! add dynOff(iblk).  dynNbrG needs no composition and is what the
-! task-wide kernels take.  Both are filled from one scan; dynNbr goes when
+! ⚠ Nbr_Local is indexed GLOBALLY but valued LOCALLY, so its consumers must
+! add dynOff(iblk).  Nbr_Task needs no composition and is what the
+! task-wide kernels take.  Both are filled from one scan; Nbr_Local goes when
 ! its last consumer does.
 !
 ! Each block owns a DEAD SLOT at dynOff+dynCnt+1, held at zero, so a missing
@@ -273,7 +273,7 @@
          dynOff, dynCnt, dynIJ
 
       integer (kind=int_kind), dimension(:,:), allocatable, public :: &
-         dynMap, dynNbr, dynNbrG
+         dynMap, Nbr_Local, Nbr_Task
 
       ! Grid metrics in compressed form.  Constant for the whole run, so they
       ! are packed once here at creation rather than by whichever solver wants
@@ -5169,7 +5169,7 @@
 !
 ! ⚠ That is what makes this safe.  The numerator reads wght1 (tarea, uarea,
 ! earea, narea) at NEIGHBOURS, and those are nonzero over land, so reading
-! them through dynNbr would hand back the dead slot's c0 where the block path
+! them through Nbr_Local would hand back the dead slot's c0 where the block path
 ! has a real area -- the de0b9c3 fault class exactly.  Keeping the numerator
 ! block-indexed sidesteps it rather than working around it.
 !
@@ -7391,9 +7391,9 @@
       deallocate(mask_any)
       dynMaxCnt = max(maxval(dynCnt), 1)
 
-      allocate(dynNbr(dynTot,nbr_num), dynNbrG(dynTot,nbr_num), stat=ierr)
+      allocate(Nbr_Local(dynTot,nbr_num), Nbr_Task(dynTot,nbr_num), stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
-      call set_neighbours(dynMap, dynOff, dynCnt, dynNbr, dynNbrG)
+      call set_neighbours(dynMap, dynOff, dynCnt, Nbr_Local, Nbr_Task)
 
       allocate(dynIJ(dynTot), stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')

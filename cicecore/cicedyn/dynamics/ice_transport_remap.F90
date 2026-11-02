@@ -349,7 +349,7 @@
                               ice_HaloUpdate3DR8_compressed
       use ice_grid, only: HTE, HTN, dxu, dyu,       &
                           earea, narea, hm,   &
-                          dynMap, dynOff, dynCnt, dynNbr, dynIJ, dynTot, skipRmp, &
+                          dynMap, dynOff, dynCnt, Nbr_Local, dynIJ, dynTot, skipRmp, &
                           skipPhys, tarear_slot,                          &
                           dxU_slot, dyU_slot, HTN_slot, HTE_slot,         &
                           HTNe_slot, HTEn_slot, pack_to_slots
@@ -602,7 +602,7 @@
 
          call departure_points(nc,                                            &
                                skipRmp(dynOff(iblk)+1:dynOff(iblk)+nc),       &
-                               dynNbr (dynOff(iblk)+1:dynOff(iblk)+nc,:),     &
+                               Nbr_Local (dynOff(iblk)+1:dynOff(iblk)+nc,:),     &
                                dynIJ  (dynOff(iblk)+1:dynOff(iblk)+nc),       &
                                nx_block,                                      &
                                dt,                                            &
@@ -923,7 +923,7 @@
          ! open water
          call update_fields (dynCnt(iblk),                                   &
                              skipPhys(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                             dynNbr  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:), &
+                             Nbr_Local  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:), &
                              dynIJ   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
                              nx_block,                              &
                              ntrace,                                &
@@ -943,7 +943,7 @@
 
             call update_fields(dynCnt(iblk),                                   &
                                skipPhys(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                               dynNbr  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:), &
+                               Nbr_Local  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:), &
                                dynIJ   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
                                nx_block,                               &
                                ntrace,                                 &
@@ -1107,7 +1107,7 @@
                                    tx,             ty,         &
                                    tmask)
 
-      use ice_grid, only: dynMap, dynOff, dynCnt, dynNbr, skipRmp, &
+      use ice_grid, only: dynMap, dynOff, dynCnt, Nbr_Local, skipRmp, &
                           pack_to_slots
 
       integer (kind=int_kind), intent(in) ::   &
@@ -1253,7 +1253,7 @@
 
       call limited_gradient (ncells,                                            &
                              skipRmp(dynOff(iblk)+1:dynOff(iblk)+ncells),       &
-                             dynNbr (dynOff(iblk)+1:dynOff(iblk)+ncells,:),     &
+                             Nbr_Local (dynOff(iblk)+1:dynOff(iblk)+ncells,:),     &
                              mm,       hm_s,                                    &
                              zero_s,   zero_s,                                  &
                              mx,     my)
@@ -1303,7 +1303,7 @@
 
                call limited_gradient(ncells,                                      &
                                      skipRmp(dynOff(iblk)+1:dynOff(iblk)+ncells), &
-                                     dynNbr (dynOff(iblk)+1:dynOff(iblk)+ncells,:),&
+                                     Nbr_Local (dynOff(iblk)+1:dynOff(iblk)+ncells,:),&
                                      tm(:,nt), mmask,                             &
                                      mxav_s,   myav_s,                            &
                                      tx_s,     ty_s)
@@ -1355,7 +1355,7 @@
 
                call limited_gradient(ncells,                                      &
                                      skipRmp(dynOff(iblk)+1:dynOff(iblk)+ncells), &
-                                     dynNbr (dynOff(iblk)+1:dynOff(iblk)+ncells,:),&
+                                     Nbr_Local (dynOff(iblk)+1:dynOff(iblk)+ncells,:),&
                                      tm(:,nt), tmask(:,nt1),                      &
                                      mtxav(:,nt1), mtyav(:,nt1),                  &
                                      tx_s,     ty_s)
@@ -1915,8 +1915,8 @@
       !     areafact(ms,ng) = -areafac_ce(i+ise_tl, j+jse_tl)
       !
       ! Every shift is in {-1,0,+1} in both i and j, so each is a compass
-      ! neighbour and dynNbr would cover them mechanically.  The catch is
-      ! that dynNbr resolves a missing neighbour to the DEAD SLOT, which
+      ! neighbour and Nbr_Local would cover them mechanically.  The catch is
+      ! that Nbr_Local resolves a missing neighbour to the DEAD SLOT, which
       ! holds c0, while the block form reads the real area that land cell
       ! carries.
       !
@@ -2166,7 +2166,7 @@
       ! one grid-cell wide channels
       !-------------------------------------------------------------------
 
-      ! ⚠ dynMap returns 0 for a cell with no slot, where dynNbr would have
+      ! ⚠ dynMap returns 0 for a cell with no slot, where Nbr_Local would have
       ! returned the dead slot.  Reading a slot array at 0 is out of bounds,
       ! so resolve it here: the dead slot is the last element of the slice,
       ! and it holds c0 -- which is what dpx carries at an unmapped cell.
@@ -3809,7 +3809,7 @@
       logical (kind=log_kind), dimension (:), intent(in) ::   &
          skipme                ! .true. outside the physical domain
 
-      ! ⚠ dynNbr resolves a missing neighbour to the DEAD SLOT, which holds
+      ! ⚠ Nbr_Local resolves a missing neighbour to the DEAD SLOT, which holds
       ! c0, so it already does what the "if (mw < 1) mw = mdead" guard did
       ! around the old map lookup.
       integer (kind=int_kind), dimension (:,:), intent(in) ::   &

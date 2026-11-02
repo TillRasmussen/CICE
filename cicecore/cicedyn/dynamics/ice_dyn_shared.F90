@@ -23,7 +23,7 @@
       ! solvers that import it from ice_dyn_shared are unchanged.
       use ice_grid, only: grid_ice,                                   &
                           dynOff, dynCnt, dynTot, dynMaxCnt,          &
-                          dynMap, dynNbr, dynNbrG, dynIJ,             &
+                          dynMap, Nbr_Local, Nbr_Task, dynIJ,             &
                           set_ragged_layout, set_neighbours,          &
                           set_slot_cells, pack_to_slots,              &
                           unpack_from_slots,                          &
@@ -43,7 +43,7 @@
       private
 
       ! re-exported from ice_grid, which owns the ragged layout
-      public :: dynOff, dynCnt, dynTot, dynMaxCnt, dynMap, dynNbr, dynNbrG, dynIJ
+      public :: dynOff, dynCnt, dynTot, dynMaxCnt, dynMap, Nbr_Local, Nbr_Task, dynIJ
       public :: nbr_W, nbr_SW, nbr_S, nbr_E, nbr_NE, nbr_N, nbr_NW, nbr_SE
       public :: nbr_num
       public :: uarear_slot, tarear_slot, dxN_slot, dyE_slot, uarea_slot
@@ -214,10 +214,10 @@
       ! NW and SE exist for grid_average_X2Y on the C and CD grids: the E2NA
       ! shift averages over (0,0), N, W, NW and N2EA over (0,0), S, E, SE.
       ! Nothing on the B grid reads them, so they cost one unused column pair
-      ! in dynNbr there -- two integers per slot, a few MB on a large grid,
+      ! in Nbr_Local there -- two integers per slot, a few MB on a large grid,
       ! against the complexity of making nbr_num depend on grid_ice.
 
-      ! shape (dynTot, nbr_num), so dynNbr(:,d) is contiguous and one
+      ! shape (dynTot, nbr_num), so Nbr_Local(:,d) is contiguous and one
       ! direction can be passed as a contiguous rank-1 argument
 
       ! Reverse of dynMap: dynIJ(slot) is the cell (j-1)*nx_block+i that owns
@@ -280,7 +280,7 @@
       ! dynIJ(nbr(is,d)), a second indirection per access.  Those are constant,
       ! so they are packed once and never unpacked, like uarear_slot.
       !
-      ! Stencils, all inside the six directions dynNbr already holds:
+      ! Stencils, all inside the six directions Nbr_Local already holds:
       !   strain_rates_T  S on uvelN,dxN   W on vvelE,dyE
       !   stressC_T       W, S, SW on shearU, uarea
       !   div_stress_E*   S, E             div_stress_N*  W, N
@@ -829,7 +829,7 @@
 !   N2EA  SE   vvelN -> vvelE            area     (X2YA)
 !
 ! They live here rather than in ice_grid because they need dynMap, dynOff and
-! dynNbr, and ice_dyn_shared already uses ice_grid -- the other way round
+! Nbr_Local, and ice_dyn_shared already uses ice_grid -- the other way round
 ! would be circular.
 !
 ! The block loop is kept rather than iterating slots: the originals run over
@@ -841,7 +841,7 @@
 ! W, self, NW, N; SE sums S, SE, self, E -- and reordering would cost
 ! bit-for-bit agreement with the block-layout routine.
 !
-! dynNbr holds BLOCK-LOCAL slots, so a global index is dynOff(iblk) + nbr.
+! Nbr_Local holds BLOCK-LOCAL slots, so a global index is dynOff(iblk) + nbr.
 
       subroutine grid_average_X2YA_compressed(dir, work1, wght1, wsum, work2)
 
@@ -890,7 +890,7 @@
             select case (trim(dir))
 
             case('N')
-               isN = off + dynNbr(is,nbr_N)
+               isN = off + Nbr_Local(is,nbr_N)
                wtmp = wsum(is)
                if (wtmp /= c0) &
                work2(is) = (work1(is )*wght1(is )  &
@@ -898,7 +898,7 @@
                           / wtmp
 
             case('E')
-               isE = off + dynNbr(is,nbr_E)
+               isE = off + Nbr_Local(is,nbr_E)
                wtmp = wsum(is)
                if (wtmp /= c0) &
                work2(is) = (work1(is )*wght1(is )  &
@@ -906,9 +906,9 @@
                           / wtmp
 
             case('NW')
-               isW  = off + dynNbr(is,nbr_W )
-               isNW = off + dynNbr(is,nbr_NW)
-               isN  = off + dynNbr(is,nbr_N )
+               isW  = off + Nbr_Local(is,nbr_W )
+               isNW = off + Nbr_Local(is,nbr_NW)
+               isN  = off + Nbr_Local(is,nbr_N )
                wtmp = wsum(is)
                if (wtmp /= c0) &
                work2(is) = (work1(isW )*wght1(isW )  &
@@ -918,9 +918,9 @@
                           / wtmp
 
             case('SE')
-               isS  = off + dynNbr(is,nbr_S )
-               isSE = off + dynNbr(is,nbr_SE)
-               isE  = off + dynNbr(is,nbr_E )
+               isS  = off + Nbr_Local(is,nbr_S )
+               isSE = off + Nbr_Local(is,nbr_SE)
+               isE  = off + Nbr_Local(is,nbr_E )
                wtmp = wsum(is)
                if (wtmp /= c0) &
                work2(is) = (work1(isS )*wght1(isS )  &
@@ -993,9 +993,9 @@
             m   = dynMap(ijb,iblk)
             if (m == 0) cycle
             is   = off + m
-            isE  = off + dynNbr(is,nbr_E )
-            isN  = off + dynNbr(is,nbr_N )
-            isNE = off + dynNbr(is,nbr_NE)
+            isE  = off + Nbr_Local(is,nbr_E )
+            isN  = off + Nbr_Local(is,nbr_N )
+            isNE = off + Nbr_Local(is,nbr_NE)
 
             wtmp = wsum(is)
             if (wtmp /= c0) &
@@ -3662,7 +3662,7 @@
 ! subcycle on slots.  ⚠ The two share their arithmetic -- change one and the
 ! other must change with it, or C/CD stops being bit-for-bit with itself.
 !
-! The stencil is W on uvelE/dyE and S on vvelN/dxN, both already in dynNbr.
+! The stencil is W on uvelE/dyE and S on vvelN/dxN, both already in Nbr_Local.
 ! dxT and dyT are read POINTWISE and so stay block-indexed; divT and
 ! tensionT are consumed pointwise by the caller and stay block-indexed too.
 

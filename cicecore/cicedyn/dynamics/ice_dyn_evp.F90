@@ -49,7 +49,7 @@
           dyn_prep1, dyn_prep2, dyn_finish, &
           ndte, yield_curve, ecci, denom1, arlx1i, &
           uvel_init, vvel_init, uvelE_init, vvelE_init, uvelN_init, vvelN_init, &
-          dynOff, dynCnt, dynMap, dynNbr, dynNbrG, &
+          dynOff, dynCnt, dynMap, Nbr_Local, Nbr_Task, &
           uvel_slot, vvel_slot, aiU_slot, fmU_slot, TbU_slot, &
           rheofactU_slot, &
           umassdti_slot, waterxU_slot, wateryU_slot, &
@@ -317,7 +317,7 @@
           iceTmask, iceUmask, iceEmask, iceNmask, &
           dyn_haloUpdate, fld2, fld3, fld4, fld2c
       ! the compressed layout, and the C/CD slot arrays the subcycle runs on
-      use ice_dyn_shared, only: dynMap, dynOff, dynCnt, dynNbr, dynNbrG
+      use ice_dyn_shared, only: dynMap, dynOff, dynCnt, Nbr_Local, Nbr_Task
       ! strint* and taub* are diagnostics: history is their only consumer,
       ! nothing in the dynamics reads them.  So when no stream wants them this
       ! step, the work that builds them is skipped outright.  Gated coarsely
@@ -1111,7 +1111,7 @@
                                stressm_3_slot, stressm_4_slot, &
                                stress12_1_slot, stress12_2_slot, &
                                stress12_3_slot, stress12_4_slot, &
-                               dynNbrG, &
+                               Nbr_Task, &
                                str1_slot, str2_slot, &
                                str3_slot, str4_slot, &
                                str5_slot, str6_slot, &
@@ -1137,7 +1137,7 @@
                               taubxU_slot  , &
                               uvel_init,   vvel_init,  &
                               uvel_slot, vvel_slot, &
-                              dynNbrG, &
+                              Nbr_Task, &
                               TbU_slot , &
                               rheofactU_slot)
 
@@ -1185,7 +1185,7 @@
                        str3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), str4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                        str5_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), str6_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                        str7_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), str8_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                       dynNbr(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:), &
+                       Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:), &
                        strintxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                        strintyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
                   call unpack_from_slots(strintxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), strintxU(:,iblk))
@@ -1212,7 +1212,7 @@
          do iblk = 1, nblocks
             call deformations (                                                                                                              &
                                dynCnt(iblk), skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),                                                &
-                               dynNbr(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:), dynIJ(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),          &
+                               Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:), dynIJ(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),          &
                                uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                                dxT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
                                dxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
@@ -1270,7 +1270,7 @@
             ! NOTE these are actually strain rates * area  (m^2/s)
             !-----------------------------------------------------------------
                call strain_rates_U (dynCnt(iblk), skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                                    dynNbr(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
+                                    Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
                                     uvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                                     vvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                                     uvelN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -1304,7 +1304,7 @@
             !$OMP PARALLEL DO PRIVATE(iblk)
             do iblk = 1, nblocks
                call stressC_T (dynCnt(iblk)       , skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                               dynNbr(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
+                               Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
                                uvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                                vvelN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                                dxN_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -1378,7 +1378,7 @@
             do iblk = 1, nblocks
 
                call div_stress_Ex (dynCnt(iblk), skipE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                                   dynNbr(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
+                                   Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
                                    dxE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                                    dxU_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                                    dyT_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -1389,7 +1389,7 @@
                                    strintxE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) )
 
                call div_stress_Ny (dynCnt(iblk), skipN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                                   dynNbr(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
+                                   Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
                                    dxN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                                    dxT_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                                    dyU_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -1545,7 +1545,7 @@
          !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
          do iblk = 1, nblocks
             call deformationsC_T (dynCnt(iblk), skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),               &
-                                  dynNbr(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:), dynIJ(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),           &
+                                  Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:), dynIJ(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),           &
                                   uvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), vvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),  &
                                   uvelN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), vvelN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),  &
                                   dxN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),      &
@@ -1594,7 +1594,7 @@
             !$OMP PARALLEL DO PRIVATE(iblk)
             do iblk = 1, nblocks
                call stressCD_T (dynCnt(iblk)       , skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                                dynNbr(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
+                                Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
                                 uvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                                 vvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                                 uvelN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -1645,7 +1645,7 @@
             ! NOTE these are actually strain rates * area  (m^2/s)
             !-----------------------------------------------------------------
                call strain_rates_U (dynCnt(iblk), skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                                    dynNbr(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
+                                    Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
                                     uvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                                     vvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                                     uvelN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -1710,7 +1710,7 @@
             do iblk = 1, nblocks
 
                call div_stress_Ex (dynCnt(iblk), skipE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                                   dynNbr(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
+                                   Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
                                    dxE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                                    dxU_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                                    dyT_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -1721,7 +1721,7 @@
                                    strintxE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) )
 
                call div_stress_Ey (dynCnt(iblk), skipE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                                   dynNbr(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
+                                   Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
                                    dxE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                                    dxU_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                                    dyT_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -1732,7 +1732,7 @@
                                    strintyE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) )
 
                call div_stress_Nx (dynCnt(iblk), skipN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                                   dynNbr(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
+                                   Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
                                    dxN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                                    dxT_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                                    dyU_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -1743,7 +1743,7 @@
                                    strintxN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) )
 
                call div_stress_Ny (dynCnt(iblk), skipN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                                   dynNbr(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
+                                   Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
                                    dxN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                                    dxT_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                                    dyU_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -1894,7 +1894,7 @@
          !$OMP PARALLEL DO PRIVATE(iblk)
          do iblk = 1, nblocks
             call deformationsCD_T (dynCnt(iblk), skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),              &
-                                   dynNbr(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:), dynIJ(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),          &
+                                   Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:), dynIJ(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),          &
                                    uvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), vvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                                    uvelN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), vvelN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                                    dxN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),     &

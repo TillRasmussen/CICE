@@ -1512,7 +1512,7 @@ module ice_dyn_evp1d
      ! next row, and at j == ny they ran off the end of the grid entirely, so
      ! the union carried indices naming cells that do not exist.  A scan with
      ! explicit bounds guards cannot generate them.  It is how set_neighbours
-     ! builds dynNbr for the compressed 2-D layout, and the point of doing it
+     ! builds Nbr_Local for the compressed 2-D layout, and the point of doing it
      ! the same way here is that the two solvers then agree by construction
      ! rather than by two separate pieces of index arithmetic agreeing.
 

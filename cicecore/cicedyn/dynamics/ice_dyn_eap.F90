@@ -136,8 +136,8 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
           calc_seabed_stress_slot, calc_strint_slot, &
           str1_slot, str2_slot, str3_slot, str4_slot, &
           str5_slot, str6_slot, str7_slot, str8_slot, &
-          denom1, uvel_init, vvel_init, dynOff, dynCnt, dynMap, dynNbr, &
-          dynNbrG, &
+          denom1, uvel_init, vvel_init, dynOff, dynCnt, dynMap, Nbr_Local, &
+          Nbr_Task, &
           nbr_W, nbr_S, nbr_SW, &
           skipT, skipU, arlx1i, &
           stressp_1_slot , stressp_2_slot , stressp_3_slot , stressp_4_slot , &
@@ -572,7 +572,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                               arlx1i,               denom1,               &
                               uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                               vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              dynNbr(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:), &
+                              Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:), &
                               dxT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                               dxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                               dxhy_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyhx_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -639,7 +639,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                         taubxU_slot  , &
                         uvel_init,   vvel_init,   &
                         uvel_slot, vvel_slot, &
-                        dynNbrG, &
+                        Nbr_Task, &
                         ! always 1 here: the free-drift stress removal is not
                         ! implemented for EAP, as upstream notes in #1133
                         TbU_slot , &
@@ -716,7 +716,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
               str3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), str4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
               str5_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), str6_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
               str7_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), str8_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-              dynNbr(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:), &
+              Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:), &
                  strintxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                  strintyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call unpack_from_slots(strintxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), strintxU(:,iblk))

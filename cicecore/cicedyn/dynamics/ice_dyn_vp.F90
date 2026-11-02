@@ -48,7 +48,7 @@
       use ice_dyn_shared, only: dyn_prep1, dyn_prep2, dyn_finish, &
           cosw, sinw, uvel_init, vvel_init, dynOff, dynCnt, dynMap, dynIJ, dynMaxCnt, skipT, skipU, &
           dynTot, pack_to_slots, unpack_from_slots, calc_seabed_stress_slot, &
-          dynNbr, nbr_W, nbr_S, nbr_SW, nbr_E, nbr_N, nbr_NE, uarear_slot, &
+          Nbr_Local, nbr_W, nbr_S, nbr_SW, nbr_E, nbr_N, nbr_NE, uarear_slot, &
           dxT_slot, dyT_slot, dxhy_slot, dyhx_slot, cxp_slot, cyp_slot, &
           uvel_slot, vvel_slot, tarear_slot, dxU_slot, dyU_slot, &
           cxm_slot, cym_slot, DminTarea_slot, strength_slot, &
@@ -651,7 +651,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                          cyp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),          &
                          cxm_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),          &
                          cym_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),          &
-                         dynNbr  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:),          &
+                         Nbr_Local  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:),          &
                          zetax2_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),        &
                          etax2_s (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),        &
                          repprs_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),        &
@@ -676,7 +676,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          call pack_to_slots(vvel(:,iblk), dynMap(:,iblk), vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
          call deformations (                                                                                                              &
                             dynCnt(iblk), skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),                                                &
-                            dynNbr(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:), dynIJ(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),          &
+                            Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:), dynIJ(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),          &
                             uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             dxT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
                             dxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
@@ -1056,7 +1056,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                                 cym_slot      (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),    &
                                 DminTarea_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),    &
                                 strength_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),    &
-                                dynNbr        (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:),    &
+                                Nbr_Local        (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:),    &
                                 zetax2_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),        &
                                 etax2_s (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),        &
                                 repprs_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),        &
@@ -1100,7 +1100,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                             bx_s     (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),         &
                             by_s     (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),         &
                             vrel_s   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),         &
-                            dynNbr   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:))
+                            Nbr_Local   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:))
 
             call unpack_from_slots(bx_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), bx(:,iblk))
             call unpack_from_slots(by_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), by(:,iblk))
@@ -1109,7 +1109,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
             mvu_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = uprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
             mvv_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = vprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
             call matvec (dynCnt(iblk), skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),                                                &
-                         skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), dynNbr(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:),          &
+                         skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:),          &
                          dxT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
                          dxhy_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyhx_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                          cxp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), cyp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
@@ -1171,7 +1171,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                                        cyp_slot   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),       &
                                        cxm_slot   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),       &
                                        cym_slot   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),       &
-                                       dynNbr     (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:),       &
+                                       Nbr_Local     (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:),       &
                                        zetax2_s   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),     &
                                        etax2_s    (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),     &
                                        diag_rheo(:,:))
@@ -3201,7 +3201,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       !$OMP PARALLEL DO PRIVATE(iblk)
       do iblk = 1, nblocks
          call matvec (dynCnt(iblk), skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),                                                &
-                      skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), dynNbr(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:),          &
+                      skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:),          &
                       dxT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
                       dxhy_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyhx_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                       cxp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), cyp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
@@ -3294,7 +3294,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
             !$OMP PARALLEL DO PRIVATE(iblk)
             do iblk = 1, nblocks
                call matvec (dynCnt(iblk), skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),                                                    &
-                            skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), dynNbr(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:),              &
+                            skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:),              &
                             dxT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),       &
                             dxhy_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyhx_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),     &
                             cxp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), cyp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),       &
@@ -3584,7 +3584,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       !$OMP PARALLEL DO PRIVATE(iblk)
       do iblk = 1, nblocks
          call matvec (dynCnt(iblk), skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),                                                &
-                      skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), dynNbr(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:),          &
+                      skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:),          &
                       dxT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
                       dxhy_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyhx_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                       cxp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), cyp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
@@ -3676,7 +3676,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
             !$OMP PARALLEL DO PRIVATE(iblk)
             do iblk = 1, nblocks
                call matvec (dynCnt(iblk), skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),                                                    &
-                            skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), dynNbr(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:),              &
+                            skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:),              &
                             dxT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),       &
                             dxhy_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyhx_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),     &
                             cxp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), cyp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),       &
