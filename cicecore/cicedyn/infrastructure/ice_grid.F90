@@ -4393,6 +4393,24 @@
             call grid_average_X2YS_toslot('E' ,work1,tarea,hm,work2)
          case('T2NS')
             call grid_average_X2YS_toslot('N' ,work1,tarea,hm,work2)
+         case('U2TS')
+            call grid_average_X2YS_toslot('SW',work1,uarea,uvm,work2)
+         case('U2ES')
+            call grid_average_X2YS_toslot('S ',work1,uarea,uvm,work2)
+         case('U2NS')
+            call grid_average_X2YS_toslot('W ',work1,uarea,uvm,work2)
+         case('E2TS')
+            call grid_average_X2YS_toslot('W ',work1,earea,epm,work2)
+         case('E2US')
+            call grid_average_X2YS_toslot('N ',work1,earea,epm,work2)
+         case('E2NS')
+            call grid_average_X2YS_toslot('NW',work1,earea,epm,work2)
+         case('N2TS')
+            call grid_average_X2YS_toslot('S ',work1,narea,npm,work2)
+         case('N2US')
+            call grid_average_X2YS_toslot('E ',work1,narea,npm,work2)
+         case('N2ES')
+            call grid_average_X2YS_toslot('SE',work1,narea,npm,work2)
 
          case default
             call abort_ice(subname//' ERROR: unknown X2Y '//trim(X2Y), &
@@ -5508,6 +5526,143 @@
                   if (wtmp /= c0) &
                      work2(ms) = (mask1(ij         ,iblk)*work1(i,j  ,iblk)*wght1(ij         ,iblk)  &
                                 + mask1(ij+nx_block,iblk)*work1(i,j+1,iblk)*wght1(ij+nx_block,iblk)) &
+                                / wtmp
+               enddo
+               enddo
+            enddo
+            !$OMP END PARALLEL DO
+
+         case('SW')
+            !$OMP PARALLEL DO PRIVATE(iblk,i,j,ij,ms,wtmp,ilo,ihi,jlo,jhi,this_block)
+            do iblk = 1, nblocks
+               this_block = get_block(blocks_ice(iblk),iblk)
+               ilo = this_block%ilo
+               ihi = this_block%ihi
+               jlo = this_block%jlo
+               jhi = this_block%jhi
+               do j = jlo, jhi
+               do i = ilo, ihi
+                  ms = dynMap((j-1)*nx_block + i, iblk)
+                  if (ms < 1) cycle
+                  ms = dynOff(iblk) + ms
+                  ij = (j-1)*nx_block + i
+                  wtmp = (mask1(ij,iblk)*wght1(ij,iblk)  &
+                        + mask1(ij-1,iblk)*wght1(ij-1,iblk)  &
+                        + mask1(ij-nx_block,iblk)*wght1(ij-nx_block,iblk)  &
+                        + mask1(ij-1-nx_block,iblk)*wght1(ij-1-nx_block,iblk))
+                  if (wtmp /= c0) &
+                     work2(ms) = (mask1(ij,iblk)*work1(i  ,j  ,iblk)*wght1(ij,iblk)  &
+                                + mask1(ij-1,iblk)*work1(i-1,j  ,iblk)*wght1(ij-1,iblk)  &
+                                + mask1(ij-nx_block,iblk)*work1(i  ,j-1,iblk)*wght1(ij-nx_block,iblk)  &
+                                + mask1(ij-1-nx_block,iblk)*work1(i-1,j-1,iblk)*wght1(ij-1-nx_block,iblk)) &
+                                / wtmp
+               enddo
+               enddo
+            enddo
+            !$OMP END PARALLEL DO
+
+         case('NW')
+            !$OMP PARALLEL DO PRIVATE(iblk,i,j,ij,ms,wtmp,ilo,ihi,jlo,jhi,this_block)
+            do iblk = 1, nblocks
+               this_block = get_block(blocks_ice(iblk),iblk)
+               ilo = this_block%ilo
+               ihi = this_block%ihi
+               jlo = this_block%jlo
+               jhi = this_block%jhi
+               do j = jlo, jhi
+               do i = ilo, ihi
+                  ms = dynMap((j-1)*nx_block + i, iblk)
+                  if (ms < 1) cycle
+                  ms = dynOff(iblk) + ms
+                  ij = (j-1)*nx_block + i
+                  wtmp = (mask1(ij-1,iblk)*wght1(ij-1,iblk)  &
+                        + mask1(ij,iblk)*wght1(ij,iblk)  &
+                        + mask1(ij-1+nx_block,iblk)*wght1(ij-1+nx_block,iblk)  &
+                        + mask1(ij+nx_block,iblk)*wght1(ij+nx_block,iblk))
+                  if (wtmp /= c0) &
+                     work2(ms) = (mask1(ij-1,iblk)*work1(i-1,j  ,iblk)*wght1(ij-1,iblk)  &
+                                + mask1(ij,iblk)*work1(i  ,j  ,iblk)*wght1(ij,iblk)  &
+                                + mask1(ij-1+nx_block,iblk)*work1(i-1,j+1,iblk)*wght1(ij-1+nx_block,iblk)  &
+                                + mask1(ij+nx_block,iblk)*work1(i  ,j+1,iblk)*wght1(ij+nx_block,iblk)) &
+                                / wtmp
+               enddo
+               enddo
+            enddo
+            !$OMP END PARALLEL DO
+
+         case('SE')
+            !$OMP PARALLEL DO PRIVATE(iblk,i,j,ij,ms,wtmp,ilo,ihi,jlo,jhi,this_block)
+            do iblk = 1, nblocks
+               this_block = get_block(blocks_ice(iblk),iblk)
+               ilo = this_block%ilo
+               ihi = this_block%ihi
+               jlo = this_block%jlo
+               jhi = this_block%jhi
+               do j = jlo, jhi
+               do i = ilo, ihi
+                  ms = dynMap((j-1)*nx_block + i, iblk)
+                  if (ms < 1) cycle
+                  ms = dynOff(iblk) + ms
+                  ij = (j-1)*nx_block + i
+                  wtmp = (mask1(ij-nx_block,iblk)*wght1(ij-nx_block,iblk)  &
+                        + mask1(ij+1-nx_block,iblk)*wght1(ij+1-nx_block,iblk)  &
+                        + mask1(ij,iblk)*wght1(ij,iblk)  &
+                        + mask1(ij+1,iblk)*wght1(ij+1,iblk))
+                  if (wtmp /= c0) &
+                     work2(ms) = (mask1(ij-nx_block,iblk)*work1(i  ,j-1,iblk)*wght1(ij-nx_block,iblk)  &
+                                + mask1(ij+1-nx_block,iblk)*work1(i+1,j-1,iblk)*wght1(ij+1-nx_block,iblk)  &
+                                + mask1(ij,iblk)*work1(i  ,j  ,iblk)*wght1(ij,iblk)  &
+                                + mask1(ij+1,iblk)*work1(i+1,j  ,iblk)*wght1(ij+1,iblk)) &
+                                / wtmp
+               enddo
+               enddo
+            enddo
+            !$OMP END PARALLEL DO
+
+         case('W')
+            !$OMP PARALLEL DO PRIVATE(iblk,i,j,ij,ms,wtmp,ilo,ihi,jlo,jhi,this_block)
+            do iblk = 1, nblocks
+               this_block = get_block(blocks_ice(iblk),iblk)
+               ilo = this_block%ilo
+               ihi = this_block%ihi
+               jlo = this_block%jlo
+               jhi = this_block%jhi
+               do j = jlo, jhi
+               do i = ilo, ihi
+                  ms = dynMap((j-1)*nx_block + i, iblk)
+                  if (ms < 1) cycle
+                  ms = dynOff(iblk) + ms
+                  ij = (j-1)*nx_block + i
+                  wtmp = (mask1(ij-1,iblk)*wght1(ij-1,iblk)  &
+                        + mask1(ij,iblk)*wght1(ij,iblk))
+                  if (wtmp /= c0) &
+                     work2(ms) = (mask1(ij-1,iblk)*work1(i-1,j  ,iblk)*wght1(ij-1,iblk)  &
+                                + mask1(ij,iblk)*work1(i  ,j  ,iblk)*wght1(ij,iblk)) &
+                                / wtmp
+               enddo
+               enddo
+            enddo
+            !$OMP END PARALLEL DO
+
+         case('S')
+            !$OMP PARALLEL DO PRIVATE(iblk,i,j,ij,ms,wtmp,ilo,ihi,jlo,jhi,this_block)
+            do iblk = 1, nblocks
+               this_block = get_block(blocks_ice(iblk),iblk)
+               ilo = this_block%ilo
+               ihi = this_block%ihi
+               jlo = this_block%jlo
+               jhi = this_block%jhi
+               do j = jlo, jhi
+               do i = ilo, ihi
+                  ms = dynMap((j-1)*nx_block + i, iblk)
+                  if (ms < 1) cycle
+                  ms = dynOff(iblk) + ms
+                  ij = (j-1)*nx_block + i
+                  wtmp = (mask1(ij-nx_block,iblk)*wght1(ij-nx_block,iblk)  &
+                        + mask1(ij,iblk)*wght1(ij,iblk))
+                  if (wtmp /= c0) &
+                     work2(ms) = (mask1(ij-nx_block,iblk)*work1(i  ,j-1,iblk)*wght1(ij-nx_block,iblk)  &
+                                + mask1(ij,iblk)*work1(i  ,j  ,iblk)*wght1(ij,iblk)) &
                                 / wtmp
                enddo
                enddo
