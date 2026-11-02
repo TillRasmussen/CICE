@@ -1935,7 +1935,7 @@
 ! author: Elizabeth C. Hunke, LANL
 
       subroutine stepu (&
-                        ncells,               &
+                        lo, hi,               &
                         Cw,                   &
                         skipme,               &
                         aiX,                  &
@@ -1955,7 +1955,7 @@
                         TbU,        rheofactU)
 
       integer (kind=int_kind), intent(in) :: &
-         ncells                ! slots held by this block
+         lo, hi                ! slot range to process
 
       ! skipme(is) is .true. where the slot carries no ice this step.
       ! Together they replace the icellU / indxUi / indxUj / Xmap chain: this
@@ -2045,7 +2045,7 @@
       if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
          file=__FILE__, line=__LINE__)
 
-      do is = 1, ncells
+      do is = lo, hi
          if (skipme(is)) cycle
 
          uold = uvel(is)

@@ -137,6 +137,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
           str1_slot, str2_slot, str3_slot, str4_slot, &
           str5_slot, str6_slot, str7_slot, str8_slot, &
           denom1, uvel_init, vvel_init, dynOff, dynCnt, dynMap, dynNbr, &
+          dynNbrG, &
           nbr_W, nbr_S, nbr_SW, &
           skipT, skipU, arlx1i, &
           stressp_1_slot , stressp_2_slot , stressp_3_slot , stressp_4_slot , &
@@ -622,27 +623,27 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
 !            call ice_timer_start(timer_tmp2,iblk)
             call stepu (&
-                        dynCnt       (iblk),                      &
-                        cdn_ocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),  &
-                        skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                        aiU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                        str1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), str2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                        str3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), str4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                        str5_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), str6_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                        str7_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), str8_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                        uocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), vocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                        waterxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), wateryU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                        forcexU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), forceyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                        umassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), fmU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                        uarear_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),    &
-                        taubxU_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                        uvel_init(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),   vvel_init(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),   &
-                        uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                        dynNbr(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:), &
+                        dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk),                      &
+                        cdn_ocnU_slot,  &
+                        skipU, &
+                        aiU_slot , &
+                        str1_slot, str2_slot, &
+                        str3_slot, str4_slot, &
+                        str5_slot, str6_slot, &
+                        str7_slot, str8_slot, &
+                        uocnU_slot, vocnU_slot, &
+                        waterxU_slot, wateryU_slot, &
+                        forcexU_slot, forceyU_slot, &
+                        umassdti_slot, fmU_slot, &
+                        uarear_slot,    &
+                        taubxU_slot  , &
+                        uvel_init,   vvel_init,   &
+                        uvel_slot, vvel_slot, &
+                        dynNbrG, &
                         ! always 1 here: the free-drift stress removal is not
                         ! implemented for EAP, as upstream notes in #1133
-                        TbU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                        rheofactU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                        TbU_slot , &
+                        rheofactU_slot)
 !            call ice_timer_stop(timer_tmp2,iblk)
 
             !-----------------------------------------------------------------

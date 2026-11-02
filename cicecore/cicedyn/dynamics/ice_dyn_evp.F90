@@ -49,7 +49,7 @@
           dyn_prep1, dyn_prep2, dyn_finish, &
           ndte, yield_curve, ecci, denom1, arlx1i, &
           uvel_init, vvel_init, uvelE_init, vvelE_init, uvelN_init, vvelN_init, &
-          dynOff, dynCnt, dynMap, dynNbr, &
+          dynOff, dynCnt, dynMap, dynNbr, dynNbrG, &
           uvel_slot, vvel_slot, aiU_slot, fmU_slot, TbU_slot, &
           rheofactU_slot, &
           umassdti_slot, waterxU_slot, wateryU_slot, &
@@ -317,7 +317,7 @@
           iceTmask, iceUmask, iceEmask, iceNmask, &
           dyn_haloUpdate, fld2, fld3, fld4, fld2c
       ! the compressed layout, and the C/CD slot arrays the subcycle runs on
-      use ice_dyn_shared, only: dynMap, dynOff, dynCnt, dynNbr
+      use ice_dyn_shared, only: dynMap, dynOff, dynCnt, dynNbr, dynNbrG
       ! strint* and taub* are diagnostics: history is their only consumer,
       ! nothing in the dynamics reads them.  So when no stream wants them this
       ! step, the work that builds them is skipped outright.  Gated coarsely
@@ -1082,55 +1082,64 @@
 
             do ksub = 1,ndte        ! subcycling
 
+               ! dead slots too: stepu reads them for absent neighbours
+               str1_slot(:) = c0
+               str2_slot(:) = c0
+               str3_slot(:) = c0
+               str4_slot(:) = c0
+               str5_slot(:) = c0
+               str6_slot(:) = c0
+               str7_slot(:) = c0
+               str8_slot(:) = c0
                !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
                do iblk = 1, nblocks
 
                   !-----------------------------------------------------------------
                   ! stress tensor equation, total surface stress
                   !-----------------------------------------------------------------
-                  call stress (dynCnt(iblk)        , skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                               uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               dxT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               dxhy_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyhx_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               cxp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), cyp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               cxm_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), cym_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               DminTarea_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               strength_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               stressp_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), stressp_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               stressp_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), stressp_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               stressm_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), stressm_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               stressm_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), stressm_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               stress12_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), stress12_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               stress12_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), stress12_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               dynNbr(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:), &
-                               str1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), str2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               str3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), str4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               str5_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), str6_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               str7_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), str8_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                  call stress (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipT, &
+                               uvel_slot, vvel_slot, &
+                               dxT_slot, dyT_slot, &
+                               dxhy_slot, dyhx_slot, &
+                               cxp_slot, cyp_slot, &
+                               cxm_slot, cym_slot, &
+                               DminTarea_slot, &
+                               strength_slot, &
+                               stressp_1_slot, stressp_2_slot, &
+                               stressp_3_slot, stressp_4_slot, &
+                               stressm_1_slot, stressm_2_slot, &
+                               stressm_3_slot, stressm_4_slot, &
+                               stress12_1_slot, stress12_2_slot, &
+                               stress12_3_slot, stress12_4_slot, &
+                               dynNbrG, &
+                               str1_slot, str2_slot, &
+                               str3_slot, str4_slot, &
+                               str5_slot, str6_slot, &
+                               str7_slot, str8_slot)
 
                   !-----------------------------------------------------------------
                   ! momentum equation
                   !-----------------------------------------------------------------
                   call stepu (&
-                              dynCnt       (iblk),                     &
-                              cdn_ocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),  &
-                              skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                              aiU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              str1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), str2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              str3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), str4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              str5_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), str6_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              str7_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), str8_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              uocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), vocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              waterxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), wateryU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              forcexU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), forceyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              umassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), fmU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              uarear_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),    &
-                              taubxU_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              uvel_init(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),   vvel_init(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),  &
-                              uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              dynNbr(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:), &
-                              TbU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              rheofactU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                              dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk),                     &
+                              cdn_ocnU_slot,  &
+                              skipU, &
+                              aiU_slot , &
+                              str1_slot, str2_slot, &
+                              str3_slot, str4_slot, &
+                              str5_slot, str6_slot, &
+                              str7_slot, str8_slot, &
+                              uocnU_slot, vocnU_slot, &
+                              waterxU_slot, wateryU_slot, &
+                              forcexU_slot, forceyU_slot, &
+                              umassdti_slot, fmU_slot, &
+                              uarear_slot,    &
+                              taubxU_slot  , &
+                              uvel_init,   vvel_init,  &
+                              uvel_slot, vvel_slot, &
+                              dynNbrG, &
+                              TbU_slot , &
+                              rheofactU_slot)
 
                enddo  ! iblk
                !$OMP END PARALLEL DO
@@ -2083,7 +2092,7 @@
 !
 ! author: Elizabeth C. Hunke, LANL
 
-      subroutine stress (ncells,     skipme,     &
+      subroutine stress (lo, hi,     skipme,     &
                          uvel,       vvel,       &
                          dxT,        dyT,        &
                          dxhy,       dyhx,       &
@@ -2104,7 +2113,7 @@
       use ice_dyn_shared, only: strain_rates, visc_replpress
 
       integer (kind=int_kind), intent(in) :: &
-         ncells                ! slots held by this block
+         lo, hi                ! slot range to process
 
       ! uvel and vvel are COMPRESSED: this block's slice, 1-based, so cells
       ! are 1..cnt and the last element is the block's dead slot
@@ -2182,16 +2191,8 @@
       ! Initialize
       !-----------------------------------------------------------------
 
-      str1(:) = c0
-      str2(:) = c0
-      str3(:) = c0
-      str4(:) = c0
-      str5(:) = c0
-      str6(:) = c0
-      str7(:) = c0
-      str8(:) = c0
 
-      do is = 1, ncells
+      do is = lo, hi
          if (skipme(is)) cycle
 
           ! each neighbour slot was fetched twice, once for uvel and once for
