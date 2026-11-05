@@ -2212,8 +2212,10 @@
       use ice_calendar, only: new_year, write_history, write_restart, &
                               write_ic, timesecs, histfreq, nstreams, mmonth, &
                               new_month, write_histrest
-      use ice_dyn_eap, only: a11, a12, e11, e12, e22, s11, s12, s22, &
-          yieldstress11, yieldstress12, yieldstress22
+      use ice_dyn_eap, only: a11_slot, a12_slot, e11_slot, e12_slot, e22_slot, &
+                             s11_slot, s12_slot, s22_slot, &
+                             yieldstress11_slot, yieldstress12_slot, &
+                             yieldstress22_slot
       ! These four are read in the COMPRESSED layout: evp, eap and evp1d all
       ! keep them in slots, and VP never fills them at all -- its strintx is a
       ! local scalar in matvec/calc_bvec and the dyn_finish line that would
@@ -4561,11 +4563,11 @@
                  if (n_yieldstress22 (ns) /= 0) a2D(ms,n_yieldstress22(ns)) = spval_dbl
               else
                  if (n_divu     (ns) /= 0) a2D(ms,n_divu(ns))      = &
-                       divu ((j-1)*nx_block+i,iblk)*avail_hist_fields(n_divu(ns))%cona
+                       divu (ms)*avail_hist_fields(n_divu(ns))%cona
                  if (n_shear    (ns) /= 0) a2D(ms,n_shear(ns))     = &
-                       shear((j-1)*nx_block+i,iblk)*avail_hist_fields(n_shear(ns))%cona
+                       shear(ms)*avail_hist_fields(n_shear(ns))%cona
                  if (n_vort     (ns) /= 0) a2D(ms,n_vort(ns))      = &
-                       vort((j-1)*nx_block+i,iblk)*avail_hist_fields(n_vort(ns))%cona
+                       vort(ms)*avail_hist_fields(n_vort(ns))%cona
                  if (n_sig1     (ns) /= 0) a2D(ms,n_sig1(ns))      = &
                        sig1(ms)*avail_hist_fields(n_sig1(ns))%cona
                  if (n_sig2     (ns) /= 0) a2D(ms,n_sig2(ns))      = &
@@ -4577,9 +4579,9 @@
                  if (n_sistressmax(ns) /= 0) a2D(ms,n_sistressmax(ns)) = &
                        p5*(sig1(ms)-sig2(ms))*avail_hist_fields(n_sistressmax(ns))%cona
                  if (n_sidivvel(ns) /= 0) a2D(ms,n_sidivvel(ns)) = &
-                       divu ((j-1)*nx_block+i,iblk)*avail_hist_fields(n_sidivvel(ns))%cona
+                       divu (ms)*avail_hist_fields(n_sidivvel(ns))%cona
                  if (n_sishearvel(ns) /= 0) a2D(ms,n_sishearvel(ns)) = &
-                       shear ((j-1)*nx_block+i,iblk)*avail_hist_fields(n_sishearvel(ns))%cona
+                       shear (ms)*avail_hist_fields(n_sishearvel(ns))%cona
                  if (n_mlt_onset(ns) /= 0) a2D(ms,n_mlt_onset(ns)) = &
                        mlt_onset(i,j,iblk)
                  if (n_frz_onset(ns) /= 0) a2D(ms,n_frz_onset(ns)) = &
@@ -4613,27 +4615,27 @@
                        trcr_slot(ms,nt_FY)*avail_hist_fields(n_FY(ns))%cona
 
                  if (n_a11     (ns) /= 0) a2D(ms,n_a11(ns))      = &
-                       a11 ((j-1)*nx_block+i,iblk)*avail_hist_fields(n_a11(ns))%cona
+                       a11_slot (ms)*avail_hist_fields(n_a11(ns))%cona
                  if (n_a12     (ns) /= 0) a2D(ms,n_a12(ns))      = &
-                       a12 ((j-1)*nx_block+i,iblk)*avail_hist_fields(n_a12(ns))%cona
+                       a12_slot (ms)*avail_hist_fields(n_a12(ns))%cona
                  if (n_e11     (ns) /= 0) a2D(ms,n_e11(ns))      = &
-                       e11 ((j-1)*nx_block+i,iblk)*avail_hist_fields(n_e11(ns))%cona
+                       e11_slot (ms)*avail_hist_fields(n_e11(ns))%cona
                  if (n_e12     (ns) /= 0) a2D(ms,n_e12(ns))      = &
-                       e12 ((j-1)*nx_block+i,iblk)*avail_hist_fields(n_e12(ns))%cona
+                       e12_slot (ms)*avail_hist_fields(n_e12(ns))%cona
                  if (n_e22     (ns) /= 0) a2D(ms,n_e22(ns))      = &
-                       e22 ((j-1)*nx_block+i,iblk)*avail_hist_fields(n_e22(ns))%cona
+                       e22_slot (ms)*avail_hist_fields(n_e22(ns))%cona
                  if (n_s11     (ns) /= 0) a2D(ms,n_s11(ns))      = &
-                       s11 ((j-1)*nx_block+i,iblk)*avail_hist_fields(n_s11(ns))%cona
+                       s11_slot (ms)*avail_hist_fields(n_s11(ns))%cona
                  if (n_s12     (ns) /= 0) a2D(ms,n_s12(ns))      = &
-                       s12 ((j-1)*nx_block+i,iblk)*avail_hist_fields(n_s12(ns))%cona
+                       s12_slot (ms)*avail_hist_fields(n_s12(ns))%cona
                  if (n_s22     (ns) /= 0) a2D(ms,n_s22(ns))      = &
-                       s22 ((j-1)*nx_block+i,iblk)*avail_hist_fields(n_s22(ns))%cona
+                       s22_slot (ms)*avail_hist_fields(n_s22(ns))%cona
                  if (n_yieldstress11     (ns) /= 0) a2D(ms,n_yieldstress11(ns))      = &
-                       yieldstress11 ((j-1)*nx_block+i,iblk)*avail_hist_fields(n_yieldstress11(ns))%cona
+                       yieldstress11_slot (ms)*avail_hist_fields(n_yieldstress11(ns))%cona
                  if (n_yieldstress12     (ns) /= 0) a2D(ms,n_yieldstress12(ns))      = &
-                       yieldstress12 ((j-1)*nx_block+i,iblk)*avail_hist_fields(n_yieldstress12(ns))%cona
+                       yieldstress12_slot (ms)*avail_hist_fields(n_yieldstress12(ns))%cona
                  if (n_yieldstress22     (ns) /= 0) a2D(ms,n_yieldstress22(ns))      = &
-                       yieldstress22 ((j-1)*nx_block+i,iblk)*avail_hist_fields(n_yieldstress22(ns))%cona
+                       yieldstress22_slot (ms)*avail_hist_fields(n_yieldstress22(ns))%cona
               endif
            enddo                ! j
 

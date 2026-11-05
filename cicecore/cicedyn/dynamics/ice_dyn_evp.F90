@@ -456,18 +456,15 @@
 !                           field_loc_center,  field_type_scalar)
 !      call ice_timer_stop(timer_bound)
 
+      ! Compressed: one pass over dynTot, not nblocks x nx_block x ny_block.
+      rdg_conv  = c0
+      rdg_shear = c0
+      divu      = c0
+      shear     = c0
+      vort      = c0
+
       !$OMP PARALLEL DO PRIVATE(iblk,i,j,ilo,ihi,jlo,jhi,this_block) SCHEDULE(runtime)
       do iblk = 1, nblocks
-
-         do j = 1, ny_block
-         do i = 1, nx_block
-            rdg_conv ((j-1)*nx_block+i,iblk) = c0
-            rdg_shear((j-1)*nx_block+i,iblk) = c0
-            divu ((j-1)*nx_block+i,iblk) = c0
-            shear((j-1)*nx_block+i,iblk) = c0
-            vort ((j-1)*nx_block+i,iblk) = c0
-         enddo
-         enddo
 
          !-----------------------------------------------------------------
          ! preparation for dynamics
@@ -1208,21 +1205,17 @@
          ! save quantities for mechanical redistribution
          !-----------------------------------------------------------------
 
-         !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
-         do iblk = 1, nblocks
             call deformations (                                                                                                              &
-                               dynCnt(iblk), skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),                                                &
-                               Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:), dynIJ(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),          &
-                               uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               dxT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
-                               dxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
-                               cxp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), cyp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
-                               cxm_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), cym_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
-                               tarear_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), vort(:,iblk),                                      &
-                               shear   (:,iblk), divu     (:,iblk),                                                                      &
-                               rdg_conv(:,iblk), rdg_shear(:,iblk) )
-         enddo
-         !$OMP END PARALLEL DO
+                               1, dynTot, skipT,                                                &
+                               Nbr_Task, dynIJ,          &
+                               uvel_slot, vvel_slot, &
+                               dxT_slot, dyT_slot,   &
+                               dxU_slot, dyU_slot,   &
+                               cxp_slot, cyp_slot,   &
+                               cxm_slot, cym_slot,   &
+                               tarear_slot, vort,                                      &
+                               shear   , divu     ,                                                                      &
+                               rdg_conv, rdg_shear )
 
       elseif (grid_ice == "C") then
 
@@ -1534,21 +1527,17 @@
          ! save quantities for mechanical redistribution
          !-----------------------------------------------------------------
 
-         !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
-         do iblk = 1, nblocks
-            call deformationsC_T (dynCnt(iblk), skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),               &
-                                  Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:), dynIJ(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),           &
-                                  uvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), vvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),  &
-                                  uvelN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), vvelN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),  &
-                                  dxN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),      &
-                                  dxT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),      &
-                                  tarear_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), uarea_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                  uareaavg_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),                                                      &
-                                  shearU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), vort(:,iblk),    &
-                                  shear   (:,iblk), divu     (:,iblk), &
-                                  rdg_conv(:,iblk), rdg_shear(:,iblk))
-         enddo
-         !$OMP END PARALLEL DO
+            call deformationsC_T (1, dynTot, skipT,               &
+                                  Nbr_Task, dynIJ,           &
+                                  uvelE_slot, vvelE_slot,  &
+                                  uvelN_slot, vvelN_slot,  &
+                                  dxN_slot, dyE_slot,      &
+                                  dxT_slot, dyT_slot,      &
+                                  tarear_slot, uarea_slot, &
+                                  uareaavg_slot,                                                      &
+                                  shearU_slot, vort,    &
+                                  shear   , divu     , &
+                                  rdg_conv, rdg_shear)
 
       elseif (grid_ice == "CD") then
 
@@ -1875,19 +1864,15 @@
          ! save quantities for mechanical redistribution
          !-----------------------------------------------------------------
 
-         !$OMP PARALLEL DO PRIVATE(iblk)
-         do iblk = 1, nblocks
-            call deformationsCD_T (dynCnt(iblk), skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),              &
-                                   Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:), dynIJ(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),          &
-                                   uvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), vvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                   uvelN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), vvelN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                   dxN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),     &
-                                   dxT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),     &
-                                   tarear_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), vort(:,iblk),   &
-                                   shear   (:,iblk), divu     (:,iblk), &
-                                   rdg_conv(:,iblk), rdg_shear(:,iblk))
-         enddo
-         !$OMP END PARALLEL DO
+            call deformationsCD_T (1, dynTot, skipT,              &
+                                   Nbr_Task, dynIJ,          &
+                                   uvelE_slot, vvelE_slot, &
+                                   uvelN_slot, vvelN_slot, &
+                                   dxN_slot, dyE_slot,     &
+                                   dxT_slot, dyT_slot,     &
+                                   tarear_slot, vort,   &
+                                   shear   , divu     , &
+                                   rdg_conv, rdg_shear)
       endif   ! grid_ice
 
       call ice_timer_stop(timer_evp)

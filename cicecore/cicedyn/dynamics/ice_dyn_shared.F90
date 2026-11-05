@@ -3176,7 +3176,7 @@
 ! Delta and Deltapp are called Delta_FG and Delta_G 
 ! in Lemieux et al. paper. 
 
-      subroutine deformations (ncells,     skipme, &
+      subroutine deformations (lo, hi,     skipme, &
                                nbr,        ijslot, &
                                uvel,       vvel,   &
                                dxT,        dyT,    &
@@ -3187,8 +3187,10 @@
                                shear,      divu,   &
                                rdg_conv,   rdg_shear )
 
+      ! Slot range, as ice_dyn_core1d's kernels take lb/ub.  Callers pass
+      ! 1, dynTot; the pair is the shape the 1-D kernels share.
       integer (kind=int_kind), intent(in) :: &
-         ncells                ! slots held by this block
+         lo, hi                ! slot range to process
 
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
          skipme       ! inactive-slot flag, T cells
@@ -3251,7 +3253,19 @@
 
       character(len=*), parameter :: subname = '(deformations)'
 
-      do is = 1, ncells
+      ! schedule(static), not runtime -- see the note in stress.
+      !$omp parallel do schedule(static) default(none)              &
+      !$omp private(is, isW, isS, isSW, ijb, divune, divunw, divuse, &
+      !$omp         divusw, tensionne, tensionnw, tensionse, tensionsw, &
+      !$omp         shearne, shearnw, shearse, shearsw, Deltane, Deltanw, &
+      !$omp         Deltase, Deltasw, Deltappne, Deltappnw, Deltappse, &
+      !$omp         Deltappsw, tmp, numetp, nume, deno, dvdxn, dvdxs, &
+      !$omp         dudye, dudyw) &
+      !$omp  shared(lo, hi, skipme, nbr, ijslot, uvel, vvel, dxT, dyT, &
+      !$omp         dxU, dyU, cxp, cyp, cxm, cym, tarear, vort, shear, &
+      !$omp         divu, rdg_conv, rdg_shear, e_factor, epp2i, arlx1i, &
+      !$omp         denom1, revp, capping)
+      do is = lo, hi
          if (skipme(is)) cycle
 
          isW  = nbr(is,nbr_W )
@@ -3284,7 +3298,7 @@
          !-----------------------------------------------------------------
          ! deformations for mechanical redistribution
          !-----------------------------------------------------------------
-         divu(ijb) = p25*(divune + divunw + divuse + divusw) * tarear(is)
+         divu(is) = p25*(divune + divunw + divuse + divusw) * tarear(is)
 
          numetp = p25*(Deltappne + Deltappnw + Deltappse + Deltappsw)
          nume   = numetp**2
@@ -3292,12 +3306,12 @@
          deno   = max(deno,eps13) ! avoids div by zero
          tmp    = nume*tarear(is)/deno
 
-         rdg_conv(ijb)  = -min(divu(ijb),c0)
-         rdg_shear(ijb) = p5*(tmp-abs(divu(ijb)))
+         rdg_conv(is)  = -min(divu(is),c0)
+         rdg_shear(is) = p5*(tmp-abs(divu(is)))
 
          ! diagnostic only
          ! shear = sqrt(tension**2 + shearing**2)
-         shear(ijb) = p25*tarear(is)*sqrt(                                 &
+         shear(is) = p25*tarear(is)*sqrt(                                 &
                       (tensionne + tensionnw + tensionse + tensionsw)**2 + &
                       (shearne   + shearnw   + shearse   + shearsw  )**2)
 
@@ -3306,9 +3320,10 @@
          dvdxs = dyU(isS)*vvel(isS) - dyU(isSW)*vvel(isSW)
          dudye = dxU(is)*uvel(is) - dxU(isS)*uvel(isS)
          dudyw = dxU(isW)*uvel(isW) - dxU(isSW)*uvel(isSW)
-         vort(ijb) = p5*tarear(is)*(dvdxn + dvdxs - dudye - dudyw)
+         vort(is) = p5*tarear(is)*(dvdxn + dvdxs - dudye - dudyw)
 
       enddo                     ! is
+      !$omp end parallel do
 
       end subroutine deformations
 
@@ -3318,7 +3333,7 @@
 ! author: JF Lemieux, ECCC
 ! Nov 2021
 
-      subroutine deformationsCD_T (ncells,     skipme, &
+      subroutine deformationsCD_T (lo, hi,     skipme, &
                                    nbr,        ijslot, &
                                    uvelE,      vvelE,  &
                                    uvelN,      vvelN,  &
@@ -3328,8 +3343,10 @@
                                    shear,      divu,   &
                                    rdg_conv,   rdg_shear )
 
+      ! Slot range, as ice_dyn_core1d's kernels take lb/ub.  Callers pass
+      ! 1, dynTot; the pair is the shape the 1-D kernels share.
       integer (kind=int_kind), intent(in) :: &
-         ncells                ! slots held by this block
+         lo, hi                ! slot range to process
 
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
          skipme       ! inactive-slot flag, T cells
@@ -3394,7 +3411,14 @@
       !-----------------------------------------------------------------
 
 
-      do is = 1, ncells
+      ! schedule(static), not runtime -- see the note in stress.
+      !$omp parallel do schedule(static) default(none)              &
+      !$omp private(is, isW, isS, ijb, divT, tensionT, shearT, DeltaT, &
+      !$omp         tmp) &
+      !$omp  shared(lo, hi, skipme, nbr, ijslot, uvelE, vvelE, uvelN, &
+      !$omp         vvelN, dxN, dyE, dxT, dyT, tarear, vort, shear, divu, &
+      !$omp         rdg_conv, rdg_shear, e_factor, epp2i)
+      do is = lo, hi
          if (skipme(is)) cycle
 
          isW  = nbr(is,nbr_W )
@@ -3418,19 +3442,20 @@
          !-----------------------------------------------------------------
          ! deformations for mechanical redistribution
          !-----------------------------------------------------------------
-         divu(ijb) = divT * tarear(is)
+         divu(is) = divT * tarear(is)
          tmp = DeltaT * tarear(is)
-         rdg_conv(ijb)  = -min(divu(ijb),c0)
-         rdg_shear(ijb) = p5*(tmp-abs(divu(ijb)))
+         rdg_conv(is)  = -min(divu(is),c0)
+         rdg_shear(is) = p5*(tmp-abs(divu(is)))
 
          ! diagnostic only
          ! shear = sqrt(tension**2 + shearing**2)
-         shear(ijb) = tarear(is)*sqrt( tensionT**2 + shearT**2 )
+         shear(is) = tarear(is)*sqrt( tensionT**2 + shearT**2 )
          ! vorticity
          vort (ijb) = tarear(is)*( ( dyE(is)*vvelE(is) - dyE(isW)*vvelE(isW) ) &
                                   - ( dxN(is)*uvelN(is) - dxN(isS)*uvelN(isS)) )
 
       enddo                     ! is
+      !$omp end parallel do
 
     end subroutine deformationsCD_T
 
@@ -3449,7 +3474,7 @@
 ! DeltaT and DeltappT are called Delta_FG and Delta_G 
 ! in Lemieux et al. paper. 
 
-    subroutine deformationsC_T (ncells,     skipme,    &
+    subroutine deformationsC_T (lo, hi,     skipme,    &
                                    nbr,        ijslot, &
                                 uvelE,      vvelE,     &
                                 uvelN,      vvelN,     &
@@ -3461,8 +3486,10 @@
                                 shear,      divu,      &
                                 rdg_conv,   rdg_shear )
 
-      integer (kind=int_kind), intent(in) :: &
-         ncells                ! slots held by this block
+    ! Slot range, as ice_dyn_core1d's kernels take lb/ub.  Callers pass
+    ! 1, dynTot; the pair is the shape the 1-D kernels share.
+    integer (kind=int_kind), intent(in) :: &
+       lo, hi            ! slot range to process
 
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
          skipme       ! inactive-slot flag, T cells
@@ -3534,8 +3561,16 @@
 
 
 
-      do is = 1, ncells
-         if (skipme(is)) cycle
+    ! schedule(static), not runtime -- see the note in stress.
+    !$omp parallel do schedule(static) default(none)              &
+    !$omp private(is, isW, isS, isSW, ijb, divT, tensionT, shearT, &
+    !$omp         DeltaT, tmp, shearTsqr, DeltappTsqr) &
+    !$omp  shared(lo, hi, skipme, nbr, ijslot, uvelE, vvelE, uvelN, &
+    !$omp         vvelN, dxN, dyE, dxT, dyT, tarear, uarea, uareaavg, &
+    !$omp         shearU, vort, shear, divu, rdg_conv, rdg_shear, &
+    !$omp         e_factor, epp2i)
+    do is = lo, hi
+       if (skipme(is)) cycle
 
          isW  = nbr(is,nbr_W )
          isS  = nbr(is,nbr_S )
@@ -3574,19 +3609,20 @@
          DeltaT  = sqrt(divT**2 + e_factor*(tensionT**2 + shearTsqr))
          DeltappTsqr = divT**2 + epp2i*(tensionT**2 + shearTsqr)
 
-         divu(ijb) = divT * tarear(is)
+         divu(is) = divT * tarear(is)
          tmp = ( DeltappTsqr/max(DeltaT,eps13) ) * tarear(is)
-         rdg_conv(ijb)  = -min(divu(ijb),c0)
-         rdg_shear(ijb) = p5*(tmp-abs(divu(ijb)))
+         rdg_conv(is)  = -min(divu(is),c0)
+         rdg_shear(is) = p5*(tmp-abs(divu(is)))
 
          ! diagnostic only...maybe we dont want to use shearTsqr here????
          ! shear = sqrt(tension**2 + shearing**2)
-         shear(ijb) = tarear(is)*sqrt( tensionT**2 + shearT**2 )
+         shear(is) = tarear(is)*sqrt( tensionT**2 + shearT**2 )
          ! vorticity
          vort (ijb) = tarear(is)*( ( dyE(is)*vvelE(is) - dyE(isW)*vvelE(isW) ) &
                                   - ( dxN(is)*uvelN(is) - dxN(isS)*uvelN(isS)) )
 
       enddo                     ! is
+    !$omp end parallel do
 
     end subroutine deformationsC_T
 

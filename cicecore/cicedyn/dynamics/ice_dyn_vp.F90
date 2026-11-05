@@ -262,7 +262,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
           ns_boundary_type
       use ice_domain, only: blocks_ice, halo_info, maskhalo_dyn
       use ice_domain_size, only: max_blocks
-      use ice_dyn_shared, only: deformations, iceTmask, iceUmask, &
+      use ice_dyn_shared, only: deformations, iceTmask, iceUmask, Nbr_Task, &
           cxp, cyp, cxm, cym, &
           stressp_1_slot, stressp_2_slot, stressp_3_slot, stressp_4_slot, &
           stressm_1_slot, stressm_2_slot, stressm_3_slot, stressm_4_slot, &
@@ -364,17 +364,14 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 !                           field_loc_center,  field_type_scalar)
 !      call ice_timer_stop(timer_bound)
 
+      ! Compressed: one pass over dynTot, not nblocks x nx_block x ny_block.
+      rdg_conv  = c0
+      rdg_shear = c0
+      divu      = c0
+      shear     = c0
+
       !$OMP PARALLEL DO PRIVATE(iblk,i,j,ilo,ihi,jlo,jhi,this_block)
       do iblk = 1, nblocks
-
-         do j = 1, ny_block
-         do i = 1, nx_block
-            rdg_conv ((j-1)*nx_block+i,iblk) = c0
-            rdg_shear((j-1)*nx_block+i,iblk) = c0
-            divu ((j-1)*nx_block+i,iblk) = c0
-            shear((j-1)*nx_block+i,iblk) = c0
-         enddo
-         enddo
 
       !-----------------------------------------------------------------
       ! preparation for dynamics
@@ -675,16 +672,16 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          call pack_to_slots(uvel(:,iblk), dynMap(:,iblk), uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
          call pack_to_slots(vvel(:,iblk), dynMap(:,iblk), vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
          call deformations (                                                                                                              &
-                            dynCnt(iblk), skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),                                                &
-                            Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:), dynIJ(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),          &
-                            uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            dxT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
-                            dxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
-                            cxp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), cyp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
-                            cxm_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), cym_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
-                            tarear_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), vort(:,iblk),                                      &
-                            shear     (:,iblk), divu      (:,iblk),                                                                   &
-                            rdg_conv  (:,iblk), rdg_shear (:,iblk))
+                            dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipT,                                                &
+                            Nbr_Task, dynIJ,          &
+                            uvel_slot, vvel_slot, &
+                            dxT_slot, dyT_slot,   &
+                            dxU_slot, dyU_slot,   &
+                            cxp_slot, cyp_slot,   &
+                            cxm_slot, cym_slot,   &
+                            tarear_slot, vort,                                      &
+                            shear     , divu      ,                                                                   &
+                            rdg_conv  , rdg_shear )
       enddo
       !$OMP END PARALLEL DO
 

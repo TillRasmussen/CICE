@@ -426,10 +426,14 @@
       ! matching divu/shear/vort in ice_state, so the deformation kernels can
       ! take a rank-1 (:,iblk) slice.
       real (kind=dbl_kind), dimension (:,:), allocatable, public :: &
-         rdg_conv, & ! convergence term for ridging (1/s)
-         rdg_shear,& ! shear term for ridging (1/s)
          strintxU, & ! divergence of internal ice stress, x (N/m^2)
          strintyU    ! divergence of internal ice stress, y (N/m^2)
+
+      ! Compressed: written by the deformation kernels at their own slot and
+      ! read at the same slot by ridging, so neither side needs a block form.
+      real (kind=dbl_kind), dimension (:), allocatable, public :: &
+         rdg_conv, & ! convergence term for ridging (1/s)
+         rdg_shear   ! shear term for ridging (1/s)
 
       real (kind=dbl_kind), dimension(:,:,:,:), allocatable, public :: &
          rsiden    ,&   ! fraction of ice that melts laterally
@@ -470,9 +474,12 @@
       allocate(strtltxU(dynTot), strtltyU(dynTot), &
                strocnxU(dynTot), strocnyU(dynTot), &
                sig1(dynTot), sig2(dynTot), sigP(dynTot), &
+               rdg_conv(dynTot), rdg_shear(dynTot), &
                strairxU(dynTot), strairyU(dynTot), stat=ierr)
       if (ierr/=0) call abort_ice(error_message=trim(subname)//' ERROR: Out of memory', &
          file=__FILE__, line=__LINE__)
+      rdg_conv  = c0
+      rdg_shear = c0
       strtltxU = c0
       strtltyU = c0
       strocnxU = c0
@@ -674,8 +681,7 @@
          fsw        (nx_block,ny_block,max_blocks), & ! incoming shortwave radiation (W/m^2)
          fswup      (nx_block,ny_block,max_blocks), & ! outgoing shortwave radiation (W/m^2)
          coszen     (nx_block,ny_block,max_blocks), & ! cosine solar zenith angle, < 0 for sun below horizon
-         rdg_conv   (nx_block*ny_block,max_blocks), & ! convergence term for ridging (1/s)
-         rdg_shear  (nx_block*ny_block,max_blocks), & ! shear term for ridging (1/s)
+
          rsiden     (nx_block,ny_block,ncat,max_blocks), & ! fraction of ice that melts laterally
          dardg1ndt  (nx_block,ny_block,ncat,max_blocks), & ! rate of area loss by ridging ice (1/s)
          dardg2ndt  (nx_block,ny_block,ncat,max_blocks), & ! rate of area gain by new ridges (1/s)
@@ -865,8 +871,6 @@
       fsw        = c0
       fswup      = c0
       coszen     = c0
-      rdg_conv   = c0
-      rdg_shear  = c0
       rsiden     = c0
       dardg1ndt  = c0
       dardg2ndt  = c0
@@ -1430,9 +1434,9 @@
       if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
          file=__FILE__, line=__LINE__)
 
-      divu    (:,:) = c0
-      shear   (:,:) = c0
-      vort    (:,:) = c0
+      divu    (:) = c0
+      shear   (:) = c0
+      vort    (:) = c0
       taubxU  (:,:) = c0
       taubyU  (:,:) = c0
       strength (:,:,:) = c0

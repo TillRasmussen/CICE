@@ -1166,8 +1166,8 @@
                          n_trcr_strata = n_trcr_strata(:),  &
                          nt_strata     = nt_strata    (:,:),&
                          trcrn     = trcrn    (i,j,:,:,iblk), &
-                         rdg_conv  = rdg_conv ((j-1)*nx_block+i,iblk), &
-                         rdg_shear = rdg_shear((j-1)*nx_block+i,iblk), &
+                         rdg_conv  = rdg_conv (ms), &
+                         rdg_shear = rdg_shear(ms), &
                          aicen     = aicen    (i,j,:,iblk), &
                          vicen     = vicen    (i,j,:,iblk), &
                          vsnon     = vsnon    (i,j,:,iblk), &

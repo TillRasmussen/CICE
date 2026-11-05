@@ -1373,8 +1373,8 @@
                          n_trcr_strata = n_trcr_strata(:),  &
                          nt_strata     = nt_strata    (:,:),&
                          trcrn     = trcrn_slot    (ms, :,:), &
-                         rdg_conv  = rdg_conv ((j-1)*nx_block+i,iblk), &
-                         rdg_shear = rdg_shear((j-1)*nx_block+i,iblk), &
+                         rdg_conv  = rdg_conv (ms), &
+                         rdg_shear = rdg_shear(ms), &
                          aicen     = aicen_slot    (ms, :), &
                          vicen     = vicen_slot    (ms, :), &
                          vsnon     = vsnon_slot    (ms, :), &
