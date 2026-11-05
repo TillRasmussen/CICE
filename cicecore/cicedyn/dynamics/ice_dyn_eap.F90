@@ -203,8 +203,6 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          indxUj         ! compressed index in j-direction
 
       real (kind=dbl_kind), dimension (nx_block,ny_block,max_blocks) :: &
-         uocnU      , & ! i ocean current (m/s)
-         vocnU      , & ! j ocean current (m/s)
          cdn_ocnU       ! ocn drag coefficient
 
       ! the i and j dimensions are flattened: element (i,j,iblk) of the block
@@ -214,12 +212,6 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          wateryU  , & ! for ocean stress calculation, y (m/s)
          forcexU  , & ! work array: combined atm stress and ocn tilt, x
          forceyU      ! work array: combined atm stress and ocn tilt, y
-
-      ! the i and j dimensions are flattened: element (i,j,iblk) of the block
-      ! layout lives at ((j-1)*nx_block + i, iblk)
-      real (kind=dbl_kind), dimension (nx_block*ny_block,max_blocks), target :: &
-         umass      , & ! total mass of ice and snow (u grid)
-         umassdti       ! mass of U-cell/dte (kg/m^2 s)
 
       ! the i and j dimensions are flattened: element (i,j,iblk) of the block
       ! layout lives at ((j-1)*nx_block + i, iblk)
@@ -317,12 +309,9 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       call unstack_fields(fld3, tmass, aice_init, cdn_ocn)
       call unstack_fields(fld4, uocn, vocn, ss_tltx, ss_tlty)
 
-      call grid_average_X2Y('S', tmass    , 'T'          , umass   , 'U')
       call grid_average_X2Y('S', tmass    , 'T'          , umass_slot, 'U')
       call grid_average_X2Y('S', aice_init, 'T'          , aiU     , 'U')
       call grid_average_X2Y('S', cdn_ocn  , 'T'          , cdn_ocnU_slot, 'U')
-      call grid_average_X2Y('S', uocn     , grid_ocn_dynu, uocnU   , 'U')
-      call grid_average_X2Y('S', vocn     , grid_ocn_dynv, vocnU   , 'U')
       call grid_average_X2Y('S', ss_tltx  , grid_ocn_dynu, ss_tltxU_slot, 'U')
       call grid_average_X2Y('S', ss_tlty  , grid_ocn_dynv, ss_tltyU_slot, 'U')
 
