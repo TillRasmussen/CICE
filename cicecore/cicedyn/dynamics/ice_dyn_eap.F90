@@ -320,7 +320,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       call grid_average_X2Y('S', tmass    , 'T'          , umass   , 'U')
       call grid_average_X2Y('S', tmass    , 'T'          , umass_slot, 'U')
       call grid_average_X2Y('S', aice_init, 'T'          , aiU     , 'U')
-      call grid_average_X2Y('S', cdn_ocn  , 'T'          , cdn_ocnU, 'U')
+      call grid_average_X2Y('S', cdn_ocn  , 'T'          , cdn_ocnU_slot, 'U')
       call grid_average_X2Y('S', uocn     , grid_ocn_dynu, uocnU   , 'U')
       call grid_average_X2Y('S', vocn     , grid_ocn_dynv, vocnU   , 'U')
       call grid_average_X2Y('S', ss_tltx  , grid_ocn_dynu, ss_tltxU_slot, 'U')
@@ -538,7 +538,6 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          ! constant through the subcycling, so packed once and never unpacked
          ! strength changes every timestep (ridging), so it is packed here
          ! rather than once at init.  stress_eap reads it from the slots now.
-         call pack_to_slots(Cdn_ocnU(:,:,iblk), dynMap(:,iblk), cdn_ocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
 
          ! ⚠ The stresses are NOT packed any more.  The slot copies are the
          ! live state, exactly as in evp: they persist between timesteps,

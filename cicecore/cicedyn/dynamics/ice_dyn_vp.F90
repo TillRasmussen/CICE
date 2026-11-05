@@ -301,8 +301,6 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       ! ((j-1)*nx_block + i, iblk)
       real (kind=dbl_kind), dimension (nx_block*ny_block,max_blocks) :: &
          cdn_ocnU , & ! ocn drag coefficient
-         bxfix    , & ! part of bx that is constant during Picard
-         byfix    , & ! part of by that is constant during Picard
          Cb           ! seabed stress coefficient
 
       ! the i and j dimensions are flattened: element (i,j,iblk) of the block
@@ -506,7 +504,8 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                          uvel_init (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
                          vvel_init (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
                          dynMap      (:,iblk),                                 &
-                         bxfix     (:,iblk), byfix     (:,iblk))
+                         bxfix_s (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                        byfix_s (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
 
       !-----------------------------------------------------------------
       ! ice strength
@@ -617,7 +616,6 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                             indxUi  , indxUj , &
                             aiU     , ntot   , &
                             waterxU , wateryU, &
-                            bxfix   , byfix  , &
                             umassdti, sol    , &
                             cdn_ocnU,          &
                             Cb, halo_info_mask)
@@ -862,7 +860,6 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                                   indxUi  , indxUj , &
                                   aiU     , ntot   , &
                                   waterxU , wateryU, &
-                                  bxfix   , byfix  , &
                                   umassdti, sol    , &
                                   cdn_ocn ,          &
                                   Cb, halo_info_mask)
@@ -900,9 +897,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          wateryU      ! for ocean stress calculation, y (m/s)
 
       real (kind=dbl_kind), dimension (nx_block*ny_block,max_blocks), intent(in) :: &
-         cdn_ocn  , & ! ocn drag coefficient
-         bxfix    , & ! part of bx that is constant during Picard
-         byfix        ! part of by that is constant during Picard
+         cdn_ocn      ! ocn drag coefficient
 
       type (ice_halo), intent(in) :: &
          halo_info_mask !  ghost cell update info for masked halo
@@ -1078,14 +1073,11 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                                vrel_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),             &
                                Cb_s  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
 
-            call unpack_from_slots(vrel_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), vrel(:,iblk))
             call unpack_from_slots(Cb_s  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), Cb  (:,iblk))
 
             ! prepare b vector (RHS)
             ! stPr and vrel are already compressed; uarear is compressed once
             ! per run.  Only the four still-block-layout inputs are packed.
-            call pack_to_slots(bxfix  (:,iblk), dynMap(:,iblk), bxfix_s (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(byfix  (:,iblk), dynMap(:,iblk), byfix_s (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
 
             call calc_bvec (dynCnt(iblk), skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
                             stPr_s   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),       &
@@ -1099,8 +1091,6 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                             vrel_s   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),         &
                             Nbr_Local   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:))
 
-            call unpack_from_slots(bx_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), bx(:,iblk))
-            call unpack_from_slots(by_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), by(:,iblk))
 
             ! Compute nonlinear residual norm (PDE residual)
             mvu_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = uprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
@@ -2141,8 +2131,8 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          ijb = (j-1)*nx_block + i
          is  = Xmap(ijb)
 
-         bxfix((j-1)*nx_block+i) = umassdti(is)*uvel_init(is) + forcexU(is)
-         byfix((j-1)*nx_block+i) = umassdti(is)*vvel_init(is) + forceyU(is)
+         bxfix(is) = umassdti(is)*uvel_init(is) + forcexU(is)
+         byfix(is) = umassdti(is)*vvel_init(is) + forceyU(is)
       enddo
 
       end subroutine calc_bfix

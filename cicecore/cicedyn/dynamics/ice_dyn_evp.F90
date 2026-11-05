@@ -73,13 +73,6 @@
       implicit none
       private
 
-      ! C or CD grid
-      real (kind=dbl_kind), allocatable :: &
-         cdn_ocnN (:,:,:)    ! ocn drag coefficient
-! all c or d
-      real (kind=dbl_kind), allocatable :: &
-         cdn_ocnE (:,:,:)    ! ocn drag coefficient
-
       real (kind=dbl_kind), dimension (:,:,:), allocatable, public :: &
          ratiodxN    , & ! - dxN(i+1,j)   / dxN(i,j)
          ratiodyE    , & ! - dyE(i  ,j+1) / dyE(i,j)
@@ -109,7 +102,6 @@
 
       ! B grid
       real (kind=dbl_kind), allocatable :: &
-         cdn_ocnU (:,:,:) , & ! ocn drag coefficient
          waterxU  (:,:)   , & ! for ocean stress calculation, x (m/s)
          wateryU  (:,:)   , & ! for ocean stress calculation, y (m/s)
          forcexU  (:,:)   , & ! work array: combined atm stress and ocn tilt, x
@@ -173,8 +165,7 @@
          call dyn_evp1d_init
       endif
 
-      allocate( cdn_ocnU (nx_block,ny_block,max_blocks), & ! ocn drag coefficient
-                tmass    (nx_block*ny_block,max_blocks), & ! total mass of ice and snow (kg/m^2)
+      allocate( tmass    (nx_block*ny_block,max_blocks), & ! total mass of ice and snow (kg/m^2)
                 waterxU  (nx_block*ny_block,max_blocks), & ! for ocean stress calculation, x (m/s)
                 wateryU  (nx_block*ny_block,max_blocks), & ! for ocean stress calculation, y (m/s)
                 forcexU  (nx_block*ny_block,max_blocks), & ! work array: combined atm stress and ocn tilt, x
@@ -193,15 +184,6 @@
                    deltaU   (dynTot), &
                    stat=ierr)
          if (ierr/=0) call abort_ice(subname//' ERROR: Out of memory U evp')
-
-         allocate( cdn_ocnN (nx_block,ny_block,max_blocks), &
-                   stat=ierr)
-         if (ierr/=0) call abort_ice(subname//' ERROR: Out of memory N evp')
-
-
-         allocate( cdn_ocnE (nx_block,ny_block,max_blocks), &
-                   stat=ierr)
-         if (ierr/=0) call abort_ice(subname//' ERROR: Out of memory E evp')
 
 
          allocate( ratiodxN (nx_block,ny_block,max_blocks), &
@@ -509,7 +491,6 @@
       call grid_average_X2Y('S', tmass    , 'T'          , umass_slot, 'U')
       call grid_average_X2Y('S', cdn_ocn  , 'T'          , cdn_ocnU_slot, 'U')
       call grid_average_X2Y('S', aice_init, 'T'          , aiU     , 'U')
-      call grid_average_X2Y('S', cdn_ocn  , 'T'          , cdn_ocnU, 'U')
       call grid_average_X2Y('S', ss_tltx  , grid_ocn_dynu, ss_tltxU_slot, 'U')
       call grid_average_X2Y('S', ss_tlty  , grid_ocn_dynv, ss_tltyU_slot, 'U')
 
@@ -529,11 +510,11 @@
 
       if (grid_ice == 'CD' .or. grid_ice == 'C') then
          call grid_average_X2Y('S', tmass    , 'T'          , emass_slot, 'E')
-         call grid_average_X2Y('S', cdn_ocn  , 'T'          , cdn_ocnE, 'E')
+         call grid_average_X2Y('S', cdn_ocn  , 'T'          , cdn_ocne_slot, 'E')
          call grid_average_X2Y('S', ss_tltx  , grid_ocn_dynu, ss_tltxE_slot, 'E')
          call grid_average_X2Y('S', ss_tlty  , grid_ocn_dynv, ss_tltyE_slot, 'E')
          call grid_average_X2Y('S', tmass    , 'T'          , nmass_slot, 'N')
-         call grid_average_X2Y('S', cdn_ocn  , 'T'          , cdn_ocnN, 'N')
+         call grid_average_X2Y('S', cdn_ocn  , 'T'          , cdn_ocnn_slot, 'N')
          call grid_average_X2Y('S', ss_tltx  , grid_ocn_dynu, ss_tltxN_slot, 'N')
          call grid_average_X2Y('S', ss_tlty  , grid_ocn_dynv, ss_tltyN_slot, 'N')
 
@@ -1248,8 +1229,6 @@
             ! constant through the subcycling, so packed once
             ! The step kernels read these every pass but nothing changes
             ! them during the subcycle, so one pack each is enough.
-            call pack_to_slots(Cdn_ocnE(:,:,iblk), dynMap(:,iblk), cdn_ocne_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(Cdn_ocnN(:,:,iblk), dynMap(:,iblk), cdn_ocnn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
          enddo
          !$OMP END PARALLEL DO
 
@@ -1565,8 +1544,6 @@
             ! constant through the subcycling, so packed once
             ! The step kernels read these every pass but nothing changes
             ! them during the subcycle, so one pack each is enough.
-            call pack_to_slots(Cdn_ocnE(:,:,iblk), dynMap(:,iblk), cdn_ocne_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(Cdn_ocnN(:,:,iblk), dynMap(:,iblk), cdn_ocnn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
          enddo
          !$OMP END PARALLEL DO
 
