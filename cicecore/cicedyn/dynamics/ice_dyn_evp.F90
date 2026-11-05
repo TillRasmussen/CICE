@@ -317,7 +317,7 @@
           iceTmask, iceUmask, iceEmask, iceNmask, &
           dyn_haloUpdate, fld2, fld3, fld4, fld2c
       ! the compressed layout, and the C/CD slot arrays the subcycle runs on
-      use ice_dyn_shared, only: dynMap, dynOff, dynCnt, Nbr_Local, Nbr_Task
+      use ice_dyn_shared, only: dynMap, dynOff, dynCnt, dynTot, Nbr_Local, Nbr_Task
       ! strint* and taub* are diagnostics: history is their only consumer,
       ! nothing in the dynamics reads them.  So when no stream wants them this
       ! step, the work that builds them is skipped outright.  Gated coarsely
@@ -1091,13 +1091,15 @@
                str6_slot(:) = c0
                str7_slot(:) = c0
                str8_slot(:) = c0
-               !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
-               do iblk = 1, nblocks
-
-                  !-----------------------------------------------------------------
-                  ! stress tensor equation, total surface stress
-                  !-----------------------------------------------------------------
-                  call stress (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipT, &
+               !-----------------------------------------------------------------
+               ! stress tensor equation, total surface stress
+               !
+               ! One task-wide call: every argument is already a whole array, so
+               ! the block loop only supplied (lo,hi).  Collapsing it is exact --
+               ! the slots the per-block ranges omit are the blocks' dead slots,
+               ! and those are permanently skipT.  Threading moved inside.
+               !-----------------------------------------------------------------
+                  call stress (1, dynTot, skipT, &
                                uvel_slot, vvel_slot, &
                                dxT_slot, dyT_slot, &
                                dxhy_slot, dyhx_slot, &
@@ -1116,6 +1118,9 @@
                                str3_slot, str4_slot, &
                                str5_slot, str6_slot, &
                                str7_slot, str8_slot)
+
+               !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
+               do iblk = 1, nblocks
 
                   !-----------------------------------------------------------------
                   ! momentum equation
@@ -2192,6 +2197,37 @@
       !-----------------------------------------------------------------
 
 
+      ! schedule(static), not runtime: this walks uniform-cost slots, and CICE
+      ! ships ICE_OMPSCHED="static,1", which round-robins individual cells and
+      ! leaves every cache line holding str1..str8 write-shared.  Same reason
+      ! ice_dyn_core1d pins its kernels.
+      !$omp parallel do schedule(static)                           &
+      !$omp default(none)                                          &
+      !$omp private(is, isW, isS, isSW                           , &
+      !$omp         divune, divunw, divuse, divusw               , &
+      !$omp         tensionne, tensionnw, tensionse, tensionsw   , &
+      !$omp         shearne, shearnw, shearse, shearsw           , &
+      !$omp         Deltane, Deltanw, Deltase, Deltasw           , &
+      !$omp         zetax2ne, zetax2nw, zetax2se, zetax2sw       , &
+      !$omp         etax2ne, etax2nw, etax2se, etax2sw           , &
+      !$omp         rep_prsne, rep_prsnw, rep_prsse, rep_prssw   , &
+      !$omp         ssigpn, ssigps, ssigpe, ssigpw               , &
+      !$omp         ssigmn, ssigms, ssigme, ssigmw               , &
+      !$omp         ssig12n, ssig12s, ssig12e, ssig12w, ssigp1   , &
+      !$omp         ssigp2, ssigm1, ssigm2, ssig121, ssig122     , &
+      !$omp         csigpne, csigpnw, csigpse, csigpsw           , &
+      !$omp         csigmne, csigmnw, csigmse, csigmsw           , &
+      !$omp         csig12ne, csig12nw, csig12se, csig12sw       , &
+      !$omp         str12ew, str12we, str12ns, str12sn           , &
+      !$omp         strp_tmp, strm_tmp)                            &
+      !$omp  shared(lo, hi, skipme, uvel, vvel, dxT, dyT         , &
+      !$omp         dxhy, dyhx, cxp, cyp, cxm, cym, DminTarea    , &
+      !$omp         strength, nbr                                , &
+      !$omp         stressp_1, stressp_2, stressp_3, stressp_4   , &
+      !$omp         stressm_1, stressm_2, stressm_3, stressm_4   , &
+      !$omp         stress12_1, stress12_2, stress12_3, stress12_4, &
+      !$omp         str1, str2, str3, str4, str5, str6, str7, str8, &
+      !$omp         arlx1i, denom1, revp)
       do is = lo, hi
          if (skipme(is)) cycle
 
@@ -2400,7 +2436,8 @@
          str8(is) = strp_tmp - strm_tmp + str12sn &
               - dyhx(is)*(csigpsw + csigmsw) + dxhy(is)*csig12sw
 
-      enddo                     ! ij
+      enddo                     ! is
+      !$omp end parallel do
 
       end subroutine stress
 
