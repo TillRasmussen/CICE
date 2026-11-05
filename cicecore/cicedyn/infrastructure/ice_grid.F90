@@ -7671,7 +7671,7 @@
       enddo
 
       ! ⚠ dyE and dxN are DIVIDED BY at a neighbour, in
-      ! strain_rates_Tdt_compressed and _Tdtsd_compressed.  pack_to_slots
+      ! the fused strain rates in stressC_T/CD_T and deformations*.  pack_to_slots
       ! zeroes each block's dead slot, so a cell whose W or S neighbour is
       ! unmapped evaluated 0/0 -- an FP invalid, which aborted every C/CD run
       ! with dynamics in it.  The block path never hits this: dyE and dxN are

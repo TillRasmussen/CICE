@@ -64,7 +64,6 @@
                 seabed_stress_factor_LKD, seabed_stress_factor_prob, &
                 deformations, deformationsC_T, deformationsCD_T, &
                 strain_rates, strain_rates_U, &
-                strain_rates_Tdt_compressed, strain_rates_Tdtsd_compressed, &
                 visc_replpress, &
                 dyn_haloUpdate, &
                 pack_to_slots, unpack_from_slots, &
@@ -2045,6 +2044,21 @@
       if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
          file=__FILE__, line=__LINE__)
 
+      ! schedule(static), not runtime -- see the note in stress.  rhow is
+      ! SHARED: icepack_query_parameters sets it above the loop.
+      !$omp parallel do schedule(static)                             &
+      !$omp default(none)                                            &
+      !$omp private(is, isE, isN, isNE, uold, vold                 , &
+      !$omp         strintx_tmp, strinty_tmp                       , &
+      !$omp         tmp_str2_E, tmp_str3_N, tmp_str4_NE            , &
+      !$omp         tmp_str6_N, tmp_str7_E, tmp_str8_NE            , &
+      !$omp         vrel, cca, ccb, ab2, cc1, cc2, taux, tauy, Cb)   &
+      !$omp  shared(lo, hi, skipme, Cw, aiX, uocn, vocn            , &
+      !$omp         waterx, watery, forcex, forcey                 , &
+      !$omp         Umassdti, fm, uarear, taubx_s                   , &
+      !$omp         uvel_init, vvel_init, uvel, vvel, nbr           , &
+      !$omp         str1, str2, str3, str4, str5, str6, str7, str8  , &
+      !$omp         TbU, rheofactU, rhow, brlx, revp)
       do is = lo, hi
          if (skipme(is)) cycle
 
@@ -2127,7 +2141,8 @@
          ! once after the loop -- exactly as calc_diag_1d does in
          ! ice_dyn_core1d.  Only the velocities and Cb leave this loop.
          taubx_s  (is) = Cb
-      enddo                     ! ij
+      enddo                     ! is
+      !$omp end parallel do
 
       end subroutine stepu
 
@@ -3362,7 +3377,7 @@
 
       ! slot-shaped: these never leave the routine, and the compressed
       ! strain-rate helper fills them in the slot layout.
-      real (kind=dbl_kind), dimension (ncells+1) :: &
+      real (kind=dbl_kind) :: &
         divT      , & ! divergence at T point
         tensionT  , & ! tension at T point
         shearT    , & ! shear at T point
@@ -3378,33 +3393,39 @@
       ! NOTE these are actually strain rates * area  (m^2/s)
       !-----------------------------------------------------------------
 
-      call strain_rates_Tdtsd_compressed (ncells     , skipme       , &
-                           nbr        ,                               &
-                           uvelE (:)  , vvelE   (:)  ,                &
-                           uvelN (:)  , vvelN   (:)  ,                &
-                           dxN   (:)  , dyE     (:)  ,                &
-                           dxT   (:)  , dyT     (:)  ,                &
-                           divT  (:)  , tensionT(:)  ,                &
-                           shearT(:)  , DeltaT  (:)    )
 
       do is = 1, ncells
          if (skipme(is)) cycle
 
          isW  = nbr(is,nbr_W )
          isS  = nbr(is,nbr_S )
+
+         ! strain rates at T, formerly a separate pass over every slot
+         ! writing divT/tensionT/shearT.  All are read only at this slot, so
+         ! they are scalars here, DeltaT included.
+         divT     = dyE(is)*uvelE(is) - dyE(isW)*uvelE(isW) &
+                  + dxN(is)*vvelN(is) - dxN(isS)*vvelN(isS)
+
+         tensionT = (dyT(is)**2)*(uvelE(is)/dyE(is) - uvelE(isW)/dyE(isW)) &
+                  - (dxT(is)**2)*(vvelN(is)/dxN(is) - vvelN(isS)/dxN(isS))
+
+         shearT   = (dxT(is)**2)*(uvelN(is)/dxN(is) - uvelN(isS)/dxN(isS)) &
+                  + (dyT(is)**2)*(vvelE(is)/dyE(is) - vvelE(isW)/dyE(isW))
+
+         DeltaT   = sqrt(divT**2 + e_factor*(tensionT**2 + shearT**2))
          ijb  = ijslot(is)
 
          !-----------------------------------------------------------------
          ! deformations for mechanical redistribution
          !-----------------------------------------------------------------
-         divu(ijb) = divT(is) * tarear(is)
-         tmp = Deltat(is) * tarear(is)
+         divu(ijb) = divT * tarear(is)
+         tmp = DeltaT * tarear(is)
          rdg_conv(ijb)  = -min(divu(ijb),c0)
          rdg_shear(ijb) = p5*(tmp-abs(divu(ijb)))
 
          ! diagnostic only
          ! shear = sqrt(tension**2 + shearing**2)
-         shear(ijb) = tarear(is)*sqrt( tensionT(is)**2 + shearT(is)**2 )
+         shear(ijb) = tarear(is)*sqrt( tensionT**2 + shearT**2 )
          ! vorticity
          vort (ijb) = tarear(is)*( ( dyE(is)*vvelE(is) - dyE(isW)*vvelE(isW) ) &
                                   - ( dxN(is)*uvelN(is) - dxN(isS)*uvelN(isS)) )
@@ -3492,11 +3513,12 @@
 
       ! slot-shaped: these never leave the routine, and the compressed
       ! strain-rate helper fills them in the slot layout.
-      real (kind=dbl_kind), dimension (ncells+1) :: &
+      real (kind=dbl_kind) :: &
         divT      , & ! divergence at T point
         tensionT  , & ! tension at T point
-        shearT    , & ! shear at T point
-        DeltaT        ! delt at T point
+        shearT        ! shear at T point
+      real (kind=dbl_kind) :: &
+        DeltaT        ! delt at T point, computed below
 
       real (kind=dbl_kind) :: &
         tmp       , & ! useful combination
@@ -3510,22 +3532,26 @@
       ! NOTE these are actually strain rates * area  (m^2/s)
       !-----------------------------------------------------------------
 
-      call strain_rates_Tdtsd_compressed (ncells     , skipme       , &
-                           nbr        ,                               &
-                           uvelE (:)  , vvelE   (:)  ,                &
-                           uvelN (:)  , vvelN   (:)  ,                &
-                           dxN   (:)  , dyE     (:)  ,                &
-                           dxT   (:)  , dyT     (:)  ,                &
-                           divT  (:)  , tensionT(:)  ,                &
-                           shearT(:)  , DeltaT  (:)    )
 
-      ! DeltaT is calc by strain_rates_T but replaced by calculation below.
 
       do is = 1, ncells
          if (skipme(is)) cycle
 
          isW  = nbr(is,nbr_W )
          isS  = nbr(is,nbr_S )
+
+         ! strain rates at T, formerly a separate pass over every slot
+         ! writing divT/tensionT/shearT.  All are read only at this slot, so
+         ! they are scalars here.  DeltaT is NOT taken from the strain rates:
+         ! this kernel computes its own from shearTsqr below.
+         divT     = dyE(is)*uvelE(is) - dyE(isW)*uvelE(isW) &
+                  + dxN(is)*vvelN(is) - dxN(isS)*vvelN(isS)
+
+         tensionT = (dyT(is)**2)*(uvelE(is)/dyE(is) - uvelE(isW)/dyE(isW)) &
+                  - (dxT(is)**2)*(vvelN(is)/dxN(is) - vvelN(isS)/dxN(isS))
+
+         shearT   = (dxT(is)**2)*(uvelN(is)/dxN(is) - uvelN(isS)/dxN(isS)) &
+                  + (dyT(is)**2)*(vvelE(is)/dyE(is) - vvelE(isW)/dyE(isW))
          isSW = nbr(is,nbr_SW)
          ijb  = ijslot(is)
 
@@ -3545,17 +3571,17 @@
                     + shearU(isW)**2 * uarea(isW))  &
                     / uareaavg(is)
 
-         DeltaT(is)  = sqrt(divT(is)**2 + e_factor*(tensionT(is)**2 + shearTsqr))
-         DeltappTsqr = divT(is)**2 + epp2i*(tensionT(is)**2 + shearTsqr)
+         DeltaT  = sqrt(divT**2 + e_factor*(tensionT**2 + shearTsqr))
+         DeltappTsqr = divT**2 + epp2i*(tensionT**2 + shearTsqr)
 
-         divu(ijb) = divT(is) * tarear(is)
-         tmp = ( DeltappTsqr/max(DeltaT(is),eps13) ) * tarear(is)
+         divu(ijb) = divT * tarear(is)
+         tmp = ( DeltappTsqr/max(DeltaT,eps13) ) * tarear(is)
          rdg_conv(ijb)  = -min(divu(ijb),c0)
          rdg_shear(ijb) = p5*(tmp-abs(divu(ijb)))
 
          ! diagnostic only...maybe we dont want to use shearTsqr here????
          ! shear = sqrt(tension**2 + shearing**2)
-         shear(ijb) = tarear(is)*sqrt( tensionT(is)**2 + shearT(is)**2 )
+         shear(ijb) = tarear(is)*sqrt( tensionT**2 + shearT**2 )
          ! vorticity
          vort (ijb) = tarear(is)*( ( dyE(is)*vvelE(is) - dyE(isW)*vvelE(isW) ) &
                                   - ( dxN(is)*uvelN(is) - dxN(isS)*uvelN(isS)) )
@@ -3688,173 +3714,6 @@
       endif
 
       end subroutine strain_rates
-
-
-
-!=======================================================================
-! T-point strain rates for the C/CD subcycle.  The block-layout twin this
-! was once "the compressed form of" is gone: it had no callers left.
-!
-! ADDITIVE, like grid_average_X2Y*_compressed: the block version above is
-! still what deformationsC_T and deformationsCD_T call, and those run after
-! the subcycle on block arrays, so converting them is not needed to put the
-! subcycle on slots.  ⚠ The two share their arithmetic -- change one and the
-! other must change with it, or C/CD stops being bit-for-bit with itself.
-!
-! The stencil is W on uvelE/dyE and S on vvelN/dxN, both already in Nbr_Local.
-! dxT and dyT are read POINTWISE and so stay block-indexed; divT and
-! tensionT are consumed pointwise by the caller and stay block-indexed too.
-
-      subroutine strain_rates_Tdt_compressed (ncells,     skipme,   &
-                                   nbr,                  &
-                                   uvelE_s,    vvelN_s,  &
-                                   dxN_s,      dyE_s,    &
-                                   dxT_s,      dyT_s,    &
-                                   divT,       tensionT  )
-
-      integer (kind=int_kind), intent(in) :: &
-         ncells                 ! slots held by this block
-
-      ! .true. where the slot carries no ice this step
-      logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
-         skipme
-
-      ! nbr(is,d) is the block-local slot one step in direction d from slot is
-      integer (kind=int_kind), dimension (:,:), intent(in) :: &
-         nbr          ! neighbour slots
-
-      ! Compressed, block-local slots 1..cnt with the dead slot last.
-      real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
-         uvelE_s  , & ! x-component of velocity at the E point, compressed
-         vvelN_s  , & ! y-component of velocity at the N point, compressed
-         dxN_s    , & ! width of N-cell through the middle (m), compressed
-         dyE_s        ! height of E-cell through the middle (m), compressed
-
-      real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
-         dxT_s    , & ! width of T-cell, compressed (m)
-         dyT_s        ! height of T-cell, compressed (m)
-
-      real (kind=dbl_kind), dimension (:), intent(out), contiguous :: &
-         divT     , & ! divergence at T point
-         tensionT     ! tension at T point
-
-      ! local variables
-
-      integer (kind=int_kind) :: &
-         ! the loop runs on slots; no block index is formed
-         is, isW, isS               ! own, W and S neighbour slots
-
-      character(len=*), parameter :: subname = '(strain_rates_Tdt_compressed)'
-
-      !-----------------------------------------------------------------
-      ! strain rates
-      ! NOTE these are actually strain rates * area  (m^2/s)
-      !-----------------------------------------------------------------
-
-      divT    (:) = c0
-      tensionT(:) = c0
-
-      do is = 1, ncells
-         if (skipme(is)) cycle
-         isW = nbr(is,nbr_W)
-         isS = nbr(is,nbr_S)
-
-         ! divergence  =  e_11 + e_22
-         divT    (is)= dyE_s(is)*uvelE_s(is) - dyE_s(isW)*uvelE_s(isW) &
-                      + dxN_s(is)*vvelN_s(is) - dxN_s(isS)*vvelN_s(isS)
-
-         ! tension strain rate  =  e_11 - e_22
-         tensionT(is) = (dyT_s(is)**2)*(uvelE_s(is)/dyE_s(is) - uvelE_s(isW)/dyE_s(isW)) &
-                       - (dxT_s(is)**2)*(vvelN_s(is)/dxN_s(is) - vvelN_s(isS)/dxN_s(isS))
-
-      enddo
-
-      end subroutine strain_rates_Tdt_compressed
-
-!=======================================================================
-! T-point strain rates with shear and Delta, for the CD subcycle.  Same additive
-! reasoning and the same ⚠ as strain_rates_Tdt_compressed above.
-!
-! Note the stencil is the MIRROR of Tdt's: Tdt reads uvelE to the W and vvelN
-! to the S, this reads uvelN to the S and vvelE to the W.  Getting those the
-! wrong way round is type-correct and silent, which is what kernel_equiv.py
-! exists to catch.
-
-      subroutine strain_rates_Tdtsd_compressed (ncells,     skipme,   &
-                                   nbr,                  &
-                                   uvelE_s,    vvelE_s,  &
-                                   uvelN_s,    vvelN_s,  &
-                                   dxN_s,      dyE_s,    &
-                                   dxT_s,      dyT_s,    &
-                                   divT,       tensionT, &
-                                   shearT,     deltaT    )
-
-      integer (kind=int_kind), intent(in) :: &
-         ncells                 ! slots held by this block
-
-      ! .true. where the slot carries no ice this step
-      logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
-         skipme
-
-      integer (kind=int_kind), dimension (:,:), intent(in) :: &
-         nbr          ! neighbour slots
-      real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
-         uvelE_s  , & ! x-component of velocity (m/s) at the E point
-         vvelE_s  , & ! y-component of velocity (m/s) at the E point
-         uvelN_s  , & ! x-component of velocity (m/s) at the N point
-         vvelN_s  , & ! y-component of velocity (m/s) at the N point
-         dxN_s    , & ! width of N-cell through the middle (m)
-         dyE_s        ! height of E-cell through the middle (m)
-
-      real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
-         dxT_s    , & ! width of T-cell, compressed (m)
-         dyT_s        ! height of T-cell, compressed (m)
-
-      real (kind=dbl_kind), dimension (:), intent(out), contiguous :: &
-         divT     , & ! divergence at T point
-         tensionT , & ! tension at T point
-         shearT   , & ! shear at T point
-         deltaT       ! delt at T point
-
-      ! local variables
-
-      integer (kind=int_kind) :: &
-         ! the loop runs on slots; no block index is formed
-         is, isW, isS               ! own, W and S neighbour slots
-
-      character(len=*), parameter :: subname = '(strain_rates_Tdtsd_compressed)'
-
-      !-----------------------------------------------------------------
-      ! strain rates
-      ! NOTE these are actually strain rates * area  (m^2/s)
-      !-----------------------------------------------------------------
-
-      ! compute divT, tensionT
-      call strain_rates_Tdt_compressed (ncells,     skipme,   &
-                                   nbr,                  &
-                             uvelE_s,    vvelN_s,  &
-                             dxN_s,      dyE_s,    &
-                             dxT_s,      dyT_s,    &
-                             divT,       tensionT  )
-
-      shearT  (:) = c0
-      deltaT  (:) = c0
-
-      do is = 1, ncells
-         if (skipme(is)) cycle
-         isW = nbr(is,nbr_W)
-         isS = nbr(is,nbr_S)
-
-         ! shearing strain rate  =  2*e_12
-         shearT(is) = (dxT_s(is)**2)*(uvelN_s(is)/dxN_s(is) - uvelN_s(isS)/dxN_s(isS)) &
-                     + (dyT_s(is)**2)*(vvelE_s(is)/dyE_s(is) - vvelE_s(isW)/dyE_s(isW))
-
-         ! Delta (in the denominator of zeta, eta)
-         DeltaT(is) = sqrt(divT(is)**2 + e_factor*(tensionT(is)**2 + shearT(is)**2))
-
-      enddo
-
-      end subroutine strain_rates_Tdtsd_compressed
 
 !=======================================================================
 ! Compute strain rates at the U point including boundary conditions

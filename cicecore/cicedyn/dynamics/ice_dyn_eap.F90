@@ -153,7 +153,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
           calc_seabed_stress_slot, calc_strint_slot, &
           str1_slot, str2_slot, str3_slot, str4_slot, &
           str5_slot, str6_slot, str7_slot, str8_slot, &
-          denom1, uvel_init, vvel_init, dynOff, dynCnt, dynMap, Nbr_Local, &
+          denom1, uvel_init, vvel_init, dynOff, dynCnt, dynTot, dynMap, Nbr_Local, &
           Nbr_Task, &
           nbr_W, nbr_S, nbr_SW, &
           skipT, skipU, arlx1i, &
@@ -594,67 +594,66 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          ! stress tensor equation, total surface stress
          !-----------------------------------------------------------------
 
-         !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
-         do iblk = 1, nblocks
 
 !            call ice_timer_start(timer_tmp1,iblk)
-            call stress_eap  (dynCnt(iblk),         skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
+            call stress_eap  (1, dynTot,         skipT, &
                               ksub,                 ndte,                 &
                               ldiag,                                      &
                               arlx1i,               denom1,               &
-                              uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:), &
-                              dxT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              dxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              dxhy_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyhx_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              cxp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), cyp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              cxm_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), cym_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              tarear_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), strength_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              a11_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              a11_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              a11_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              a11_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              a12_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              a12_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              a12_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              a12_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              stressp_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              stressp_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              stressp_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              stressp_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              stressm_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              stressm_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              stressm_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              stressm_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              stress12_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              stress12_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              stress12_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              stress12_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              shear_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), divu_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              vort_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),                       &
-                              e11_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), e12_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              e22_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),                       &
-                              s11_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), s12_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              s22_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),                       &
-                              yieldstress11_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              yieldstress12_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              yieldstress22_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-!                              rdg_conv_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), rdg_shear (:,iblk), &
-                              rdg_conv_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              str1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), str2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              str3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), str4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              str5_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), str6_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              str7_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), str8_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                              uvel_slot, &
+                              vvel_slot, &
+                              Nbr_Task, &
+                              dxT_slot, dyT_slot, &
+                              dxU_slot, dyU_slot, &
+                              dxhy_slot, dyhx_slot, &
+                              cxp_slot, cyp_slot, &
+                              cxm_slot, cym_slot, &
+                              tarear_slot, strength_slot, &
+                              a11_1_slot, &
+                              a11_2_slot, &
+                              a11_3_slot, &
+                              a11_4_slot, &
+                              a12_1_slot, &
+                              a12_2_slot, &
+                              a12_3_slot, &
+                              a12_4_slot, &
+                              stressp_1_slot, &
+                              stressp_2_slot, &
+                              stressp_3_slot, &
+                              stressp_4_slot, &
+                              stressm_1_slot, &
+                              stressm_2_slot, &
+                              stressm_3_slot, &
+                              stressm_4_slot, &
+                              stress12_1_slot, &
+                              stress12_2_slot, &
+                              stress12_3_slot, &
+                              stress12_4_slot, &
+                              shear_slot, divu_slot, &
+                              vort_slot,                       &
+                              e11_slot, e12_slot, &
+                              e22_slot,                       &
+                              s11_slot, s12_slot, &
+                              s22_slot,                       &
+                              yieldstress11_slot, &
+                              yieldstress12_slot, &
+                              yieldstress22_slot, &
+!                              rdg_conv_slot, rdg_shear (:,iblk), &
+                              rdg_conv_slot, &
+                              str1_slot, str2_slot, &
+                              str3_slot, str4_slot, &
+                              str5_slot, str6_slot, &
+                              str7_slot, str8_slot)
 !            call ice_timer_stop(timer_tmp1,iblk)
 
+
             !-----------------------------------------------------------------
-            ! momentum equation
+            ! momentum equation.  Task-wide, so it comes out of the block loop,
+            ! which closes above and reopens below for stepa.
             !-----------------------------------------------------------------
 
-!            call ice_timer_start(timer_tmp2,iblk)
             call stepu (&
-                        dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk),                      &
+                        1, dynTot,                      &
                         cdn_ocnU_slot,  &
                         skipU, &
                         aiU_slot , &
@@ -677,38 +676,36 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                         rheofactU_slot)
 !            call ice_timer_stop(timer_tmp2,iblk)
 
+
             !-----------------------------------------------------------------
             ! evolution of structure tensor A
             !-----------------------------------------------------------------
 
-!            call ice_timer_start(timer_tmp3,iblk)
             if (mod(ksub,10) == 1) then ! only called every 10th timestep
-            call stepa (dynCnt(iblk)        , skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                        dtei                , a11_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a12_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                        a11_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                        a11_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                        a11_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                        a11_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                        a12_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                        a12_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                        a12_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                        a12_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                        stressp_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                        stressp_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                        stressp_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                        stressp_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                        stressm_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                        stressm_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                        stressm_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                        stressm_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                        stress12_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                        stress12_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                        stress12_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                        stress12_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            call stepa (1, dynTot, skipT, &
+                        dtei                , a11_slot, a12_slot, &
+                        a11_1_slot, &
+                        a11_2_slot, &
+                        a11_3_slot, &
+                        a11_4_slot, &
+                        a12_1_slot, &
+                        a12_2_slot, &
+                        a12_3_slot, &
+                        a12_4_slot, &
+                        stressp_1_slot, &
+                        stressp_2_slot, &
+                        stressp_3_slot, &
+                        stressp_4_slot, &
+                        stressm_1_slot, &
+                        stressm_2_slot, &
+                        stressm_3_slot, &
+                        stressm_4_slot, &
+                        stress12_1_slot, &
+                        stress12_2_slot, &
+                        stress12_3_slot, &
+                        stress12_4_slot)
             endif
 !            call ice_timer_stop(timer_tmp3,iblk)
-         enddo
-         !$OMP END PARALLEL DO
 
          ! exchanged compressed and bundled, so the pair costs one message
          ! rather than two -- the compressed counterpart of stack_fields
@@ -1478,7 +1475,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 ! Computes stress terms for the momentum equation
 ! (based on subroutine stress)
 
-      subroutine stress_eap  (ncells,     skipme,         &
+      subroutine stress_eap  (lo, hi,     skipme,         &
                               ksub,       ndte,           &
                               ldiag,                      &
                               arlx1i,     denom1,         &
@@ -1516,7 +1513,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       integer (kind=int_kind), intent(in) :: &
          ksub              , & ! subcycling step
          ndte              , & ! number of subcycles
-         ncells                ! slots held by this block
+         lo, hi                ! slot range to process
 
       logical (kind=log_kind), intent(in) :: &
          ldiag                 ! compute the write-only diagnostics
@@ -1641,7 +1638,47 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       strtmp7(:) = c0
       strtmp8(:) = c0
 
-      do is = 1, ncells
+      ! schedule(static), not runtime -- see the note in stress.
+      !$omp parallel do schedule(static)                             &
+      !$omp default(none)                                            &
+      !$omp private(is, isW, isS, isSW                             , &
+      !$omp         stressptmp_1, stressptmp_2, stressptmp_3       , &
+      !$omp         stressptmp_4, stressmtmp_1, stressmtmp_2       , &
+      !$omp         stressmtmp_3, stressmtmp_4                     , &
+      !$omp         stress12tmp_1, stress12tmp_2, stress12tmp_3    , &
+      !$omp         stress12tmp_4                                  , &
+      !$omp         divune, divunw, divuse, divusw                 , &
+      !$omp         tensionne, tensionnw, tensionse, tensionsw     , &
+      !$omp         shearne, shearnw, shearse, shearsw             , &
+      !$omp         u00, uW, uS, uSW, v00, vW, vS, vSW             , &
+      !$omp         dvdxn, dvdxs, dudye, dudyw                     , &
+      !$omp         ssigpn, ssigps, ssigpe, ssigpw                 , &
+      !$omp         ssigmn, ssigms, ssigme, ssigmw                 , &
+      !$omp         ssig12n, ssig12s, ssig12e, ssig12w             , &
+      !$omp         ssigp1, ssigp2, ssigm1, ssigm2, ssig121, ssig122, &
+      !$omp         csigpne, csigpnw, csigpse, csigpsw             , &
+      !$omp         csigmne, csigmnw, csigmse, csigmsw             , &
+      !$omp         csig12ne, csig12nw, csig12se, csig12sw         , &
+      !$omp         str12ew, str12we, str12ns, str12sn             , &
+      !$omp         strp_tmp, strm_tmp                             , &
+      !$omp         alpharne, alpharnw, alpharsw, alpharse         , &
+      !$omp         alphasne, alphasnw, alphassw, alphasse)          &
+      !$omp  shared(lo, hi, skipme, ksub, ndte, ldiag              , &
+      !$omp         arlx1i, denom1, uvel, vvel, nbr                , &
+      !$omp         dxT, dyT, dxU, dyU, dxhy, dyhx                 , &
+      !$omp         cxp, cyp, cxm, cym, tarear, strength           , &
+      !$omp         a11_1, a11_2, a11_3, a11_4                     , &
+      !$omp         a12_1, a12_2, a12_3, a12_4                     , &
+      !$omp         stressp_1, stressp_2, stressp_3, stressp_4     , &
+      !$omp         stressm_1, stressm_2, stressm_3, stressm_4     , &
+      !$omp         stress12_1, stress12_2, stress12_3, stress12_4 , &
+      !$omp         shear, divu, vort, e11, e12, e22               , &
+      !$omp         s11, s12, s22                                  , &
+      !$omp         yieldstress11, yieldstress12, yieldstress22    , &
+      !$omp         rdg_conv                                       , &
+      !$omp         strtmp1, strtmp2, strtmp3, strtmp4             , &
+      !$omp         strtmp5, strtmp6, strtmp7, strtmp8)
+      do is = lo, hi
          if (skipme(is)) cycle
 
          ! the velocity stencil, read from the compressed slots.  A missing
@@ -1944,7 +1981,8 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          strtmp8(is) = strp_tmp - strm_tmp + str12sn &
               - dyhx(is)*(csigpsw + csigmsw) + dxhy(is)*csig12sw
 
-      enddo                     ! ij
+      enddo                     ! is
+      !$omp end parallel do
 
       end subroutine stress_eap
 
@@ -2241,7 +2279,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 !=======================================================================
 ! Solves evolution equation for structure tensor (A19, A20)
 
-      subroutine stepa  (ncells,     skipme,         &
+      subroutine stepa  (lo, hi,     skipme,         &
                          dtei,         &
                          a11, a12,                   &
                          a11_1, a11_2, a11_3, a11_4, &
@@ -2253,8 +2291,11 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                          stress12_1, stress12_2,     &
                          stress12_3, stress12_4)
 
+      ! Slot range to process, as ice_dyn_core1d's kernels take lb/ub.  Every
+      ! 2-D caller passes 1, dynTot; the pair is kept because it is the shape
+      ! the 1-D kernels share.
       integer (kind=int_kind), intent(in) :: &
-         ncells                ! slots held by this block
+         lo, hi                ! slot range to process
 
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
          skipme       ! inactive-slot flag, T cells
@@ -2263,9 +2304,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          dtei        ! 1/dte, where dte is subcycling timestep (1/s)
 
 
-      ! Xmap is 1D over the block in Fortran storage order: element (i,j) at
-      ! (j-1)*nx_block+i, holding that cell's compressed slot
-      ! COMPRESSED: this block's slice, indexed with is.  These are the state
+      ! COMPRESSED, indexed with is.  These are the state
       ! stress_eap and stepa pass between them every subcycle, so both read and
       ! write the same slots and the block arrays are converted only either
       ! side of the loop, where restart and history want them.
@@ -2303,7 +2342,18 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       dteikth = c1 / (dtei + kth)
       p5kth = p5 * kth
 
-      do is = 1, ncells
+      ! schedule(static), not runtime -- see the note in stress.  dteikth and
+      ! p5kth are SHARED: both are set above the loop.
+      !$omp parallel do schedule(static)                             &
+      !$omp default(none)                                            &
+      !$omp private(is, mresult11, mresult12)                        &
+      !$omp  shared(lo, hi, skipme, dtei, dteikth, p5kth, a11, a12 , &
+      !$omp         a11_1, a11_2, a11_3, a11_4                     , &
+      !$omp         a12_1, a12_2, a12_3, a12_4                     , &
+      !$omp         stressp_1, stressp_2, stressp_3, stressp_4     , &
+      !$omp         stressm_1, stressm_2, stressm_3, stressm_4     , &
+      !$omp         stress12_1, stress12_2, stress12_3, stress12_4)
+      do is = lo, hi
          if (skipme(is)) cycle
 
          ! ne
@@ -2348,7 +2398,8 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          a11(is) = p25*(a11_1(is) + a11_2(is) + a11_3(is) + a11_4(is))
          a12(is) = p25*(a12_1(is) + a12_2(is) + a12_3(is) + a12_4(is))
 
-      enddo                     ! ij
+      enddo                     ! is
+      !$omp end parallel do
 
       end subroutine stepa
 
