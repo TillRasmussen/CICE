@@ -1058,17 +1058,24 @@
          else ! evp_algorithm == standard_2d (Standard CICE)
 
 
+            ! Dead slots too: stepu reads them for absent neighbours.
+            ! Once per timestep, not per subcycle -- stress writes all eight
+            ! unconditionally at every non-skipT slot, and skipT is fixed for
+            ! the whole timestep, so passes 2..ndte only rewrote zeros over
+            ! zeros.  It cannot move out of the timestep: skipT changes as the
+            ! ice edge moves, and a slot that was active last step would hand
+            ! stepu a stale value.
+            str1_slot(:) = c0
+            str2_slot(:) = c0
+            str3_slot(:) = c0
+            str4_slot(:) = c0
+            str5_slot(:) = c0
+            str6_slot(:) = c0
+            str7_slot(:) = c0
+            str8_slot(:) = c0
+
             do ksub = 1,ndte        ! subcycling
 
-               ! dead slots too: stepu reads them for absent neighbours
-               str1_slot(:) = c0
-               str2_slot(:) = c0
-               str3_slot(:) = c0
-               str4_slot(:) = c0
-               str5_slot(:) = c0
-               str6_slot(:) = c0
-               str7_slot(:) = c0
-               str8_slot(:) = c0
                !-----------------------------------------------------------------
                ! stress tensor equation, total surface stress
                !
@@ -1156,25 +1163,25 @@
                ! arrays history reads get their one and only write -- and only
                ! when a stream is going to read them.
                if (lstrint) then
-                  call calc_strint_slot(dynCnt(iblk), skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                       uarear_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                       rheofactU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                       str1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), str2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                       str3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), str4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                       str5_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), str6_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                       str7_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), str8_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                       Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:), &
-                       strintxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                       strintyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                  call calc_strint_slot(dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipU, &
+                       uarear_slot, &
+                       rheofactU_slot, &
+                       str1_slot, str2_slot, &
+                       str3_slot, str4_slot, &
+                       str5_slot, str6_slot, &
+                       str7_slot, str8_slot, &
+                       Nbr_Task, &
+                       strintxU_slot, &
+                       strintyU_slot)
                   call unpack_from_slots(strintxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), strintxU(:,iblk))
                   call unpack_from_slots(strintyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), strintyU(:,iblk))
                endif
                if (ltaub) then
-                  call calc_seabed_stress_slot(dynCnt(iblk), skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                       uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                       taubxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                       vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                       taubyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                  call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipU, &
+                       uvel_slot, &
+                       taubxU_slot, &
+                       vvel_slot, &
+                       taubyU_slot)
                   call unpack_from_slots(taubxU_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), taubxU  (:,iblk))
                   call unpack_from_slots(taubyU_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), taubyU  (:,iblk))
                endif
@@ -1234,34 +1241,23 @@
 
          do ksub = 1,ndte        ! subcycling
 
-            !$OMP PARALLEL DO PRIVATE(iblk)
-            do iblk = 1, nblocks
-
             !-----------------------------------------------------------------
             ! strain rates at U point
             ! NOTE these are actually strain rates * area  (m^2/s)
             !-----------------------------------------------------------------
-               call strain_rates_U (dynCnt(iblk), skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                                    Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
-                                    uvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                    vvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                    uvelN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                    vvelN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                    uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                    vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                    dxE_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                    dyN_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                    dxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                    ratiodxN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), ratiodxNr_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                    ratiodyE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), ratiodyEr_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                    epm_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                    npm_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                    divergU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), tensionU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                    shearU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                    deltaU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)  )
-
-            enddo  ! iblk
-            !$OMP END PARALLEL DO
+            call strain_rates_U (1             , dynTot        , &
+                                 skipU         ,                 &
+                                 Nbr_Task      ,                 &
+                                 uvelE_slot    , vvelE_slot    , &
+                                 uvelN_slot    , vvelN_slot    , &
+                                 uvel_slot     , vvel_slot     , &
+                                 dxE_slot      , dyN_slot      , &
+                                 dxU_slot      , dyU_slot      , &
+                                 ratiodxN_slot , ratiodxNr_slot, &
+                                 ratiodyE_slot , ratiodyEr_slot, &
+                                 epm_slot      , npm_slot      , &
+                                 divergU       , tensionU      , &
+                                 shearU_slot   , deltaU          )
 
             call ice_timer_start(timer_bound)
             if (maskhalo_dyn) then
@@ -1320,17 +1316,11 @@
                     tarea_slot, hm_slot, wsumNE_slot, etax2U_slot)
             endif
 
-            !$OMP PARALLEL DO PRIVATE(iblk)
-            do iblk = 1, nblocks
-               call stressC_U (dynCnt(iblk), skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                              uarea_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              etax2U_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              deltaU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              strengthU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              shearU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              stress12U_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            enddo
-            !$OMP END PARALLEL DO
+            call stressC_U (1             , dynTot        , &
+                            skipU         ,                 &
+                            uarea_slot    , etax2U_slot   , &
+                            deltaU        , strengthU_slot, &
+                            shearU_slot   , stress12U_slot)
 
             call ice_timer_start(timer_bound)
             if (maskhalo_dyn) then
@@ -1479,12 +1469,12 @@
                call unpack_from_slots(strintyN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), strintyN(:,:,iblk))
             endif
             if (ltaub) then
-               call calc_seabed_stress_slot(dynCnt(iblk), skipE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                    uvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                    taubxE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-               call calc_seabed_stress_slot(dynCnt(iblk), skipN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                    vvelN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                    taubyN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+               call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipE, &
+                    uvelE_slot, &
+                    taubxE_slot)
+               call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipN, &
+                    vvelN_slot, &
+                    taubyN_slot)
                call unpack_from_slots(taubxE_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), taubxE  (:,iblk))
                call unpack_from_slots(taubyN_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), taubyN  (:,iblk))
             endif
@@ -1581,44 +1571,33 @@
                     tarea_slot, hm_slot, wsumNE_slot, etax2U_slot)
             endif
 
-            !$OMP PARALLEL DO PRIVATE(iblk)
-            do iblk = 1, nblocks
             !-----------------------------------------------------------------
             ! strain rates at U point
             ! NOTE these are actually strain rates * area  (m^2/s)
             !-----------------------------------------------------------------
-               call strain_rates_U (dynCnt(iblk), skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                                    Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
-                                    uvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                    vvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                    uvelN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                    vvelN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                    uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                    vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                    dxE_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                    dyN_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                    dxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                    ratiodxN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), ratiodxNr_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                    ratiodyE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), ratiodyEr_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                    epm_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                    npm_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                    divergU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), tensionU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                    shearU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                    DeltaU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)  )
+            call strain_rates_U (1             , dynTot        , &
+                                 skipU         ,                 &
+                                 Nbr_Task      ,                 &
+                                 uvelE_slot    , vvelE_slot    , &
+                                 uvelN_slot    , vvelN_slot    , &
+                                 uvel_slot     , vvel_slot     , &
+                                 dxE_slot      , dyN_slot      , &
+                                 dxU_slot      , dyU_slot      , &
+                                 ratiodxN_slot , ratiodxNr_slot, &
+                                 ratiodyE_slot , ratiodyEr_slot, &
+                                 epm_slot      , npm_slot      , &
+                                 divergU       , tensionU      , &
+                                 shearU_slot   , DeltaU          )
 
-               call stressCD_U     (dynCnt(iblk), skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                                    uarea_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                    zetax2U_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                    etax2U_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                    strengthU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                    divergU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), tensionU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                    shearU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                    DeltaU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                    stresspU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                    stressmU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                    stress12U_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            enddo
-            !$OMP END PARALLEL DO
+            call stressCD_U     (1             , dynTot        , &
+                                 skipU         ,                 &
+                                 uarea_slot    ,                 &
+                                 zetax2U_slot  , etax2U_slot   , &
+                                 strengthU_slot,                 &
+                                 divergU       , tensionU      , &
+                                 shearU_slot   , DeltaU        , &
+                                 stresspU_slot , stressmU_slot , &
+                                 stress12U_slot)
 
             ! calls ice_haloUpdate, controls bundles and masks
             ! Six stresses, two compressed exchanges -- one per field
@@ -1797,16 +1776,16 @@
                call unpack_from_slots(strintyN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), strintyN(:,:,iblk))
             endif
             if (ltaub) then
-               call calc_seabed_stress_slot(dynCnt(iblk), skipE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                    uvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                    taubxE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                    vvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                    taubyE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-               call calc_seabed_stress_slot(dynCnt(iblk), skipN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                    uvelN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                    taubxN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                    vvelN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                    taubyN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+               call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipE, &
+                    uvelE_slot, &
+                    taubxE_slot, &
+                    vvelE_slot, &
+                    taubyE_slot)
+               call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipN, &
+                    uvelN_slot, &
+                    taubxN_slot, &
+                    vvelN_slot, &
+                    taubyN_slot)
                call unpack_from_slots(taubxE_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), taubxE  (:,iblk))
                call unpack_from_slots(taubyE_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), taubyE  (:,iblk))
                call unpack_from_slots(taubxN_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), taubxN  (:,iblk))
@@ -2548,7 +2527,8 @@
 ! Kimmritz, M., S. Danilov and M. Losch (2016). The adaptive EVP method
 ! for solving the sea ice momentum equation. Ocean Model., 101, 59-67.
 
-      subroutine stressC_U  (ncells   , skipme    ,&
+      subroutine stressC_U  (lo       , hi        ,&
+                             skipme    ,           &
                              uarea_s  ,            &
                              etax2U_s , deltaU    ,&
                              strengthU_s, shearU_s,&
@@ -2558,7 +2538,7 @@
                                 visc_method, deltaminEVP
 
       integer (kind=int_kind), intent(in) :: &
-         ncells                ! slots held by this block
+         lo, hi                ! slot range to process
 
       ! .true. where the slot carries no ice this step
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
@@ -2601,14 +2581,14 @@
       !-----------------------------------------------------------------
 
       if (visc_method == 'avg_zeta') then
-         do is = 1, ncells
+         do is = lo, hi
          if (skipme(is)) cycle
             stress12U_s(is) = (stress12U_s(is)*(c1-arlx1i*revp) &
                              + arlx1i*p5*etax2U_s(is)*shearU_s(is)) * denom1
          enddo
 
       elseif (visc_method == 'avg_strength') then
-         do is = 1, ncells
+         do is = lo, hi
          if (skipme(is)) cycle
             DminUarea = deltaminEVP*uarea_s(is)
             ! only need etax2U here, but other terms are calculated with etax2U
@@ -2773,7 +2753,8 @@
 ! author: JF Lemieux, ECCC
 ! Nov 2021
 
-      subroutine stressCD_U (ncells   , skipme    ,&
+      subroutine stressCD_U (lo       , hi        ,&
+                             skipme    ,           &
                              uarea_s   ,           &
                              zetax2U_s , etax2U_s, &
                              strengthU_s,          &
@@ -2786,7 +2767,7 @@
                                 visc_method, deltaminEVP
 
       integer (kind=int_kind), intent(in) :: &
-         ncells                ! slots held by this block
+         lo, hi                ! slot range to process
 
       ! .true. where the slot carries no ice this step
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
@@ -2825,7 +2806,7 @@
 
       character(len=*), parameter :: subname = '(stressCD_U)'
 
-      do is = 1, ncells
+      do is = lo, hi
          if (skipme(is)) cycle
 
          !-----------------------------------------------------------------

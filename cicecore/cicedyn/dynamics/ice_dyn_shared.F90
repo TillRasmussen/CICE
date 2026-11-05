@@ -1614,6 +1614,7 @@
          mslotz        , & ! slot of a cell, for the stress reset
          i, j, ij       , & ! ij is the compressed cell counter
          ijb            , & ! 1D index of (i,j) in the block
+         is             , & ! compressed slot
          msx                ! compressed slot of (i,j), 0 if none
 
       real (kind=dbl_kind) :: &
@@ -1858,42 +1859,46 @@
             file=__FILE__, line=__LINE__)
       endif
 
-      do ij = 1, icellX
-         i = indxXi(ij)
-         j = indxXj(ij)
-         ijb = (j-1)*nx_block + i
+      ! Every operand below is compressed, so this walks slots directly rather
+      ! than the icellX list: the indxXi/indxXj pair and the ijb arithmetic
+      ! existed only to reach Xmap(ijb), which the body then used twenty times
+      ! per cell.  skipX carries exactly the membership the list encodes -- it
+      ! is set .false. at Xmap(ijb) for the same cells, in the loop that builds
+      ! the list -- so the two visit the same slots.
+      do is = 1, nact
+         if (skipX(is)) cycle
 
          if (free_drift_approx .and. present(rheofactX_s)) then
-            if ( aiX (Xmap(ijb)) > rheo_area_min ) then
-               rheofactX_s(Xmap(ijb)) = c1
+            if ( aiX (is) > rheo_area_min ) then
+               rheofactX_s(is) = c1
             else
-               rheofactX_s(Xmap(ijb)) = c0
+               rheofactX_s(is) = c0
             endif
          endif
 
-         Xmassdti(Xmap(ijb)) = Xmass(Xmap(ijb))/dt ! kg/m^2 s
+         Xmassdti(is) = Xmass(is)/dt ! kg/m^2 s
 
-         fm(Xmap(ijb)) = fcor(Xmap(ijb))*Xmass(Xmap(ijb))   ! Coriolis * mass
+         fm(is) = fcor(is)*Xmass(is)   ! Coriolis * mass
 
          ! for ocean stress
-         waterx(Xmap(ijb)) = uocn(Xmap(ijb))*cosw - vocn(Xmap(ijb))*sinw*sign(c1,fm(Xmap(ijb)))
-         watery(Xmap(ijb)) = vocn(Xmap(ijb))*cosw + uocn(Xmap(ijb))*sinw*sign(c1,fm(Xmap(ijb)))
+         waterx(is) = uocn(is)*cosw - vocn(is)*sinw*sign(c1,fm(is))
+         watery(is) = vocn(is)*cosw + uocn(is)*sinw*sign(c1,fm(is))
 
          ! combine tilt with wind stress
          if (trim(ssh_stress) == 'geostrophic') then
             ! calculate tilt from geostrophic currents if needed
-            strtltx(Xmap(ijb)) = -fm(Xmap(ijb))*vocn(Xmap(ijb))
-            strtlty(Xmap(ijb)) =  fm(Xmap(ijb))*uocn(Xmap(ijb))
+            strtltx(is) = -fm(is)*vocn(is)
+            strtlty(is) =  fm(is)*uocn(is)
          elseif (trim(ssh_stress) == 'coupled') then
-            strtltx(Xmap(ijb)) = -gravit*Xmass(Xmap(ijb))*ss_tltx(Xmap(ijb))
-            strtlty(Xmap(ijb)) = -gravit*Xmass(Xmap(ijb))*ss_tlty(Xmap(ijb))
+            strtltx(is) = -gravit*Xmass(is)*ss_tltx(is)
+            strtlty(is) = -gravit*Xmass(is)*ss_tlty(is)
          else
             call abort_ice(subname//' ERROR: unknown ssh_stress='//trim(ssh_stress), &
                file=__FILE__, line=__LINE__)
          endif
 
-         forcex(Xmap(ijb)) = strairx(Xmap(ijb)) + strtltx(Xmap(ijb))
-         forcey(Xmap(ijb)) = strairy(Xmap(ijb)) + strtlty(Xmap(ijb))
+         forcex(is) = strairx(is) + strtltx(is)
+         forcey(is) = strairy(is) + strtlty(is)
 
          ! copy, never relayout: the block arrays above keep every value, and
          ! these are read back from them so the two cannot drift apart
@@ -2306,12 +2311,14 @@
 ! Slots the step kernel skipped are skipped here too, so they keep the value
 ! dyn_prep2 left -- exactly as when the stress was written in the loop.
 
-      subroutine calc_seabed_stress_slot (ncells, skipme,  &
+      subroutine calc_seabed_stress_slot (lo, hi, skipme,  &
                                           vel_s,  taub_s,  &
                                           vel2_s, taub2_s)
 
+      ! Slot range, as ice_dyn_core1d's kernels take lb/ub.  Callers pass
+      ! 1, dynTot; the pair is the shape the 1-D kernels share.
       integer (kind=int_kind), intent(in) :: &
-         ncells      ! slots held by this block
+         lo, hi      ! slot range to process
 
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
          skipme      ! inactive-slot flag
@@ -2339,15 +2346,19 @@
 
       character(len=*), parameter :: subname = '(calc_seabed_stress_slot)'
 
+      ! ⚠ NOT threaded here.  Every caller still invokes this from inside its
+      ! own !$OMP PARALLEL DO over blocks, so a region here would nest --
+      ! disabled by default, so it would silently run serial.  Add the
+      ! directive when the calling loops collapse, not before.
       if (present(taub2_s)) then
-         do is = 1, ncells
+         do is = lo, hi
             if (skipme(is)) cycle
             Cb          = taub_s(is)
             taub_s (is) = -vel_s (is)*Cb
             taub2_s(is) = -vel2_s(is)*Cb
          enddo
       else
-         do is = 1, ncells
+         do is = lo, hi
             if (skipme(is)) cycle
             taub_s(is) = -vel_s(is)*taub_s(is)
          enddo
@@ -2368,13 +2379,18 @@
 !
 ! This is only worth calling when the fields are actually output.
 
-      subroutine calc_strint_slot (ncells, skipme, uarear, rheofactU, &
+      subroutine calc_strint_slot (lo, hi, skipme, uarear, rheofactU, &
                                    str1, str2, str3, str4, &
                                    str5, str6, str7, str8, &
                                    nbr, strintx_s, strinty_s)
 
+      ! Slot range, as ice_dyn_core1d's kernels take lb/ub.  Callers pass
+      ! 1, dynTot; the pair is the shape the 1-D kernels share.
+      ! ⚠ nbr must be Nbr_Task with a task-wide range, never Nbr_Local: the
+      ! latter holds BLOCK-LOCAL slots, so every neighbour would resolve into
+      ! block 1 -- in bounds, run completes, answer wrong.
       integer (kind=int_kind), intent(in) :: &
-         ncells      ! slots held by this block
+         lo, hi      ! slot range to process
 
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
          skipme      ! inactive-slot flag
@@ -2405,7 +2421,10 @@
 
       ! The expression is stepu's, character for character, so that the
       ! operands associate the same way and the result is bit-identical.
-      do is = 1, ncells
+      ! ⚠ NOT threaded: the caller still runs this inside its own
+      ! !$OMP PARALLEL DO over blocks, so a region here would nest.  Add the
+      ! directive when that loop collapses, not before.
+      do is = lo, hi
          if (skipme(is)) cycle
 
          isE  = nbr(is,nbr_E )
@@ -3808,7 +3827,8 @@
 ! ADDITIVE for now: the CD subcycle still calls the block version above, and
 ! converting CD is its own tranche.  ⚠ The two share their arithmetic -- when
 ! CD is converted this one becomes the only version and the block one goes.
-      subroutine strain_rates_U (ncells,     skipme,    &
+      subroutine strain_rates_U (lo,         hi,        &
+                                 skipme,                &
                                  nbr,                   &
                                  uvelE_s,    vvelE_s,   &
                                  uvelN_s,    vvelN_s,   &
@@ -3822,13 +3842,16 @@
                                  shearU_s,   DeltaU     )
 
       integer (kind=int_kind), intent(in) :: &
-         ncells                 ! slots held by this block
+         lo, hi                 ! slot range to process
 
       ! .true. where the slot carries no ice this step
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
          skipme
 
-      ! nbr(is,d) is the block-local slot one step in direction d from slot is
+      ! nbr(is,d) is the slot one step in direction d from slot is.
+      ! ⚠ must be Nbr_Task with a task-wide range, never Nbr_Local: the
+      ! latter holds BLOCK-LOCAL slots, so every neighbour would resolve
+      ! into block 1 -- in bounds, silent, and wrong.
       integer (kind=int_kind), dimension (:,:), intent(in) :: &
          nbr          ! neighbour slots
 
@@ -3887,12 +3910,15 @@
       ! NOTE these are actually strain rates * area  (m^2/s)
       !-----------------------------------------------------------------
 
-      divergU (:) = c0
-      tensionU(:) = c0
-      shearU_s(:) = c0
-      deltaU  (:) = c0
+      ! Zero the range worked, dead slots included: shearU_s is read at a
+      ! neighbour by stressC_T, so a dead slot must carry c0 rather than
+      ! whatever the previous subcycle left there.
+      divergU (lo:hi) = c0
+      tensionU(lo:hi) = c0
+      shearU_s(lo:hi) = c0
+      deltaU  (lo:hi) = c0
 
-      do is = 1, ncells
+      do is = lo, hi
          if (skipme(is)) cycle
 
          isE = nbr(is,nbr_E)   ! (i+1,j  )

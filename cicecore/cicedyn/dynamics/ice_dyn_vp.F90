@@ -695,11 +695,11 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
             taubx_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = &
                Cb_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
 
-            call calc_seabed_stress_slot(dynCnt(iblk), skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                 ulin_s (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),                                   &
-                 taubx_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),                                   &
-                 vlin_s (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),                                   &
-                 tauby_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipU, &
+                 ulin_s ,                                   &
+                 taubx_s,                                   &
+                 vlin_s ,                                   &
+                 tauby_s)
 
             call unpack_from_slots(taubx_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), taubxU(:,iblk))
             call unpack_from_slots(tauby_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), taubyU(:,iblk))

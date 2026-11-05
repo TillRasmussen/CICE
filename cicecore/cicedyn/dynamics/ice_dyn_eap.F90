@@ -694,25 +694,23 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          ! outputs only; stepu writes strint slots every pass, this is their
          ! one write
          if (lstrint) then
-            call calc_strint_slot(dynCnt(iblk), skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                 uarear_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                 rheofactU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                 str1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), str2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-              str3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), str4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-              str5_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), str6_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-              str7_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), str8_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-              Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:), &
-                 strintxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                 strintyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            call calc_strint_slot(dynOff(iblk)+1  , dynOff(iblk)+dynCnt(iblk), &
+                                  skipU          , uarear_slot    , &
+                                  rheofactU_slot , str1_slot      , &
+                                  str2_slot      , str3_slot      , &
+                                  str4_slot      , str5_slot      , &
+                                  str6_slot      , str7_slot      , &
+                                  str8_slot      , Nbr_Task       , &
+                                  strintxU_slot  , strintyU_slot)
             call unpack_from_slots(strintxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), strintxU(:,iblk))
             call unpack_from_slots(strintyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), strintyU(:,iblk))
          endif
          if (ltaub) then
-            call calc_seabed_stress_slot(dynCnt(iblk), skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                 uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                 taubxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                 vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                 taubyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipU, &
+                 uvel_slot, &
+                 taubxU_slot, &
+                 vvel_slot, &
+                 taubyU_slot)
             call unpack_from_slots(taubxU_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), taubxU  (:,iblk))
             call unpack_from_slots(taubyU_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), taubyU  (:,iblk))
          endif
