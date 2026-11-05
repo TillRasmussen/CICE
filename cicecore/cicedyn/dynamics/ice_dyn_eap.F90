@@ -546,6 +546,24 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       enddo
       !$OMP END PARALLEL DO
 
+      ! Dead slots too: stepu reads them for absent neighbours.  The block
+      ! code zeroed strtmp at the top of stress_eap, so a slot that stopped
+      ! carrying ice could never hand stepu a stale force; the conversion
+      ! dropped that and left only the one-shot zero in alloc_dyn_shared.
+      ! skipT is rebuilt from the ice distribution by dyn_prep2 every step,
+      ! so a slot going active -> inactive kept its previous force until now.
+      ! Once per timestep is enough and matches the block code exactly:
+      ! stress_eap writes all eight at every non-skipT slot, and skipT does
+      ! not move inside the subcycle.
+      str1_slot(:) = c0
+      str2_slot(:) = c0
+      str3_slot(:) = c0
+      str4_slot(:) = c0
+      str5_slot(:) = c0
+      str6_slot(:) = c0
+      str7_slot(:) = c0
+      str8_slot(:) = c0
+
       do ksub = 1,ndte        ! subcycling
 
          !-----------------------------------------------------------------
