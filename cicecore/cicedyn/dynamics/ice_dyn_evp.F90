@@ -1366,36 +1366,25 @@
                                    strintyN_slot )
 
 
-            !$OMP PARALLEL DO PRIVATE(iblk)
-            do iblk = 1, nblocks
+                call stepu_C (1            , dynTot       , & ! u, E point
+                              skipE        , cdn_ocnE_slot, &
+                              aiE_slot     , uocnE_slot   , &
+                              vocnE_slot   , waterxE_slot , &
+                              forcexE_slot , emassdti_slot, &
+                              fmE_slot     , strintxE_slot, &
+                              taubxE_slot  , uvelE_init   , &
+                              uvelE_slot   , vvelE_slot   , &
+                              TbE_slot)
 
-                call stepu_C (dynCnt(iblk), skipE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),        & ! u, E point
-                              cdn_ocnE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              aiE_slot     (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              uocnE_slot   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), vocnE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              waterxE_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), forcexE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              emassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), fmE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              strintxE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              taubxE_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              uvelE_init(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),                         &
-                              uvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              vvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              TbE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-
-                call stepv_C (dynCnt(iblk), skipN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),        & ! v, N point
-                              cdn_ocnN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              aiN_slot     (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              uocnN_slot   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), vocnN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              wateryN_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), forceyN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              nmassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), fmN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              strintyN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              taubyN_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              vvelN_init(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),                         &
-                              uvelN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              vvelN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                              TbN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            enddo
-            !$OMP END PARALLEL DO
+                call stepv_C (1            , dynTot       , & ! v, N point
+                              skipN        , cdn_ocnN_slot, &
+                              aiN_slot     , uocnN_slot   , &
+                              vocnN_slot   , wateryN_slot , &
+                              forceyN_slot , nmassdti_slot, &
+                              fmN_slot     , strintyN_slot, &
+                              taubyN_slot  , vvelN_init   , &
+                              uvelN_slot   , vvelN_slot   , &
+                              TbN_slot)
 
             ! Shifts, masks and halo exchanges all on the compressed layout,
             ! so the velocities never leave slot form inside the subcycle.
@@ -1706,40 +1695,29 @@
                                    strintyN_slot )
 
 
-            !$OMP PARALLEL DO PRIVATE(iblk)
-            do iblk = 1, nblocks
+               call stepuv_CD (1            , dynTot       , & ! E point
+                               skipE        , cdn_ocnE_slot, &
+                               aiE_slot     , uocnE_slot   , &
+                               vocnE_slot   , waterxE_slot , &
+                               wateryE_slot , forcexE_slot , &
+                               forceyE_slot , emassdti_slot, &
+                               fmE_slot     , strintxE_slot, &
+                               strintyE_slot, taubxE_slot  , &
+                               uvelE_init   , vvelE_init   , &
+                               uvelE_slot   , vvelE_slot   , &
+                               TbE_slot)
 
-               call stepuv_CD (dynCnt(iblk), skipE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),       & ! E point
-                               cdn_ocnE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               aiE_slot     (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               uocnE_slot   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), vocnE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               waterxE_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), wateryE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               forcexE_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), forceyE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               emassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), fmE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               strintxE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               strintyE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               taubxE_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               uvelE_init(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),   vvelE_init(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),   &
-                               uvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               vvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               TbE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-
-               call stepuv_CD (dynCnt(iblk), skipN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),       & ! N point
-                               cdn_ocnN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               aiN_slot     (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               uocnN_slot   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), vocnN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               waterxN_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), wateryN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               forcexN_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), forceyN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               nmassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), fmN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               strintxN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               strintyN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               taubxN_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               uvelN_init(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),   vvelN_init(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),   &
-                               uvelN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               vvelN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               TbN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            enddo
-            !$OMP END PARALLEL DO
+               call stepuv_CD (1            , dynTot       , & ! N point
+                               skipN        , cdn_ocnN_slot, &
+                               aiN_slot     , uocnN_slot   , &
+                               vocnN_slot   , waterxN_slot , &
+                               wateryN_slot , forcexN_slot , &
+                               forceyN_slot , nmassdti_slot, &
+                               fmN_slot     , strintxN_slot, &
+                               strintyN_slot, taubxN_slot  , &
+                               uvelN_init   , vvelN_init   , &
+                               uvelN_slot   , vvelN_slot   , &
+                               TbN_slot)
 
             ! CD evolves all four velocities independently, so unlike the C
             ! branch there is no E2NA/N2EA pair here -- only the two shifts

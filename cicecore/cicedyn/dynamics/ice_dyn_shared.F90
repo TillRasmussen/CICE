@@ -2149,7 +2149,7 @@
 !=======================================================================
 ! Integration of the momentum equation to find velocity (u,v) at E and N locations
 
-      subroutine stepuv_CD (ncells,     skipme,   &
+      subroutine stepuv_CD (lo, hi,     skipme,   &
                             Cw,                   &
                                         aiX,      &
                             uocn,       vocn,     &
@@ -2162,8 +2162,10 @@
                             uvel_s,     vvel_s,   &
                             Tb)
 
+      ! Slot range, as ice_dyn_core1d's kernels take lb/ub.  Callers pass
+      ! 1, dynTot; the pair is the shape the 1-D kernels share.
       integer (kind=int_kind), intent(in) :: &
-         ncells                ! number of slots in this block
+         lo, hi                ! slot range to process
 
       ! skipme(is) is .true. where the slot carries no ice this step
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
@@ -2235,7 +2237,17 @@
       if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
          file=__FILE__, line=__LINE__)
 
-      do is = 1, ncells
+      ! schedule(static), not runtime -- see the note in stress.  rhow is
+      ! SHARED: icepack_query_parameters sets it above the loop.
+      !$omp parallel do schedule(static) default(none)                &
+      !$omp private(is, uold, vold, vrel, cca, ccb, ccc, ab2        , &
+      !$omp         cc1, cc2, taux, tauy, Cb)                         &
+      !$omp  shared(lo, hi, skipme, Cw, aiX, uocn, vocn             , &
+      !$omp         waterx, watery, forcex, forcey, massdti, fm     , &
+      !$omp         strintx_s, strinty_s, taubx_s                   , &
+      !$omp         uvel_init, vvel_init, uvel_s, vvel_s, Tb        , &
+      !$omp         rhow, brlx, revp)
+      do is = lo, hi
          if (skipme(is)) cycle
 
          uold = uvel_s(is)
@@ -2269,7 +2281,8 @@
          ! from it after the subcycling.  See the note in stepu.
          taubx_s(is) = Cb
 
-      enddo                     ! ij
+      enddo                     ! is
+      !$omp end parallel do
 
       end subroutine stepuv_CD
 
@@ -2412,7 +2425,7 @@
 !=======================================================================
 ! Integration of the momentum equation to find velocity u at E location on C grid
 
-      subroutine stepu_C (ncells,     skipme,   &
+      subroutine stepu_C (lo, hi,     skipme,   &
                           Cw,                   &
                                       aiE,      &
                           uocn,       vocn,     &
@@ -2423,8 +2436,10 @@
                           uvel_s,     vvel_s,   &
                           Tb)
 
+      ! Slot range, as ice_dyn_core1d's kernels take lb/ub.  Callers pass
+      ! 1, dynTot; the pair is the shape the 1-D kernels share.
       integer (kind=int_kind), intent(in) :: &
-         ncells                ! number of slots in this block
+         lo, hi                ! slot range to process
 
       ! skipme(is) is .true. where the slot carries no ice this step
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
@@ -2491,7 +2506,20 @@
       if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
          file=__FILE__, line=__LINE__)
 
-      do is = 1, ncells
+      ! schedule(static), not runtime -- see the note in stress.  rhow is
+      ! SHARED: icepack_query_parameters sets it above the loop.
+      !$omp parallel do schedule(static) default(none)                &
+      !$omp private(is           , uold         , vold         ,      &
+      !$omp         vrel         , cca          , ccb          ,      &
+      !$omp         ccc          , cc1          , taux         , Cb)  &
+      !$omp  shared(lo           , hi           , skipme       ,      &
+      !$omp         Cw           , aiE          , uocn         ,      &
+      !$omp         vocn         , waterx       , forcex       ,      &
+      !$omp         massdti      , fm           , strintx_s    ,      &
+      !$omp         taubx_s      , uvel_init    , uvel_s       ,      &
+      !$omp         vvel_s       , Tb           , rhow         ,      &
+      !$omp         brlx         , revp)
+      do is = lo, hi
          if (skipme(is)) cycle
 
          uold = uvel_s(is)
@@ -2520,14 +2548,15 @@
          ! it after the subcycling.  See the note in stepu.
          taubx_s(is) = Cb
 
-      enddo                     ! ij
+      enddo                     ! is
+      !$omp end parallel do
 
       end subroutine stepu_C
 
 !=======================================================================
 ! Integration of the momentum equation to find velocity v at N location on C grid
 
-      subroutine stepv_C (ncells,     skipme,   &
+      subroutine stepv_C (lo, hi,     skipme,   &
                           Cw,                   &
                                       aiN,      &
                           uocn,       vocn,     &
@@ -2538,8 +2567,10 @@
                           uvel_s,     vvel_s,   &
                           Tb)
 
+      ! Slot range, as ice_dyn_core1d's kernels take lb/ub.  Callers pass
+      ! 1, dynTot; the pair is the shape the 1-D kernels share.
       integer (kind=int_kind), intent(in) :: &
-         ncells                ! number of slots in this block
+         lo, hi                ! slot range to process
 
       ! skipme(is) is .true. where the slot carries no ice this step
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
@@ -2606,7 +2637,20 @@
       if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
          file=__FILE__, line=__LINE__)
 
-      do is = 1, ncells
+      ! schedule(static), not runtime -- see the note in stress.  rhow is
+      ! SHARED: icepack_query_parameters sets it above the loop.
+      !$omp parallel do schedule(static) default(none)                &
+      !$omp private(is           , uold         , vold         ,      &
+      !$omp         vrel         , cca          , ccb          ,      &
+      !$omp         ccc          , cc2          , tauy         , Cb)  &
+      !$omp  shared(lo           , hi           , skipme       ,      &
+      !$omp         Cw           , aiN          , uocn         ,      &
+      !$omp         vocn         , watery       , forcey       ,      &
+      !$omp         massdti      , fm           , strinty_s    ,      &
+      !$omp         tauby_s      , vvel_init    , uvel_s       ,      &
+      !$omp         vvel_s       , Tb           , rhow         ,      &
+      !$omp         brlx         , revp)
+      do is = lo, hi
          if (skipme(is)) cycle
 
          uold = uvel_s(is)
@@ -2635,7 +2679,8 @@
          ! it after the subcycling.  See the note in stepu.
          tauby_s(is) = Cb
 
-      enddo                     ! ij
+      enddo                     ! is
+      !$omp end parallel do
 
       end subroutine stepv_C
 
