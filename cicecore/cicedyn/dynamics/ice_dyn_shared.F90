@@ -2717,23 +2717,21 @@
 !
 ! author: Elizabeth C. Hunke, LANL
 
-      subroutine dyn_finish (nx_block, ny_block, &
-                             icellU,   Cw,       &
-                             indxUi,   indxUj,   &
-                             uvel,     vvel,     &
+      subroutine dyn_finish (lo,       hi,       &
+                             skipme,   Cw,       &
+                             uvel_s,   vvel_s,   &
                              uocn_s,   vocn_s,   &
                              aiX_s,    fm,       &
-                             Xmap,     strocnx,  strocny)
+                             strocnx,  strocny)
 
       integer (kind=int_kind), intent(in) :: &
-         nx_block, ny_block, & ! block dimensions
-         icellU                ! total count when iceUmask is true
+         lo, hi                ! slot range to process
 
-      integer (kind=int_kind), dimension (nx_block*ny_block), intent(in) :: &
-         indxUi  , & ! compressed index in i-direction
-         indxUj      ! compressed index in j-direction
+      ! .true. where the slot carries no ice this step
+      logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
+         skipme
 
-      ! ⚠ Compressed, indexed by Xmap(ijb) exactly as strocnx/strocny are.
+      ! ⚠ Compressed, indexed by slot exactly as strocnx/strocny are.
       ! Their producer is grid_average_X2Y('S',...) on the X-grid, so the
       ! slot form is the same arithmetic evaluated at the slot cells only.
       real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
@@ -2741,19 +2739,19 @@
          uocn_s  , & ! ocean current, x-direction (m/s)
          vocn_s      ! ocean current, y-direction (m/s)
 
-      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
-         uvel    , & ! x-component of velocity (m/s)
-         vvel        ! y-component of velocity (m/s)
+      ! Compressed: every dyn_finish caller keeps uvel_slot current --
+      ! evp and eap subcycle on the slots, vp packs before it gets here.
+      real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
+         uvel_s  , & ! x-component of velocity (m/s), compressed
+         vvel_s      ! y-component of velocity (m/s), compressed
 
       ! ⚠ Compressed, indexed by the same ms as uocn_s/vocn_s/aiX_s.
       real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
          fm          ! Coriolis param. * mass in U-cell (kg/s)
 
-      ! ⚠ Compressed.  Indexed by Xmap(ijb), the block-local slot, the same
+      ! ⚠ Compressed.  Indexed by the slot directly, the same
       ! way dyn_prep2 writes them.  Their only readers are history and the
       ! strocnT_iavg average in step_dyn_horiz, both of which take slots now.
-      integer (kind=int_kind), dimension (nx_block*ny_block), intent(in) :: &
-         Xmap        ! block-local slot of each cell
 
       real (kind=dbl_kind), dimension (:), intent(inout), contiguous :: &
          strocnx , & ! ice-ocean stress, x-direction
@@ -2765,9 +2763,7 @@
       ! local variables
 
       integer (kind=int_kind) :: &
-         i, j, ij       , & ! ij is the compressed cell counter
-         ijb            , & ! 1D index of (i,j) in the block
-         ms                 ! block-local slot of (i,j)
+         ms                 ! slot being processed
 
       real (kind=dbl_kind) :: &
          vrel    , & !
@@ -2781,26 +2777,23 @@
          file=__FILE__, line=__LINE__)
 
       ! ocean-ice stress for coupling
-      do ij =1, icellU
-         i = indxUi(ij)
-         j = indxUj(ij)
-         ijb = (j-1)*nx_block + i
-         ms  = Xmap(ijb)
+      do ms = lo, hi
+         if (skipme(ms)) cycle
 
-          vrel = rhow*Cw(ms)*sqrt((uocn_s(ms) - uvel(i,j))**2 + &
-                 (vocn_s(ms) - vvel(i,j))**2)  ! m/s
+          vrel = rhow*Cw(ms)*sqrt((uocn_s(ms) - uvel_s(ms))**2 + &
+                 (vocn_s(ms) - vvel_s(ms))**2)  ! m/s
 
 !        strocnx(i,j) = strocnx(i,j) &
-!                     - vrel*(uvel(i,j)*cosw - vvel(i,j)*sinw) * aiX_s(ms)
+!                     - vrel*(uvel_s(ms)*cosw - vvel_s(ms)*sinw) * aiX_s(ms)
 !        strocny(i,j) = strocny(i,j) &
-!                     - vrel*(vvel(i,j)*cosw + uvel(i,j)*sinw) * aiX_s(ms)
+!                     - vrel*(vvel_s(ms)*cosw + uvel_s(ms)*sinw) * aiX_s(ms)
 
          ! update strocnx to most recent iterate and complete the term
          vrel = vrel * aiX_s(ms)
-         strocnx(ms) = vrel*((uocn_s(ms) - uvel(i,j))*cosw &
-                     - (vocn_s(ms) - vvel(i,j))*sinw*sign(c1,fm(ms)))
-         strocny(ms) = vrel*((vocn_s(ms) - vvel(i,j))*cosw &
-                     + (uocn_s(ms) - uvel(i,j))*sinw*sign(c1,fm(ms)))
+         strocnx(ms) = vrel*((uocn_s(ms) - uvel_s(ms))*cosw &
+                     - (vocn_s(ms) - vvel_s(ms))*sinw*sign(c1,fm(ms)))
+         strocny(ms) = vrel*((vocn_s(ms) - vvel_s(ms))*cosw &
+                     + (uocn_s(ms) - uvel_s(ms))*sinw*sign(c1,fm(ms)))
 
          ! Hibler/Bryan stress
          ! the sign is reversed later, therefore negative here
@@ -2831,34 +2824,34 @@
 ! note2: Seabed stress (better name) was called basal stress in Lemieux et al. 2015
 
       subroutine seabed_stress_factor_LKD (nx_block, ny_block,         &
-                                           icellU,                     &
-                                           indxUi,   indxUj,           &
+                                           lo,       hi,     skipme,   &
+                                           ijslot,                     &
                                            vice,     aice,             &
-                                           hwater,   Xmap,   TbU,      &
+                                           hwater,           TbU,      &
                                            grid_location)
 
       use ice_grid, only: grid_neighbor_min, grid_neighbor_max
 
       integer (kind=int_kind), intent(in) :: &
          nx_block, ny_block, &  ! block dimensions
-         icellU                 ! no. of cells where ice[uen]mask = 1
+         lo, hi                 ! slot range to process
 
-      integer (kind=int_kind), dimension (nx_block*ny_block), intent(in) :: &
-         indxUi    , & ! compressed index in i-direction
-         indxUj        ! compressed index in j-direction
+      ! .true. where the slot carries no ice this step
+      logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
+         skipme
+
+      ! ijslot(is) is the cell (i,j) owning slot is, flattened as
+      ! (j-1)*nx_block+i.  The loop walks slots but grid_neighbor_min/max
+      ! still reduce over BLOCK neighbours of hwater/aice/vice, which have
+      ! no slot form, so (i,j) has to be recovered here.
+      integer (kind=int_kind), dimension (:), intent(in), contiguous :: &
+         ijslot
 
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
          aice      , & ! concentration of ice at tracer location
          vice      , & ! volume per unit area of ice at tracer location (m)
          hwater        ! water depth at tracer location (m)
 
-      ! Xmap gives each cell its block-local slot.  TbU is COMPRESSED: the
-      ! loop still runs over (i,j) because grid_neighbor_min/max reduce over
-      ! block neighbours of hwater/aice/vice, which have no slot form -- but
-      ! the one OUTPUT goes straight to the slot, so the block TbU and the
-      ! pack that followed it are both gone.
-      integer (kind=int_kind), dimension (nx_block*ny_block), intent(in) :: &
-         Xmap
 
       real (kind=dbl_kind), dimension (:), intent(inout), contiguous :: &
          TbU         ! seabed stress factor (N/m^2), compressed
@@ -2891,9 +2884,11 @@
          l_grid_location = grid_location
       endif
 
-      do ij = 1, icellU
-         i = indxUi(ij)
-         j = indxUj(ij)
+      do m = lo, hi
+         if (skipme(m)) cycle
+         ij = ijslot(m)
+         j  = (ij-1)/nx_block + 1
+         i  = ij - (j-1)*nx_block
 
          ! convert quantities to grid_location
 
@@ -2909,11 +2904,9 @@
          hcu = au * hwu / k1
 
          ! 2- calculate seabed stress factor
-         m = Xmap((j-1)*nx_block + i)
-         if (m > 0) &
-            TbU(m) = docalc_tbu*k2 * max(c0,(hu - hcu)) * exp(-alphab * (c1 - au))
+         TbU(m) = docalc_tbu*k2 * max(c0,(hu - hcu)) * exp(-alphab * (c1 - au))
 
-      enddo                     ! ij
+      enddo                     ! slot
 
       end subroutine seabed_stress_factor_LKD
 

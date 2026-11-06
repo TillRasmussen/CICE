@@ -926,10 +926,10 @@
                !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
                do iblk = 1, nblocks
                   call seabed_stress_factor_LKD (nx_block        , ny_block      , &
-                                                 icellU    (iblk),                 &
-                                                 indxUi  (:,iblk), indxUj(:,iblk), &
+                                                 dynOff(iblk)+1  , dynOff(iblk)+dynCnt(iblk), &
+                                                 skipU           , dynIJ         , &
                                                  vice  (:,:,iblk), aice(:,:,iblk), &
-                                                 hwater(:,iblk), dynMap(:,iblk), TbU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                                                 hwater(:,iblk)  , TbU_slot)
                enddo
                !$OMP END PARALLEL DO
 
@@ -950,18 +950,18 @@
             if ( seabed_stress_method == 'LKD' ) then
                !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
                do iblk = 1, nblocks
-                  call seabed_stress_factor_LKD (nx_block        , ny_block,       &
-                                                 icellE    (iblk),                 &
-                                                 indxEi  (:,iblk), indxEj(:,iblk), &
+                  call seabed_stress_factor_LKD (nx_block        , ny_block      , &
+                                                 dynOff(iblk)+1  , dynOff(iblk)+dynCnt(iblk), &
+                                                 skipE           , dynIJ         , &
                                                  vice  (:,:,iblk), aice(:,:,iblk), &
-                                                 hwater(:,iblk), dynMap(:,iblk), TbE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                                 grid_location='E')
-                  call seabed_stress_factor_LKD (nx_block        , ny_block,       &
-                                                 icellN    (iblk),                 &
-                                                 indxNi  (:,iblk), indxNj(:,iblk), &
+                                                 hwater(:,iblk)  , TbE_slot, &
+                                                 'E')
+                  call seabed_stress_factor_LKD (nx_block        , ny_block      , &
+                                                 dynOff(iblk)+1  , dynOff(iblk)+dynCnt(iblk), &
+                                                 skipN           , dynIJ         , &
                                                  vice  (:,:,iblk), aice(:,:,iblk), &
-                                                 hwater(:,iblk), dynMap(:,iblk), TbN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                                 grid_location='N')
+                                                 hwater(:,iblk)  , TbN_slot, &
+                                                 'N')
                enddo
                !$OMP END PARALLEL DO
 
@@ -1921,56 +1921,28 @@
       ! ice-ocean stress
       !-----------------------------------------------------------------
 
-      !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
-      do iblk = 1, nblocks
-         call dyn_finish                               &
-              (nx_block          , ny_block          , &
-               icellU      (iblk), cdn_ocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-               indxUi    (:,iblk), indxUj    (:,iblk), &
-               uvel(:,iblk), vvel(:,iblk), &
-               uocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-               vocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-               aiU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-               fmU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-               dynMap(:,iblk), &
-               strocnxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-               strocnyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-      enddo
-      !$OMP END PARALLEL DO
+      call dyn_finish (1             , dynTot        , &
+                       skipU         , cdn_ocnU_slot , &
+                       uvel_slot     , vvel_slot     , &
+                       uocnU_slot    , vocnU_slot    , &
+                       aiU_slot      , fmU_slot      , &
+                       strocnxU      , strocnyU)
 
       if (grid_ice == 'CD' .or. grid_ice == 'C') then
 
-         !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
-         do iblk = 1, nblocks
+         call dyn_finish (1             , dynTot        , &
+                          skipN         , cdn_ocnn_slot , &
+                          uvelN_slot    , vvelN_slot    , &
+                          uocnN_slot    , vocnN_slot    , &
+                          aiN_slot      , fmN_slot      , &
+                          strocnxN      , strocnyN)
 
-            call dyn_finish                               &
-                 (nx_block          , ny_block          , &
-                  icellN      (iblk), cdn_ocnn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                  indxNi    (:,iblk), indxNj    (:,iblk), &
-                  uvelN   (:,:,iblk), vvelN   (:,:,iblk), &
-                  uocnN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                  vocnN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                  aiN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                  fmN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                  dynMap(:,iblk), &
-                  strocnxN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                  strocnyN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-
-            call dyn_finish                               &
-                 (nx_block          , ny_block          , &
-                  icellE      (iblk), cdn_ocne_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                  indxEi    (:,iblk), indxEj    (:,iblk), &
-                  uvelE   (:,:,iblk), vvelE   (:,:,iblk), &
-                  uocnE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                  vocnE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                  aiE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                  fmE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                  dynMap(:,iblk), &
-                  strocnxE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                  strocnyE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-
-         enddo
-         !$OMP END PARALLEL DO
+         call dyn_finish (1             , dynTot        , &
+                          skipE         , cdn_ocne_slot , &
+                          uvelE_slot    , vvelE_slot    , &
+                          uocnE_slot    , vocnE_slot    , &
+                          aiE_slot      , fmE_slot      , &
+                          strocnxE      , strocnyE)
 
       endif
 

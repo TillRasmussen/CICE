@@ -572,11 +572,11 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          if ( seabed_stress_method == 'LKD' ) then
             !$OMP PARALLEL DO PRIVATE(iblk)
             do iblk = 1, nblocks
-               call seabed_stress_factor_LKD (nx_block,         ny_block,       &
-                                              icellU  (iblk),                   &
-                                              indxUi(:,iblk),   indxUj(:,iblk), &
-                                              vice(:,:,iblk),   aice(:,:,iblk), &
-                                              hwater(:,iblk), dynMap(:,iblk), TbU_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+               call seabed_stress_factor_LKD (nx_block        , ny_block      , &
+                                              dynOff(iblk)+1  , dynOff(iblk)+dynCnt(iblk), &
+                                              skipU           , dynIJ         , &
+                                              vice  (:,:,iblk), aice(:,:,iblk), &
+                                              hwater(:,iblk)  , TbU_s)
             enddo
             !$OMP END PARALLEL DO
 
@@ -812,26 +812,12 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       ! ice-ocean stress
       !-----------------------------------------------------------------
 
-      !$OMP PARALLEL DO PRIVATE(iblk)
-      do iblk = 1, nblocks
-
-         call dyn_finish                                &
-              (nx_block,           ny_block,            &
-               icellU      (iblk), cdn_ocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),    &
-               indxUi    (:,iblk), indxUj    (:,iblk),  &
-               uvel(:,iblk), vvel(:,iblk),              &
-               uocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-               vocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-               aiU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-               fmU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-!               strintxU(:,iblk), strintyU(:,iblk), &
-!               strairxU(:,:,iblk), strairyU(:,:,iblk), &
-               dynMap(:,iblk), &
-               strocnxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-               strocnyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-
-      enddo
-      !$OMP END PARALLEL DO
+      call dyn_finish (1             , dynTot        , &
+                       skipU         , cdn_ocnU_slot , &
+                       uvel_slot     , vvel_slot     , &
+                       uocnU_slot    , vocnU_slot    , &
+                       aiU_slot      , fmU_slot      , &
+                       strocnxU      , strocnyU)
 
 ! shift velocity components from CD grid locations (N, E) to B grid location (U) for transport
 ! commented out in order to focus on EVP for now within the cdgrid
