@@ -855,12 +855,12 @@
       character(len=*), intent(in) :: &
          dir            ! shift direction: N, E, NW or SE
 
-      real (kind=dbl_kind), dimension(:), intent(in) :: &
+      real (kind=dbl_kind), dimension(:), intent(in), contiguous :: &
          work1      , & ! field to shift, compressed
          wght1      , & ! weights, compressed
          wsum           ! precomputed weight sum -- see ice_grid
 
-      real (kind=dbl_kind), dimension(:), intent(out) :: &
+      real (kind=dbl_kind), dimension(:), intent(out), contiguous :: &
          work2          ! shifted field, compressed
 
       integer (kind=int_kind) :: &
@@ -956,13 +956,13 @@
       character(len=*), intent(in) :: &
          dir            ! shift direction: NE
 
-      real (kind=dbl_kind), dimension(:), intent(in) :: &
+      real (kind=dbl_kind), dimension(:), intent(in), contiguous :: &
          work1      , & ! field to shift, compressed
          wght1      , & ! weights, compressed
          mask1      , & ! mask, compressed
          wsum           ! precomputed weight sum -- see ice_grid
 
-      real (kind=dbl_kind), dimension(:), intent(out) :: &
+      real (kind=dbl_kind), dimension(:), intent(out), contiguous :: &
          work2          ! shifted field, compressed
 
       integer (kind=int_kind) :: &
@@ -1314,21 +1314,21 @@
       ! held: dynMap comes from tmask .or. umask, so an unmapped cell is
       ! land, and both Tmass and tmphm are forced false/zero there by the
       ! Tmask test regardless of what aice, vice and vsno contain.
-      real (kind=dbl_kind), dimension (:), intent(in) :: &
+      real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
          aice    , & ! concentration of ice, this block's slots
          vice    , & ! volume per unit area of ice          (m)
          vsno        ! volume per unit area of snow         (m)
 
-      integer (kind=int_kind), dimension (:), intent(in) :: &
+      integer (kind=int_kind), dimension (:), intent(in), contiguous :: &
          map         ! this block's dynMap column
 
-      logical (kind=log_kind), dimension (:), intent(in) :: &
+      logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
          Tmask       ! land/boundary mask, thickness (T-cell)
 
-      real (kind=dbl_kind), dimension (:), intent(out) :: &
+      real (kind=dbl_kind), dimension (:), intent(out), contiguous :: &
          Tmass       ! total mass of ice and snow (kg/m^2)
 
-      logical (kind=log_kind), dimension (:), intent(out) :: &
+      logical (kind=log_kind), dimension (:), intent(out), contiguous :: &
          iceTmask    ! ice extent mask (T-cell)
 
       ! local variables
@@ -1475,22 +1475,22 @@
 
       ! Xmask is assumed shape, 1D over the block in Fortran storage order,
       ! i.e. element (i,j) is stored at (j-1)*nx_block+i
-      logical (kind=log_kind), dimension (:), intent(in) :: &
+      logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
          Xmask       ! land/boundary mask, thickness (X-grid-cell)
 
       ! iceTmask is assumed shape, 1D over the block in Fortran storage order,
       ! i.e. element (i,j) is stored at (j-1)*nx_block+i
-      logical (kind=log_kind), dimension (:), intent(in) :: &
+      logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
          iceTmask    ! ice extent mask (T-cell)
 
       ! iceXmask is assumed shape, 1D over the block in Fortran storage order,
       ! i.e. element (i,j) is stored at (j-1)*nx_block+i
-      logical (kind=log_kind), dimension (:), intent(inout) :: &
+      logical (kind=log_kind), dimension (:), intent(inout), contiguous :: &
          iceXmask    ! ice extent mask (X-grid-cell)
 
       ! Xmass and Xmassdti are assumed shape, 1D over the block in Fortran
       ! storage order, i.e. element (i,j) is stored at (j-1)*nx_block+i
-      real (kind=dbl_kind), dimension (:), intent(in) :: &
+      real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
          aiX     , & ! ice fraction on u-grid (X grid)
          Xmass   , & ! total mass of ice and snow (X grid)
          fcor        ! Coriolis parameter (1/s)
@@ -1500,7 +1500,7 @@
       ! if (iceXmask(ijb)) and so is only reached where a slot exists --
       ! the unguarded uvel_init(Xmap(ijb)) two lines below relies on the
       ! same invariant.
-      real (kind=dbl_kind), dimension (:), intent(in) :: &
+      real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
          uocn    , & ! ocean current, x-direction (m/s)
          vocn        ! ocean current, y-direction (m/s)
 
@@ -1508,7 +1508,7 @@
       ! consumers, strtltx/strtlty, are already written at.  These were
       ! rank-2, so the compiler used to catch a block actual here; as
       ! assumed-shape it cannot, which is what the chk_len calls replace.
-      real (kind=dbl_kind), dimension (:), intent(in) :: &
+      real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
          ss_tltx , & ! sea surface slope, x-direction (m/m)
          ss_tlty     ! sea surface slope, y-direction
 
@@ -1517,14 +1517,14 @@
 
       ! uvel_init and vvel_init are COMPRESSED: cell ij of this block lives at
       ! slot Xmap(ij), see the layout description in this module's header
-      real (kind=dbl_kind), dimension (:), intent(out) :: &
+      real (kind=dbl_kind), dimension (:), intent(out), contiguous :: &
          uvel_init,& ! x-component of velocity (m/s), beginning of time step
          vvel_init   ! y-component of velocity (m/s), beginning of time step
 
       ! Xmap is assumed shape, 1D over the block in Fortran storage order,
       ! i.e. element (i,j) is at (j-1)*nx_block+i, holding that cell's static
       ! compressed slot, or 0 if the cell is not in the static mask
-      integer (kind=int_kind), dimension (:), intent(in) :: &
+      integer (kind=int_kind), dimension (:), intent(in), contiguous :: &
          Xmap        ! static compressed slot of each cell
 
       ! Xoff is this block's dynOff: the slot arrays below are module state,
@@ -1542,7 +1542,7 @@
 
       ! skipX runs over this block's compressed slots: .true. where the slot
       ! carries no ice this step, so the kernels leave it alone
-      logical (kind=log_kind), dimension (:), intent(out) :: &
+      logical (kind=log_kind), dimension (:), intent(out), contiguous :: &
          skipX       ! inactive-slot flag
 
       ! COMPRESSED: this block's slice.  seabed_stress_factor_LKD/_prob write
@@ -1554,7 +1554,7 @@
       ! straight into forcex/forcey below; after that only history and one
       ! diagnostics print touch them, and no coupled driver does.  Indexed
       ! by Xmap(ijb), the same block-local slot the rheofactX_s copy uses.
-      real (kind=dbl_kind), dimension (:), intent(inout) :: &
+      real (kind=dbl_kind), dimension (:), intent(inout), contiguous :: &
          strtltx , & ! stress due to sea surface slope, x-direction
          strtlty , & ! stress due to sea surface slope, y-direction
          strairx , & ! stress on ice by air, x-direction
@@ -1562,7 +1562,7 @@
 
       ! ⚠ Compressed.  Written at Xmap(ijb) and read there by the waterx,
       ! watery and tilt terms in the same loop.
-      real (kind=dbl_kind), dimension (:), intent(inout) :: &
+      real (kind=dbl_kind), dimension (:), intent(inout), contiguous :: &
          fm          ! Coriolis param. * mass in U-cell (kg/s)
 
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(inout) :: &
@@ -1594,7 +1594,7 @@
       ! waterxU_slot / wateryU_slot / forcexU_slot / forceyU_slot copies packed
       ! after this routine returns.  Those are additional arrays; they do not
       ! relayout these, and gather_dyn keeps seeing the block layout.
-      real (kind=dbl_kind), dimension (:), intent(out) :: &
+      real (kind=dbl_kind), dimension (:), intent(out), contiguous :: &
          Xmassdti, & ! mass of X-grid-cell/dt (kg/m^2 s)
          waterx  , & ! for ocean stress calculation, x (m/s)
          watery  , & ! for ocean stress calculation, y (m/s)
@@ -1632,7 +1632,7 @@
 
       ! taubx and tauby are assumed shape, 1D over the block in Fortran
       ! storage order, i.e. element (i,j) is stored at (j-1)*nx_block+i
-      real (kind=dbl_kind), dimension (:), intent(inout) :: &
+      real (kind=dbl_kind), dimension (:), intent(inout), contiguous :: &
          taubx   , & ! seabed stress, x-direction (N/m^2)
          tauby       ! seabed stress, y-direction (N/m^2)
 
@@ -2736,7 +2736,7 @@
       ! ⚠ Compressed, indexed by Xmap(ijb) exactly as strocnx/strocny are.
       ! Their producer is grid_average_X2Y('S',...) on the X-grid, so the
       ! slot form is the same arithmetic evaluated at the slot cells only.
-      real (kind=dbl_kind), dimension (:), intent(in) :: &
+      real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
          aiX_s   , & ! ice fraction on X-grid
          uocn_s  , & ! ocean current, x-direction (m/s)
          vocn_s      ! ocean current, y-direction (m/s)
@@ -2746,7 +2746,7 @@
          vvel        ! y-component of velocity (m/s)
 
       ! ⚠ Compressed, indexed by the same ms as uocn_s/vocn_s/aiX_s.
-      real (kind=dbl_kind), dimension (:), intent(in) :: &
+      real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
          fm          ! Coriolis param. * mass in U-cell (kg/s)
 
       ! ⚠ Compressed.  Indexed by Xmap(ijb), the block-local slot, the same
@@ -2755,11 +2755,11 @@
       integer (kind=int_kind), dimension (nx_block*ny_block), intent(in) :: &
          Xmap        ! block-local slot of each cell
 
-      real (kind=dbl_kind), dimension (:), intent(inout) :: &
+      real (kind=dbl_kind), dimension (:), intent(inout), contiguous :: &
          strocnx , & ! ice-ocean stress, x-direction
          strocny     ! ice-ocean stress, y-direction
 
-      real (kind=dbl_kind), dimension (:), intent(in) :: &
+      real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
          Cw          ! ocean-ice neutral drag coefficient, compressed
 
       ! local variables
@@ -3181,12 +3181,12 @@
       ! ⚠ Note the else-branch below writes spval_dbl, NOT c0.  The
       ! dead-slot convention would be wrong for these: an inactive cell is
       ! a fill value here, not a zero.
-      real (kind=dbl_kind), dimension (:), intent(out) :: &
+      real (kind=dbl_kind), dimension (:), intent(out), contiguous :: &
          sig1    , & ! normalized principal stress component
          sig2    , & ! normalized principal stress component
          sigP        ! internal ice pressure (N/m)
 
-      integer (kind=int_kind), dimension (:), intent(in) :: &
+      integer (kind=int_kind), dimension (:), intent(in), contiguous :: &
          map         ! block-local slot of each cell, 0 if none
 
       ! local variables
@@ -4975,7 +4975,7 @@
       use ice_timers, only: ice_timer_start, ice_timer_stop, timer_bundbound
 
       ! compressed: indexed by slot; each block's dead slot is its last
-      real (kind=dbl_kind), dimension (:), intent(in) :: &
+      real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
          fld1, fld2, fld3
 
       ! (slot, field)
@@ -5002,7 +5002,7 @@
       real (kind=dbl_kind), dimension (:,:), intent(in) :: &
          fldbundle   ! work array for boundary updates
 
-      real (kind=dbl_kind), dimension (:), intent(out) :: &
+      real (kind=dbl_kind), dimension (:), intent(out), contiguous :: &
          fld1, fld2, fld3
 
       character(len=*), parameter :: subname = '(unstack_fields3_compressed)'
@@ -5022,7 +5022,7 @@
       use ice_timers, only: ice_timer_start, ice_timer_stop, timer_bundbound
 
       ! compressed: indexed by slot; each block's dead slot is its last
-      real (kind=dbl_kind), dimension (:), intent(in) :: &
+      real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
          fld1, fld2, fld3, fld4
 
       ! (slot, field)
@@ -5050,7 +5050,7 @@
       real (kind=dbl_kind), dimension (:,:), intent(in) :: &
          fldbundle   ! work array for boundary updates
 
-      real (kind=dbl_kind), dimension (:), intent(out) :: &
+      real (kind=dbl_kind), dimension (:), intent(out), contiguous :: &
          fld1, fld2, fld3, fld4
 
       character(len=*), parameter :: subname = '(unstack_fields4_compressed)'
@@ -5071,7 +5071,7 @@
       use ice_timers, only: ice_timer_start, ice_timer_stop, timer_bundbound
 
       ! compressed: indexed by slot; each block's dead slot is its last
-      real (kind=dbl_kind), dimension (:), intent(in) :: &
+      real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
          fld1    , & !
          fld2        !
 
@@ -5100,7 +5100,7 @@
          fldbundle   ! work array for boundary updates
 
       ! compressed: indexed by slot; each block's dead slot is its last
-      real (kind=dbl_kind), dimension (:), intent(out) :: &
+      real (kind=dbl_kind), dimension (:), intent(out), contiguous :: &
          fld1    , & !
          fld2        !
 

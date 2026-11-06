@@ -668,19 +668,21 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          ! across its subcycles and needs no such pack.
          call pack_to_slots(uvel(:,iblk), dynMap(:,iblk), uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
          call pack_to_slots(vvel(:,iblk), dynMap(:,iblk), vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call deformations (                                                                                                              &
-                            dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipT,                                                &
-                            NbrW_Task, NbrSW_Task, NbrS_Task, dynIJ,          &
-                            uvel_slot, vvel_slot, &
-                            dxT_slot, dyT_slot,   &
-                            dxU_slot, dyU_slot,   &
-                            cxp_slot, cyp_slot,   &
-                            cxm_slot, cym_slot,   &
-                            tarear_slot, vort,                                      &
-                            shear     , divu      ,                                                                   &
-                            rdg_conv  , rdg_shear )
       enddo
       !$OMP END PARALLEL DO
+
+      ! Task-wide: one call, outside the pack loop, as evp already does.
+      call deformations (                                                                                                              &
+                         1, dynTot, skipT,                                                &
+                         NbrW_Task, NbrSW_Task, NbrS_Task, dynIJ,          &
+                         uvel_slot, vvel_slot, &
+                         dxT_slot, dyT_slot,   &
+                         dxU_slot, dyU_slot,   &
+                         cxp_slot, cyp_slot,   &
+                         cxm_slot, cym_slot,   &
+                         tarear_slot, vort,                                      &
+                         shear     , divu      ,                                                                   &
+                         rdg_conv  , rdg_shear )
 
       !-----------------------------------------------------------------
       ! Compute seabed stress (diagnostic)
@@ -1644,7 +1646,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          etax2    , & ! etax2  = 2*eta  (shear viscosity)
          rep_prs
 
-      real (kind=dbl_kind), dimension (:), intent(inout) :: &
+      real (kind=dbl_kind), dimension (:), intent(inout), contiguous :: &
          stressp_1, stressp_2, stressp_3, stressp_4 , & ! sigma11+sigma22
          stressm_1, stressm_2, stressm_3, stressm_4 , & ! sigma11-sigma22
          stress12_1,stress12_2,stress12_3,stress12_4    ! sigma12
@@ -2109,7 +2111,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
       ! ⚠ umassdti, forcexU and forceyU are COMPRESSED -- dyn_prep2 fills
       ! only the slot form since group a.  Indexed by is = Xmap(ijb).
-      real (kind=dbl_kind), dimension (:), intent(in) :: &
+      real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
          umassdti, & ! mass of U-cell/dt (kg/m^2 s)
          uvel_init,& ! x-component of velocity (m/s), start of step, COMPRESSED
          vvel_init,& ! y-component of velocity (m/s), start of step, COMPRESSED
@@ -2117,7 +2119,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          forceyU     ! work array: combined atm stress and ocn tilt, y
 
       ! Xmap holds each cell's static compressed slot, see ice_dyn_shared
-      integer (kind=int_kind), dimension (:), intent(in) :: &
+      integer (kind=int_kind), dimension (:), intent(in), contiguous :: &
          Xmap
 
       real (kind=dbl_kind), dimension (nx_block*ny_block), intent(out) :: &
@@ -2680,7 +2682,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          skipme       ! inactive-slot flag, U cells
 
       ! compressed: this block's slice, 1-based, cells 1..ncells, dead slot last
-      real (kind=dbl_kind), dimension (:), intent(in) :: &
+      real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
          umassdti, & ! mass of U-cell/dt (kg/m^2 s)
          uarear  , & ! 1/uarea
          vrel    , & ! coefficient for tauw
@@ -2691,7 +2693,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
       ! compressed as well: fgmres reads the diagonal in the slot layout, so
       ! there is no reason to build it block-shaped and pack it afterwards.
-      real (kind=dbl_kind), dimension (:), intent(out) :: &
+      real (kind=dbl_kind), dimension (:), intent(out), contiguous :: &
          diagx   , & ! Diagonal (x component) of the matrix A
          diagy       ! Diagonal (y component) of the matrix A
 
@@ -3072,7 +3074,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       use ice_timers, only: ice_timer_start, ice_timer_stop, timer_bound
       use ice_dyn_shared, only: dxhy, dyhx, cxp, cyp, cxm, cym
 
-      real (kind=dbl_kind), dimension(:), intent(in) :: &
+      real (kind=dbl_kind), dimension(:), intent(in), contiguous :: &
          umassdti  ! mass of U-cell/dte (kg/m^2 s)
 
       real (kind=dbl_kind), dimension(dynTot), intent(in) :: &
@@ -3468,7 +3470,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       use ice_timers, only: ice_timer_start, ice_timer_stop, timer_bound
       use ice_dyn_shared, only: dyhx, dxhy, cxp, cyp, cxm, cym
 
-      real (kind=dbl_kind), dimension(:), intent(in) :: &
+      real (kind=dbl_kind), dimension(:), intent(in), contiguous :: &
          umassdti  ! mass of U-cell/dte (kg/m^2 s)
 
       real (kind=dbl_kind), dimension(dynTot), intent(in) :: &
