@@ -297,6 +297,7 @@
       use ice_timers, only: timer_dynamics, timer_bound, &
           ice_timer_start, ice_timer_stop, timer_evp
       use ice_dyn_shared, only: evp_algorithm, stack_fields, unstack_fields, &
+                                halo_blocking_width, &
           DminTarea, visc_method, deformations, deformationsC_T, deformationsCD_T, &
           strain_rates_U, dxhy, dyhx, cxp, cyp, cxm, cym, &
           iceTmask, iceUmask, iceEmask, iceNmask, &
@@ -311,7 +312,8 @@
       integer (kind=int_kind) :: &
          ksub           , & ! subcycle step
          kouter         , & ! halo block: one exchange per block
-         kinner         , & ! pass within a halo block, 1..nghost
+         kinner         , & ! pass within a halo block, 1..nblk
+         nblk           , & ! subcycles per exchange; 1 unless doubly cyclic
          iblk           , & ! block index
          ilo,ihi,jlo,jhi, & ! beginning and end of physical domain
          i, j, ij           ! local indices
@@ -881,12 +883,17 @@
             ! than is available -- so an ndte that is not a multiple of nghost
             ! needs nothing beyond the min() below.
             !
-            ! At nghost=1 this is ndte blocks of one pass each with an exchange
-            ! after every pass, i.e. structurally the original loop.
+            ! halo_blocking_width() returns nghost only where recomputing a
+            ! ghost reproduces what the exchange would have written -- i.e. a
+            ! doubly cyclic domain.  Anywhere a boundary condition IMPOSES
+            ! ghost values (closed, open, linear_extrap, tripole) it returns
+            ! 1 and this is ndte blocks of one pass each with an exchange
+            ! after every pass: structurally the original loop.
             ! ------------------------------------------------------------------
+            nblk = halo_blocking_width()
             ksub = 0
-            do kouter = 1, (ndte + nghost - 1)/nghost
-            do kinner = 1, min(nghost, ndte - ksub)
+            do kouter = 1, (ndte + nblk - 1)/nblk
+            do kinner = 1, min(nblk, ndte - ksub)
                ksub = ksub + 1
 
                !$OMP PARALLEL DO PRIVATE(iblk,strtmp) SCHEDULE(runtime)

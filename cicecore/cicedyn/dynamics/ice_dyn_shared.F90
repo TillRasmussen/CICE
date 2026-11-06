@@ -31,7 +31,8 @@
                 strain_rates, strain_rates_T, strain_rates_U, &
                 visc_replpress, &
                 dyn_haloUpdate, &
-                stack_fields, unstack_fields
+                stack_fields, unstack_fields, &
+                halo_blocking_width
 
       ! namelist parameters
 
@@ -293,6 +294,9 @@
       type (block) :: &
          this_block   ! block information for current block
 
+      integer (kind=int_kind) :: &
+         nwide              ! extra halo rings the blocking may advance
+
       character(len=*), parameter :: subname = '(init_dyn_shared)'
 
       ! checks
@@ -428,8 +432,15 @@
         ihi = this_block%ihi
         jlo = this_block%jlo
         jhi = this_block%jhi
-        do j = jlo, jhi+1
-        do i = ilo, ihi+1
+          ! Widened with the subcycle: stress reads these coefficients wherever
+          ! icellT reaches, and dyn_prep2 extends icellT by nwide rings when the
+          ! halo blocking is on.  Left at jhi+1 they are UNINITIALISED at ring 2,
+          ! stress produces garbage there, and the error reaches the interior on
+          ! the second pass of a block.  The HTE/HTN read here are halo-updated,
+          ! so the wider rings are valid.
+          nwide = halo_blocking_width() - 1
+          do j = jlo-nwide, jhi+1+nwide
+          do i = ilo-nwide, ihi+1+nwide
            cyp(i,j,iblk) = (c1p5*HTE(i,j,iblk) - p5*HTE(i-1,j,iblk))
            cxp(i,j,iblk) = (c1p5*HTN(i,j,iblk) - p5*HTN(i,j-1,iblk))
             ! match order of operations in cyp, cxp for tripole grids
@@ -492,6 +503,49 @@
 !
 ! author: Elizabeth C. Hunke, LANL
 
+!=======================================================================
+! How many EVP subcycles may run on a single halo exchange.
+!
+! A subcycle consumes exactly one ring of halo, so nghost rings allow
+! nghost passes -- BUT only where recomputing a ghost cell reproduces what
+! the exchange would have put there.  That holds when the ghost is backed
+! by REAL DATA: an interior block edge, or a cyclic wrap (whose own stencil
+! neighbours are themselves in the halo).  It fails wherever the exchange
+! IMPOSES a value instead of copying one: closed and open zero or copy,
+! linear_extrap extrapolates, and the tripole seam folds with sign flips.
+! None of those are reproducible from local data.
+!
+! ⚠ The condition is all-or-nothing, not per-edge.  The pass count is
+! global, so a single unbacked ghost anywhere corrupts the interior next to
+! it however the loop bounds are set.  Narrowing the widening at that edge
+! does not help; the blocking itself has to be off.
+!
+! ⚠ The test is on the BOUNDARY TYPES, not on the block decomposition,
+! because every task must agree on the pass count without a reduction.
+! Interior block edges are always backed, so the decomposition never
+! matters -- only how the global domain is closed.
+!
+! Returns 1 (exchange every subcycle, the historical behaviour) unless the
+! domain is doubly cyclic.
+
+      function halo_blocking_width() result(nblk)
+
+      use ice_blocks, only: ew_boundary_type, ns_boundary_type
+
+      integer (kind=int_kind) :: nblk
+
+      character(len=*), parameter :: subname = '(halo_blocking_width)'
+
+      if (trim(ew_boundary_type) == 'cyclic' .and. &
+          trim(ns_boundary_type) == 'cyclic') then
+         nblk = max(nghost, 1)
+      else
+         nblk = 1
+      endif
+
+      end function halo_blocking_width
+
+!=======================================================================
       subroutine dyn_prep1 (nx_block,  ny_block, &
                             ilo, ihi,  jlo, jhi, &
                             aice,      vice,     &
@@ -695,6 +749,9 @@
       logical (kind=log_kind), dimension(nx_block,ny_block) :: &
          iceXmask_old      ! old-time iceXmask
 
+      integer (kind=int_kind) :: &
+         nwide              ! extra halo rings the blocking may advance
+
       character(len=*), parameter :: subname = '(dyn_prep2)'
 
       !-----------------------------------------------------------------
@@ -735,15 +792,18 @@
       !       where stresses are needed.
       !-----------------------------------------------------------------
 
-      ! ⚠ Widened by nghost-1 rings each way so that the halo-blocked
-      ! subcycling below can update the outer rings too: a block of nghost
-      ! passes between exchanges needs every ring it will consume to be
-      ! recomputed, or a later pass reads a ring nobody advanced.
-      ! At nghost=1 these bounds are exactly jlo..jhi+1 / ilo..ihi+1, so the
-      ! default configuration is untouched.
+      ! ⚠ Widened by nwide rings each way so the halo-blocked subcycling can
+      ! advance the outer rings too: a block of nwide+1 passes between
+      ! exchanges needs every ring it will consume to be recomputed, or a
+      ! later pass reads a ring nobody advanced.
+      ! nwide is 0 unless halo_blocking_width() says the domain is doubly
+      ! cyclic, so every other configuration keeps jlo..jhi+1 / ilo..ihi+1
+      ! exactly.  It MUST come from the same function the subcycle loop uses;
+      ! widening and pass count disagreeing is a silent wrong answer.
+      nwide = halo_blocking_width() - 1
       icellT = 0
-      do j = jlo-nghost+1, jhi+nghost
-      do i = ilo-nghost+1, ihi+nghost
+      do j = jlo-nwide, jhi+1+nwide
+      do i = ilo-nwide, ihi+1+nwide
          if (iceTmask(i,j)) then
             icellT = icellT + 1
             indxTi(icellT) = i
@@ -760,9 +820,10 @@
 
       icellX = 0
 
-      ! Widened like icellT above; identical to jlo..jhi / ilo..ihi at nghost=1.
-      do j = jlo-nghost+1, jhi+nghost-1
-      do i = ilo-nghost+1, ihi+nghost-1
+      ! Widened like icellT above; identical to jlo..jhi / ilo..ihi when the
+      ! blocking is off.
+      do j = jlo-nwide, jhi+nwide
+      do i = ilo-nwide, ihi+nwide
          iceXmask_old(i,j) = iceXmask(i,j) ! save
          ! ice extent mask (U-cells)
          iceXmask(i,j) = (Xmask(i,j)) .and. (aiX  (i,j) > dyn_area_min) &

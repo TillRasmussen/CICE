@@ -31,24 +31,29 @@ which is a good trade when latency dominates.
 
 Two changes only.
 
-**1. `ice_dyn_shared.F90`, `dyn_prep2`** -- the `icellT` and `icellU` loop
-bounds widen by `nghost-1` rings in each direction:
+**1. `ice_dyn_shared.F90`** -- `dyn_prep2` widens the `icellT` and `icellU`
+bounds, and `init_dyn_shared` widens the `cyp/cxp/cym/cxm` initialisation,
+both by `nwide = halo_blocking_width() - 1` rings in each direction:
 
 ```fortran
-do j = jlo-nghost+1, jhi+nghost        ! icellT, was jlo, jhi+1
-do j = jlo-nghost+1, jhi+nghost-1      ! icellU, was jlo, jhi
+nwide = halo_blocking_width() - 1
+do j = jlo-nwide, jhi+1+nwide          ! icellT, was jlo, jhi+1
+do j = jlo-nwide, jhi+nwide            ! icellU, was jlo, jhi
 ```
 
-Without this the outer rings are never advanced, and a later pass in a block
-reads a ring that still holds its exchanged (pass-zero) value.
+⚠ Both must take `nwide` from the SAME function the subcycle uses for its
+pass count. Widening and pass count disagreeing is a silent wrong answer.
+
+⚠ The widening is currently INERT -- see "Known defect" below.
 
 **2. `ice_dyn_evp.F90`, B-grid subcycle** -- the single `do ksub = 1,ndte`
 loop becomes a block/pass pair, with the exchange after the inner loop:
 
 ```fortran
 ksub = 0
-do kouter = 1, (ndte + nghost - 1)/nghost
-do kinner = 1, min(nghost, ndte - ksub)
+nblk = halo_blocking_width()
+do kouter = 1, (ndte + nblk - 1)/nblk
+do kinner = 1, min(nblk, ndte - ksub)
    ksub = ksub + 1
    ... stress, stepu ...
 enddo
@@ -64,38 +69,76 @@ block proceeds, but that staleness never reaches the physical domain within
 
 Nothing special is required. **A short block is always safe**: running fewer
 passes between exchanges consumes *less* halo than is available. Only a block
-*longer* than `nghost` is wrong. So `min(nghost, ndte - ksub)` is the entire
+*longer* than `nghost` is wrong. So `min(nblk, ndte - ksub)` is the entire
 remainder handling. With `ndte=137, nghost=2` that is 68 blocks of two passes
 plus one block of one pass -- 137 passes, 69 exchanges.
 
 ### `nghost=1` is a no-op by construction
 
-`(ndte+0)/1 = ndte` outer blocks of `min(1,·) = 1` pass each, with an
+With `nblk = 1`: `ndte` outer blocks of `min(1,·) = 1` pass each, with an
 exchange after every pass -- structurally the original loop. The widened
 bounds evaluate to `jlo..jhi+1` and `jlo..jhi` exactly. This is verified, not
 assumed (test A below).
 
-## Known defect at `nghost>1`
+## Known defect at `nghost>1`: halo inputs are never computed
 
-The bit-for-bit argument assumes a halo exchange **copies a neighbour's
-computed values**, so recomputing a ghost cell locally reproduces them. That
-holds for a ghost facing another block. It **fails at a domain boundary**,
-where the exchange *imposes a boundary condition* rather than copying:
-`linear_extrap` extrapolates, `closed` zeroes, `cyclic` wraps from the far
-edge. Recomputing those cells replaces the boundary condition with a
-locally-derived value, and the next pass reads a ghost that no longer
-satisfies it.
+**Root cause: every input the kernels need is only valid in the physical
+domain, so the extra rings cannot be advanced at all.**
 
-Evidence: all of `linear_extrap`, `closed` and `cyclic` configurations differ
-alike, and adding a full extra ring of margin (`nghost=3` with two passes per
-exchange) changes nothing -- the error is at the domain edge, not a depth
-off-by-one.
+`grid_average_X2Y` writes only `jlo..jhi, ilo..ihi`, and none of its outputs
+-- `umass`, `aiU`, `uocnU`, `vocnU`, `strairxU` -- is halo-updated
+afterwards. At any ghost cell `aiU` and `umass` are therefore zero, so
+`dyn_prep2` computes `iceUmask = .false.` there, `icellU` excludes the cell,
+and **`stepu` never runs at ring 1 regardless of how the loop bounds are
+widened**. The widening is inert: a later pass in a block then reads a ring
+that nobody advanced.
 
-**The fix** is to exclude domain-boundary ghost cells from the widened
-`icellT`/`icellU` ranges, so redundant computation happens only where a
-genuine neighbour exists. The block structure already carries what is needed
-(`this_block%i_glob`, `j_glob` are <= 0 or wrapped at domain edges); no new
-machinery is required.
+A second instance of the same class, fixed in this commit because it is a
+genuine prerequisite: `init_dyn_shared` initialises `cyp`, `cxp`, `cym`,
+`cxm` over a hardcoded `jlo..jhi+1` / `ilo..ihi+1`. `stress` reads them
+wherever `icellT` reaches, so at ring 2 they were uninitialised. That fix is
+necessary but not sufficient.
+
+### Hypotheses tested and refuted
+
+Recorded so they are not re-tried:
+
+1. **Domain boundary conditions.** That recomputing a ghost cannot reproduce
+   an imposed BC (`linear_extrap`, `closed`, `cyclic` wrap, tripole fold).
+   Refuted: a **doubly cyclic** domain, where every ghost is backed by real
+   data and the local array is physically contiguous, fails identically.
+2. **Depth off-by-one.** Refuted: `nghost=3` with two passes per exchange --
+   a full extra ring of margin -- fails at the same history byte.
+3. **Uninitialised `cyp/cxp/cym/cxm`.** A real bug, fixed here; still fails.
+4. **Unexchanged stress tensor.** `stressp_*`, `stressm_*`, `stress12_*` are
+   persistent state the subcycle never exchanges, so a stale outer ring
+   could corrupt them permanently. Refuted: exchanging all twelve once per
+   block changes nothing -- because of the root cause above, the outer rings
+   were never being advanced in the first place.
+
+### What it would take
+
+Temporal blocking needs **every** input to `stress` and `stepu` valid
+`nghost` rings out, not one ring or zero:
+
+- `grid_average_X2Y` to write the halo, or its outputs to be halo-updated;
+- `iceTmask`/`iceUmask` consequently valid over the full halo;
+- the per-timestep forcing terms (`waterx`, `forcex`, `umassdti`, ...)
+  likewise, which follows once `dyn_prep2`'s inputs are valid;
+- and the boundary-condition question of hypothesis 1 revisited *after*
+  that, since it was never actually exercised.
+
+That is a change to the whole per-timestep preparation, not to two loop
+bounds. It is the reason this branch stops here.
+
+### The gate
+
+`halo_blocking_width()` currently returns `nghost` only for a doubly cyclic
+domain and 1 otherwise, so every standard configuration keeps the historical
+one-exchange-per-subcycle behaviour and is bit-for-bit. ⚠ The doubly-cyclic
+condition was chosen under hypothesis 1 and is **not** the right criterion --
+hypothesis 1 is refuted. It is retained only as a conservative switch that
+keeps the branch harmless; revisit it once the root cause above is fixed.
 
 ## Test
 
@@ -123,8 +166,13 @@ C  upstream nghost=2 vs upstream  ->  diagnostics + history IDENTICAL
 B  blocked nghost=2  vs upstream  ->  history DIFFERS
 ```
 
-So the loop structure, the remainder handling and the mask widening are all
-sound; the multi-pass is what is not yet correct, for the reason above.
+So the loop structure and the remainder handling are sound, and `nghost=1`
+is exact. The mask widening is *inert* for the reason above, and the
+multi-pass is therefore not yet correct.
+
+⚠ Note leg B PASSES on any configuration the gate disables (anything not
+doubly cyclic) -- that is the gate working, not the blocking working. Run
+the cyclic case to exercise it.
 
 A secondary, benign observation from an isolation run (widened masks but one
 pass per exchange): diagnostics and history are identical, but the restart
