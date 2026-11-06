@@ -31,6 +31,7 @@
           field_type_scalar, field_type_vector, field_type_angle
       use ice_communicate, only: my_task, master_task
       use ice_blocks, only: block, get_block, nx_block, ny_block, nghost, &
+          halo_blocking_width, &
           ew_boundary_type, ns_boundary_type
       use ice_domain_size, only: nx_global, ny_global, max_blocks
       use ice_domain, only: blocks_ice, nblocks, halo_info, distrb_info, &
@@ -4197,7 +4198,19 @@
       type (block) :: &
          this_block           ! block information for current block
 
+      integer (kind=int_kind) :: &
+         nwide                ! extra halo rings the EVP halo blocking advances
+
       character(len=*), parameter :: subname = '(grid_average_X2YS)'
+
+      ! ⚠ The EVP halo blocking advances nwide extra rings of halo, and the
+      ! kernels read these averaged U/E/N fields there.  The inputs (tmass,
+      ! aice_init, uocn, ...) are halo-updated by the caller immediately
+      ! before, so they are valid to nghost rings and this +-1 average is
+      ! valid to nghost-1 -- exactly the rings the blocking advances.
+      ! nwide is 0 unless the blocking is on, so the default path is
+      ! unchanged.  Costs no extra communication.
+      nwide = halo_blocking_width() - 1
 
       work2(:,:,:) = c0
 
@@ -4211,8 +4224,8 @@
                ihi = this_block%ihi
                jlo = this_block%jlo
                jhi = this_block%jhi
-               do j = jlo, jhi
-               do i = ilo, ihi
+               do j = jlo-nwide, jhi+nwide
+               do i = ilo-nwide, ihi+nwide
                   wtmp = (mask1(i  ,j  ,iblk)*wght1(i  ,j  ,iblk)  &
                         + mask1(i+1,j  ,iblk)*wght1(i+1,j  ,iblk)  &
                         + mask1(i  ,j+1,iblk)*wght1(i  ,j+1,iblk)  &
@@ -4236,8 +4249,8 @@
                ihi = this_block%ihi
                jlo = this_block%jlo
                jhi = this_block%jhi
-               do j = jlo, jhi
-               do i = ilo, ihi
+               do j = jlo-nwide, jhi+nwide
+               do i = ilo-nwide, ihi+nwide
                   wtmp = (mask1(i  ,j  ,iblk)*wght1(i  ,j  ,iblk)  &
                         + mask1(i-1,j  ,iblk)*wght1(i-1,j  ,iblk)  &
                         + mask1(i  ,j-1,iblk)*wght1(i  ,j-1,iblk)  &
@@ -4261,8 +4274,8 @@
                ihi = this_block%ihi
                jlo = this_block%jlo
                jhi = this_block%jhi
-               do j = jlo, jhi
-               do i = ilo, ihi
+               do j = jlo-nwide, jhi+nwide
+               do i = ilo-nwide, ihi+nwide
                   wtmp = (mask1(i-1,j  ,iblk)*wght1(i-1,j  ,iblk)  &
                         + mask1(i  ,j  ,iblk)*wght1(i  ,j  ,iblk)  &
                         + mask1(i-1,j+1,iblk)*wght1(i-1,j+1,iblk)  &
@@ -4286,8 +4299,8 @@
                ihi = this_block%ihi
                jlo = this_block%jlo
                jhi = this_block%jhi
-               do j = jlo, jhi
-               do i = ilo, ihi
+               do j = jlo-nwide, jhi+nwide
+               do i = ilo-nwide, ihi+nwide
                   wtmp = (mask1(i  ,j-1,iblk)*wght1(i  ,j-1,iblk)  &
                         + mask1(i+1,j-1,iblk)*wght1(i+1,j-1,iblk)  &
                         + mask1(i  ,j  ,iblk)*wght1(i  ,j  ,iblk)  &
@@ -4311,8 +4324,8 @@
                ihi = this_block%ihi
                jlo = this_block%jlo
                jhi = this_block%jhi
-               do j = jlo, jhi
-               do i = ilo, ihi
+               do j = jlo-nwide, jhi+nwide
+               do i = ilo-nwide, ihi+nwide
                   wtmp = (mask1(i  ,j,iblk)*wght1(i  ,j,iblk)  &
                         + mask1(i+1,j,iblk)*wght1(i+1,j,iblk))
                   if (wtmp /= c0) &
@@ -4332,8 +4345,8 @@
                ihi = this_block%ihi
                jlo = this_block%jlo
                jhi = this_block%jhi
-               do j = jlo, jhi
-               do i = ilo, ihi
+               do j = jlo-nwide, jhi+nwide
+               do i = ilo-nwide, ihi+nwide
                   wtmp = (mask1(i-1,j,iblk)*wght1(i-1,j,iblk)  &
                         + mask1(i  ,j,iblk)*wght1(i  ,j,iblk))
                   if (wtmp /= c0) &
@@ -4353,8 +4366,8 @@
                ihi = this_block%ihi
                jlo = this_block%jlo
                jhi = this_block%jhi
-               do j = jlo, jhi
-               do i = ilo, ihi
+               do j = jlo-nwide, jhi+nwide
+               do i = ilo-nwide, ihi+nwide
                   wtmp = (mask1(i,j  ,iblk)*wght1(i,j  ,iblk)  &
                         + mask1(i,j+1,iblk)*wght1(i,j+1,iblk))
                   if (wtmp /= c0) &
@@ -4374,8 +4387,8 @@
                ihi = this_block%ihi
                jlo = this_block%jlo
                jhi = this_block%jhi
-               do j = jlo, jhi
-               do i = ilo, ihi
+               do j = jlo-nwide, jhi+nwide
+               do i = ilo-nwide, ihi+nwide
                   wtmp = (mask1(i,j-1,iblk)*wght1(i,j-1,iblk)  &
                         + mask1(i,j  ,iblk)*wght1(i,j  ,iblk))
                   if (wtmp /= c0) &
@@ -4425,7 +4438,13 @@
       type (block) :: &
          this_block           ! block information for current block
 
+      integer (kind=int_kind) :: &
+         nwide                ! extra halo rings the EVP halo blocking advances
+
       character(len=*), parameter :: subname = '(grid_average_X2YA)'
+
+      ! Widened with grid_average_X2YS; see the note there.
+      nwide = halo_blocking_width() - 1
 
       work2(:,:,:) = c0
 
@@ -4439,8 +4458,8 @@
                ihi = this_block%ihi
                jlo = this_block%jlo
                jhi = this_block%jhi
-               do j = jlo, jhi
-               do i = ilo, ihi
+               do j = jlo-nwide, jhi+nwide
+               do i = ilo-nwide, ihi+nwide
                   wtmp = (wght1(i  ,j  ,iblk)  &
                         + wght1(i+1,j  ,iblk)  &
                         + wght1(i  ,j+1,iblk)  &
@@ -4464,8 +4483,8 @@
                ihi = this_block%ihi
                jlo = this_block%jlo
                jhi = this_block%jhi
-               do j = jlo, jhi
-               do i = ilo, ihi
+               do j = jlo-nwide, jhi+nwide
+               do i = ilo-nwide, ihi+nwide
                   wtmp = (wght1(i  ,j  ,iblk)  &
                         + wght1(i-1,j  ,iblk)  &
                         + wght1(i  ,j-1,iblk)  &
@@ -4489,8 +4508,8 @@
                ihi = this_block%ihi
                jlo = this_block%jlo
                jhi = this_block%jhi
-               do j = jlo, jhi
-               do i = ilo, ihi
+               do j = jlo-nwide, jhi+nwide
+               do i = ilo-nwide, ihi+nwide
                   wtmp = (wght1(i-1,j  ,iblk)  &
                         + wght1(i  ,j  ,iblk)  &
                         + wght1(i-1,j+1,iblk)  &
@@ -4514,8 +4533,8 @@
                ihi = this_block%ihi
                jlo = this_block%jlo
                jhi = this_block%jhi
-               do j = jlo, jhi
-               do i = ilo, ihi
+               do j = jlo-nwide, jhi+nwide
+               do i = ilo-nwide, ihi+nwide
                   wtmp = (wght1(i  ,j-1,iblk)  &
                         + wght1(i+1,j-1,iblk)  &
                         + wght1(i  ,j  ,iblk)  &
@@ -4539,8 +4558,8 @@
                ihi = this_block%ihi
                jlo = this_block%jlo
                jhi = this_block%jhi
-               do j = jlo, jhi
-               do i = ilo, ihi
+               do j = jlo-nwide, jhi+nwide
+               do i = ilo-nwide, ihi+nwide
                   wtmp = (wght1(i  ,j,iblk)  &
                         + wght1(i+1,j,iblk))
                   if (wtmp /= c0) &
@@ -4560,8 +4579,8 @@
                ihi = this_block%ihi
                jlo = this_block%jlo
                jhi = this_block%jhi
-               do j = jlo, jhi
-               do i = ilo, ihi
+               do j = jlo-nwide, jhi+nwide
+               do i = ilo-nwide, ihi+nwide
                   wtmp = (wght1(i-1,j,iblk)  &
                         + wght1(i  ,j,iblk))
                   if (wtmp /= c0) &
@@ -4581,8 +4600,8 @@
                ihi = this_block%ihi
                jlo = this_block%jlo
                jhi = this_block%jhi
-               do j = jlo, jhi
-               do i = ilo, ihi
+               do j = jlo-nwide, jhi+nwide
+               do i = ilo-nwide, ihi+nwide
                   wtmp = (wght1(i,j  ,iblk)  &
                         + wght1(i,j+1,iblk))
                   if (wtmp /= c0) &
@@ -4602,8 +4621,8 @@
                ihi = this_block%ihi
                jlo = this_block%jlo
                jhi = this_block%jhi
-               do j = jlo, jhi
-               do i = ilo, ihi
+               do j = jlo-nwide, jhi+nwide
+               do i = ilo-nwide, ihi+nwide
                   wtmp = (wght1(i,j-1,iblk)  &
                         + wght1(i,j  ,iblk))
                   if (wtmp /= c0) &
@@ -4651,7 +4670,13 @@
       type (block) :: &
          this_block           ! block information for current block
 
+      integer (kind=int_kind) :: &
+         nwide                ! extra halo rings the EVP halo blocking advances
+
       character(len=*), parameter :: subname = '(grid_average_X2YF)'
+
+      ! Widened with grid_average_X2YS; see the note there.
+      nwide = halo_blocking_width() - 1
 
       work2(:,:,:) = c0
 
@@ -4665,8 +4690,8 @@
                ihi = this_block%ihi
                jlo = this_block%jlo
                jhi = this_block%jhi
-               do j = jlo, jhi
-               do i = ilo, ihi
+               do j = jlo-nwide, jhi+nwide
+               do i = ilo-nwide, ihi+nwide
                   work2(i,j,iblk) = p25 * &
                                     (work1(i  ,j  ,iblk)*wght1(i  ,j  ,iblk)  &
                                    + work1(i+1,j  ,iblk)*wght1(i+1,j  ,iblk)  &
@@ -4686,8 +4711,8 @@
                ihi = this_block%ihi
                jlo = this_block%jlo
                jhi = this_block%jhi
-               do j = jlo, jhi
-               do i = ilo, ihi
+               do j = jlo-nwide, jhi+nwide
+               do i = ilo-nwide, ihi+nwide
                   work2(i,j,iblk) = p25 *  &
                                    (work1(i  ,j  ,iblk)*wght1(i  ,j  ,iblk)  &
                                   + work1(i-1,j  ,iblk)*wght1(i-1,j  ,iblk)  &
@@ -4707,8 +4732,8 @@
                ihi = this_block%ihi
                jlo = this_block%jlo
                jhi = this_block%jhi
-               do j = jlo, jhi
-               do i = ilo, ihi
+               do j = jlo-nwide, jhi+nwide
+               do i = ilo-nwide, ihi+nwide
                   work2(i,j,iblk) = p25 * &
                                     (work1(i-1,j  ,iblk)*wght1(i-1,j  ,iblk)  &
                                    + work1(i  ,j  ,iblk)*wght1(i  ,j  ,iblk)  &
@@ -4728,8 +4753,8 @@
                ihi = this_block%ihi
                jlo = this_block%jlo
                jhi = this_block%jhi
-               do j = jlo, jhi
-               do i = ilo, ihi
+               do j = jlo-nwide, jhi+nwide
+               do i = ilo-nwide, ihi+nwide
                   work2(i,j,iblk) = p25 *  &
                                    (work1(i  ,j-1,iblk)*wght1(i  ,j-1,iblk)  &
                                   + work1(i+1,j-1,iblk)*wght1(i+1,j-1,iblk)  &
@@ -4749,8 +4774,8 @@
                ihi = this_block%ihi
                jlo = this_block%jlo
                jhi = this_block%jhi
-               do j = jlo, jhi
-               do i = ilo, ihi
+               do j = jlo-nwide, jhi+nwide
+               do i = ilo-nwide, ihi+nwide
                   work2(i,j,iblk) = p5 * &
                                     (work1(i  ,j,iblk)*wght1(i  ,j,iblk)  &
                                    + work1(i+1,j,iblk)*wght1(i+1,j,iblk)) &
@@ -4768,8 +4793,8 @@
                ihi = this_block%ihi
                jlo = this_block%jlo
                jhi = this_block%jhi
-               do j = jlo, jhi
-               do i = ilo, ihi
+               do j = jlo-nwide, jhi+nwide
+               do i = ilo-nwide, ihi+nwide
                   work2(i,j,iblk) = p5 * &
                                     (work1(i-1,j,iblk)*wght1(i-1,j,iblk)  &
                                    + work1(i  ,j,iblk)*wght1(i  ,j,iblk)) &
@@ -4787,8 +4812,8 @@
                ihi = this_block%ihi
                jlo = this_block%jlo
                jhi = this_block%jhi
-               do j = jlo, jhi
-               do i = ilo, ihi
+               do j = jlo-nwide, jhi+nwide
+               do i = ilo-nwide, ihi+nwide
                   work2(i,j,iblk) = p5 * &
                                     (work1(i,j  ,iblk)*wght1(i,j  ,iblk)  &
                                    + work1(i,j+1,iblk)*wght1(i,j+1,iblk)) &
@@ -4806,8 +4831,8 @@
                ihi = this_block%ihi
                jlo = this_block%jlo
                jhi = this_block%jhi
-               do j = jlo, jhi
-               do i = ilo, ihi
+               do j = jlo-nwide, jhi+nwide
+               do i = ilo-nwide, ihi+nwide
                   work2(i,j,iblk) = p5 * &
                                     (work1(i,j-1,iblk)*wght1(i,j-1,iblk)  &
                                    + work1(i,j  ,iblk)*wght1(i,j  ,iblk)) &

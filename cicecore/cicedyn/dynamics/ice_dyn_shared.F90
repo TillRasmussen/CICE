@@ -14,7 +14,7 @@
       use ice_constants, only: c0, c1, c2, c3, c4, c6, c1p5, p25, p5, eps13
       use ice_constants, only: omega, spval_dbl, p01, p001
       use ice_constants, only: field_loc_center, field_type_vector
-      use ice_blocks, only: nx_block, ny_block, nghost
+      use ice_blocks, only: nx_block, ny_block, nghost, halo_blocking_width
       use ice_domain_size, only: max_blocks
       use ice_fileunits, only: nu_diag
       use ice_exit, only: abort_ice
@@ -503,49 +503,6 @@
 !
 ! author: Elizabeth C. Hunke, LANL
 
-!=======================================================================
-! How many EVP subcycles may run on a single halo exchange.
-!
-! A subcycle consumes exactly one ring of halo, so nghost rings allow
-! nghost passes -- BUT only where recomputing a ghost cell reproduces what
-! the exchange would have put there.  That holds when the ghost is backed
-! by REAL DATA: an interior block edge, or a cyclic wrap (whose own stencil
-! neighbours are themselves in the halo).  It fails wherever the exchange
-! IMPOSES a value instead of copying one: closed and open zero or copy,
-! linear_extrap extrapolates, and the tripole seam folds with sign flips.
-! None of those are reproducible from local data.
-!
-! ⚠ The condition is all-or-nothing, not per-edge.  The pass count is
-! global, so a single unbacked ghost anywhere corrupts the interior next to
-! it however the loop bounds are set.  Narrowing the widening at that edge
-! does not help; the blocking itself has to be off.
-!
-! ⚠ The test is on the BOUNDARY TYPES, not on the block decomposition,
-! because every task must agree on the pass count without a reduction.
-! Interior block edges are always backed, so the decomposition never
-! matters -- only how the global domain is closed.
-!
-! Returns 1 (exchange every subcycle, the historical behaviour) unless the
-! domain is doubly cyclic.
-
-      function halo_blocking_width() result(nblk)
-
-      use ice_blocks, only: ew_boundary_type, ns_boundary_type
-
-      integer (kind=int_kind) :: nblk
-
-      character(len=*), parameter :: subname = '(halo_blocking_width)'
-
-      if (trim(ew_boundary_type) == 'cyclic' .and. &
-          trim(ns_boundary_type) == 'cyclic') then
-         nblk = max(nghost, 1)
-      else
-         nblk = 1
-      endif
-
-      end function halo_blocking_width
-
-!=======================================================================
       subroutine dyn_prep1 (nx_block,  ny_block, &
                             ilo, ihi,  jlo, jhi, &
                             aice,      vice,     &

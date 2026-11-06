@@ -44,6 +44,7 @@
    public :: create_blocks       ,&
              get_block           ,&
              get_block_parameter ,&
+             halo_blocking_width ,&
              ice_blocksGetNbrID
 
    integer (int_kind), public :: &
@@ -122,6 +123,41 @@
 !***********************************************************************
 
 contains
+
+!***********************************************************************
+! How many EVP subcycles may run on a single halo exchange.
+!
+! A subcycle consumes exactly one ring of halo, so nghost rings allow
+! nghost passes -- but ONLY where every input the kernels read is valid
+! that far out, and where recomputing a ghost reproduces what the
+! exchange would have written.  Lives here rather than in ice_dyn_shared
+! so that ice_grid can widen grid_average_X2Y by the same amount without
+! a circular dependency.
+!
+! ⚠ Returning anything above 1 is currently EXPERIMENTAL; see
+! NGHOST_BLOCKING.md.  The doubly-cyclic test below is a conservative
+! switch, not the right criterion -- the hypothesis it came from was
+! refuted.
+!
+! ⚠ Every widened loop MUST take its width from this one function.
+! Widening and pass count disagreeing is a silent wrong answer.
+
+ function halo_blocking_width() result(nblk)
+
+   integer (int_kind) :: nblk
+
+   character(len=*), parameter :: subname = '(halo_blocking_width)'
+
+   if (trim(ew_boundary_type) == 'cyclic' .and. &
+       trim(ns_boundary_type) == 'cyclic') then
+      nblk = max(nghost, 1)
+   else
+      nblk = 1
+   endif
+
+ end function halo_blocking_width
+
+!***********************************************************************
 
 !***********************************************************************
 
