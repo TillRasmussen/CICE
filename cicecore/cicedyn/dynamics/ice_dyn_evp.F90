@@ -948,6 +948,10 @@
                ! from stale velocities, and the error seeds the next
                ! timestep.  Exchange it once per block, alongside uvel.
                if (nblk > 1) then
+                  ! ⚠ timed: dyn_haloUpdate starts/stops timer_bound itself,
+                  ! so without this the stress exchange is invisible to Bound
+                  ! and its cost is silently charged to computation.
+                  call ice_timer_start(timer_bound)
                   call ice_HaloUpdate(stressp_1, halo_info, &
                        field_loc_center, field_type_scalar)
                   call ice_HaloUpdate(stressp_2, halo_info, &
@@ -972,6 +976,7 @@
                        field_loc_center, field_type_scalar)
                   call ice_HaloUpdate(stress12_4, halo_info, &
                        field_loc_center, field_type_scalar)
+                  call ice_timer_stop(timer_bound)
                endif
 
                ! U fields at NE corner

@@ -199,41 +199,56 @@ differs deep in the file. The restart stores the stress arrays *including*
 ghost cells, and widening the masks makes `stress` compute at a few more
 ghosts. No physical field is affected.
 
-## MPI results (4 tasks, Intel MPI) -- it works, and the cost is measured
+## MPI results (4 tasks, Intel MPI): CORRECT, but a NET LOSS
 
 ⚠ Everything before this section ran `nprocs=1`, where a halo "exchange" is
 a local copy and no message is ever sent. These are the first real ones.
 
 **Correctness.** `nghost=1` is bit-for-bit against unmodified upstream.
 `nghost=2` blocked gives identical diagnostics and history; only the restart
-differs, by block shape. So the blocking is correct under real MPI.
+differs, by block shape. The blocking is correct under real MPI.
 
-**Communication.** This is what the change exists for:
-
-```
-   block 20x20        Bound 5.07 s -> 0.66 s     8x less
-   block 40x40        Bound 4.73 s -> 0.39 s    12x less
-```
-
-**But total evp time goes UP**, because redundant halo computation costs
-more than the messages saved:
+**Cost: it does not pay.** 40x40 blocks, 4 tasks, ndte=240:
 
 ```
-   block      compute penalty   comms saving    net
-   20x20        +12.3 s           -4.4 s      +7.9 s
-   40x40         +8.5 s           -4.3 s      +4.1 s
+                     Bound (all comms)    evp       compute
+   nghost=1               4.94 s        25.62 s     20.68 s
+   nghost=2 blocked       6.11 s        30.79 s     24.68 s
 ```
 
-Doubling the block halved the penalty, matching the 4*nghost/L geometry of
-a ghost frame. But the comms saving is CAPPED: once Bound is near zero there
-is nothing further to win, while the redundant compute keeps costing. So the
-trade improves with block size and converges to a small margin.
+Communication goes UP 24%, and computation up 19%. A loss on both axes.
 
-⚠ Do not read a crossover off these numbers. Two single runs, local timing
-noise is 4-5%, and an 80x80 global domain cannot reach production block
-sizes. The honest statement is: communication falls by an order of
-magnitude, total time rises at both block sizes tested, and the gap narrows
-as blocks grow. Settling it needs a production-size measurement.
+⚠ An earlier version of this file claimed communication fell 8-12x. That
+was WRONG, and the error is instructive: `dyn_haloUpdate` starts and stops
+`timer_bound` internally, but the twelve stress `ice_HaloUpdate` calls added
+for the blocking were raw and UNTIMED. `Bound` was therefore measuring only
+the velocity exchanges -- which do halve -- while the entire stress-exchange
+cost was silently charged to computation. Always check that new
+communication is inside the timer that claims to measure communication.
+
+### Why it cannot be tuned into a win
+
+Count the volume per subcycle-equivalent. At halo depth n the blocking
+exchanges (2 velocity + 12 stress) = 14 fields every n subcycles, with an
+n-deep rim:
+
+    volume ~ (14 fields x n-deep rim) / n subcycles = 14   per subcycle
+    original                                        =  2   per subcycle
+
+Seven times the bytes, INDEPENDENT of n. Raising nghost cuts the message
+count but never the volume. So the idea pays only if the stress exchange can
+be dropped -- and it cannot: not exchanging it means not keeping ghost stress
+state current, which means not advancing stress in the halo, which is
+precisely what makes advancing the velocities there possible. Closed loop.
+
+### The general lesson
+
+Temporal blocking amortises communication when the state that must be
+exchanged is the state you would exchange anyway. EVP has 14 state fields
+but exchanges only 2: the stress tensor stays local precisely because each
+cell owns its own. Blocking breaks that locality and forces all 14 onto the
+wire. A solver whose entire state is the exchanged field would behave very
+differently.
 
 ### Why shrinking the stress range does not help here
 
