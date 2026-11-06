@@ -24,7 +24,9 @@
       ! solvers that import it from ice_dyn_shared are unchanged.
       use ice_grid, only: grid_ice,                                   &
                           dynOff, dynCnt, dynTot, dynMaxCnt,          &
-                          dynMap, Nbr_Local, Nbr_Task, dynIJ,             &
+                          dynMap, Nbr_Local, dynIJ,                       &
+                        NbrW_Task , NbrSW_Task, NbrS_Task , NbrE_Task , &
+                        NbrNE_Task, NbrN_Task , NbrNW_Task, NbrSE_Task, &
                           set_ragged_layout, set_neighbours,          &
                           set_slot_cells, pack_to_slots,              &
                           unpack_from_slots,                          &
@@ -44,7 +46,9 @@
       private
 
       ! re-exported from ice_grid, which owns the ragged layout
-      public :: dynOff, dynCnt, dynTot, dynMaxCnt, dynMap, Nbr_Local, Nbr_Task, dynIJ
+      public :: dynOff, dynCnt, dynTot, dynMaxCnt, dynMap, Nbr_Local, dynIJ
+      public :: NbrW_Task , NbrSW_Task, NbrS_Task , NbrE_Task
+      public :: NbrNE_Task, NbrN_Task , NbrNW_Task, NbrSE_Task
       public :: nbr_W, nbr_SW, nbr_S, nbr_E, nbr_NE, nbr_N, nbr_NW, nbr_SE
       public :: nbr_num
       public :: uarear_slot, tarear_slot, dxN_slot, dyE_slot, uarea_slot
@@ -1955,7 +1959,7 @@
                         taubx_s,              &
                         uvel_init,  vvel_init,&
                         uvel,       vvel,     &
-                        nbr,                  &
+                        nbrE, nbrNE, nbrN,                  &
                         TbU,        rheofactU)
 
       integer (kind=int_kind), intent(in) :: &
@@ -1995,16 +1999,18 @@
 
       ! str1..str8 are COMPRESSED and indexed by BLOCK-LOCAL slot.  The
       ! block's DEAD slot -- the last one, cnt+1, which init_ragged_layout
-      ! sets every missing direction of nbr to -- is held at zero by the
+      ! sets every missing direction of nbrE, nbrNE, nbrN to -- is held at zero by the
       ! zeroing that opens stress, which is what the block layout carried at
       ! land points, so the stencil below needs no branch.  (Not element 0:
-      ! nbr never holds 0 after init_ragged_layout fills it.)
+      ! nbrE, nbrNE, nbrN never holds 0 after init_ragged_layout fills it.)
       real (kind=dbl_kind), dimension(:), intent(in), contiguous :: &
          str1, str2, str3, str4, str5, str6, str7, str8
 
       ! nbr(is,d) is the block-local slot one step in direction d from slot is
-      integer (kind=int_kind), dimension(:,:), intent(in) :: &
-         nbr         ! neighbour slots
+      integer (kind=int_kind), dimension (:), intent(in), contiguous :: &
+         nbrE     , & ! neighbour slot one step E
+         nbrNE    , & ! neighbour slot one step NE
+         nbrN        ! neighbour slot one step N
 
       ! uvel and vvel are COMPRESSED: this block's slice, 1-based, so cells
       ! are 1..cnt and the last element is the block's dead slot
@@ -2061,7 +2067,7 @@
       !$omp  shared(lo, hi, skipme, Cw, aiX, uocn, vocn            , &
       !$omp         waterx, watery, forcex, forcey                 , &
       !$omp         Umassdti, fm, uarear, taubx_s                   , &
-      !$omp         uvel_init, vvel_init, uvel, vvel, nbr           , &
+      !$omp         uvel_init, vvel_init, uvel, vvel, nbrE, nbrNE, nbrN           , &
       !$omp         str1, str2, str3, str4, str5, str6, str7, str8  , &
       !$omp         TbU, rheofactU, rhow, brlx, revp)
       do is = lo, hi
@@ -2091,12 +2097,12 @@
          ! holds zero, matching what the block layout held at land.
          ! The three neighbour slots are read once each and the six stresses
          ! loaded up front, as ice_dyn_core1d's stepu_1d does.  Each slot was
-         ! fetched twice before -- str(nbr(is,nbr_E),2) and
-         ! str(nbr(is,nbr_E),7) -- so this halves the nbr loads, and it lets
+         ! fetched twice before -- str(nbrE(is),2) and
+         ! str(nbrE(is),7) -- so this halves the nbrE, nbrNE, nbrN loads, and it lets
          ! the six dependent str loads issue before any is needed.
-         isE  = nbr(is,nbr_E )
-         isN  = nbr(is,nbr_N )
-         isNE = nbr(is,nbr_NE)
+         isE  = nbrE(is)
+         isN  = nbrN(is)
+         isNE = nbrNE(is)
 
          tmp_str2_E  = str2(isE )
          tmp_str3_N  = str3(isN )
@@ -2382,11 +2388,11 @@
       subroutine calc_strint_slot (lo, hi, skipme, uarear, rheofactU, &
                                    str1, str2, str3, str4, &
                                    str5, str6, str7, str8, &
-                                   nbr, strintx_s, strinty_s)
+                                   nbrE, nbrNE, nbrN, strintx_s, strinty_s)
 
       ! Slot range, as ice_dyn_core1d's kernels take lb/ub.  Callers pass
       ! 1, dynTot; the pair is the shape the 1-D kernels share.
-      ! ⚠ nbr must be Nbr_Task with a task-wide range, never Nbr_Local: the
+      ! ⚠ nbrE, nbrNE, nbrN must be Nbr_Task with a task-wide range, never Nbr_Local: the
       ! latter holds BLOCK-LOCAL slots, so every neighbour would resolve into
       ! block 1 -- in bounds, run completes, answer wrong.
       integer (kind=int_kind), intent(in) :: &
@@ -2404,8 +2410,10 @@
       real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
          str1, str2, str3, str4, str5, str6, str7, str8
 
-      integer (kind=int_kind), dimension (:,:), intent(in) :: &
-         nbr         ! neighbour slots
+      integer (kind=int_kind), dimension (:), intent(in), contiguous :: &
+         nbrE     , & ! neighbour slot one step E
+         nbrNE    , & ! neighbour slot one step NE
+         nbrN        ! neighbour slot one step N
 
       real (kind=dbl_kind), dimension (:), intent(inout), contiguous :: &
          strintx_s , & ! divergence of internal ice stress, x (N/m^2)
@@ -2427,9 +2435,9 @@
       do is = lo, hi
          if (skipme(is)) cycle
 
-         isE  = nbr(is,nbr_E )
-         isN  = nbr(is,nbr_N )
-         isNE = nbr(is,nbr_NE)
+         isE  = nbrE(is)
+         isN  = nbrN(is)
+         isNE = nbrNE(is)
 
          ! the same factor stepu applies, so this diagnostic matches the
          ! strintx/strinty the momentum equation actually used
@@ -3241,7 +3249,7 @@
 ! in Lemieux et al. paper. 
 
       subroutine deformations (lo, hi,     skipme, &
-                               nbr,        ijslot, &
+                               nbrW, nbrSW, nbrS,        ijslot, &
                                uvel,       vvel,   &
                                dxT,        dyT,    &
                                dxU,        dyU,    &
@@ -3261,8 +3269,10 @@
 
       ! (slot, direction) -> neighbour slot.  A missing neighbour points at the
       ! block's dead slot, which holds zero, so the corners need no branch.
-      integer (kind=int_kind), dimension (:,:), intent(in) :: &
-         nbr
+      integer (kind=int_kind), dimension (:), intent(in), contiguous :: &
+         nbrW     , & ! neighbour slot one step W
+         nbrSW    , & ! neighbour slot one step SW
+         nbrS        ! neighbour slot one step S
 
       ! (j-1)*nx_block+i of the cell owning each slot.  The five outputs are
       ! history and ridging fields that are read block-shaped elsewhere, so
@@ -3325,16 +3335,16 @@
       !$omp         Deltase, Deltasw, Deltappne, Deltappnw, Deltappse, &
       !$omp         Deltappsw, tmp, numetp, nume, deno, dvdxn, dvdxs, &
       !$omp         dudye, dudyw) &
-      !$omp  shared(lo, hi, skipme, nbr, ijslot, uvel, vvel, dxT, dyT, &
+      !$omp  shared(lo, hi, skipme, nbrW, nbrSW, nbrS, ijslot, uvel, vvel, dxT, dyT, &
       !$omp         dxU, dyU, cxp, cyp, cxm, cym, tarear, vort, shear, &
       !$omp         divu, rdg_conv, rdg_shear, e_factor, epp2i, arlx1i, &
       !$omp         denom1, revp, capping)
       do is = lo, hi
          if (skipme(is)) cycle
 
-         isW  = nbr(is,nbr_W )
-         isS  = nbr(is,nbr_S )
-         isSW = nbr(is,nbr_SW)
+         isW  = nbrW(is)
+         isS  = nbrS(is)
+         isSW = nbrSW(is)
          ijb  = ijslot(is)
 
          !-----------------------------------------------------------------
@@ -3398,7 +3408,7 @@
 ! Nov 2021
 
       subroutine deformationsCD_T (lo, hi,     skipme, &
-                                   nbr,        ijslot, &
+                                   nbrW, nbrS,        ijslot, &
                                    uvelE,      vvelE,  &
                                    uvelN,      vvelN,  &
                                    dxN,        dyE,    &
@@ -3417,8 +3427,9 @@
 
       ! (slot, direction) -> neighbour slot; a missing neighbour points at the
       ! block's dead slot, which holds zero.
-      integer (kind=int_kind), dimension (:,:), intent(in) :: &
-         nbr
+      integer (kind=int_kind), dimension (:), intent(in), contiguous :: &
+         nbrW     , & ! neighbour slot one step W
+         nbrS        ! neighbour slot one step S
 
       ! (j-1)*nx_block+i of the cell owning each slot.  The five outputs are
       ! history and ridging fields read block-shaped elsewhere, so they are
@@ -3479,14 +3490,14 @@
       !$omp parallel do schedule(static) default(none)              &
       !$omp private(is, isW, isS, ijb, divT, tensionT, shearT, DeltaT, &
       !$omp         tmp) &
-      !$omp  shared(lo, hi, skipme, nbr, ijslot, uvelE, vvelE, uvelN, &
+      !$omp  shared(lo, hi, skipme, nbrW, nbrS, ijslot, uvelE, vvelE, uvelN, &
       !$omp         vvelN, dxN, dyE, dxT, dyT, tarear, vort, shear, divu, &
       !$omp         rdg_conv, rdg_shear, e_factor, epp2i)
       do is = lo, hi
          if (skipme(is)) cycle
 
-         isW  = nbr(is,nbr_W )
-         isS  = nbr(is,nbr_S )
+         isW  = nbrW(is)
+         isS  = nbrS(is)
 
          ! strain rates at T, formerly a separate pass over every slot
          ! writing divT/tensionT/shearT.  All are read only at this slot, so
@@ -3539,7 +3550,7 @@
 ! in Lemieux et al. paper. 
 
     subroutine deformationsC_T (lo, hi,     skipme,    &
-                                   nbr,        ijslot, &
+                                   nbrW, nbrSW, nbrS,        ijslot, &
                                 uvelE,      vvelE,     &
                                 uvelN,      vvelN,     &
                                 dxN,        dyE,       &
@@ -3560,8 +3571,10 @@
 
       ! (slot, direction) -> neighbour slot; a missing neighbour points at the
       ! block's dead slot, which holds zero.
-      integer (kind=int_kind), dimension (:,:), intent(in) :: &
-         nbr
+      integer (kind=int_kind), dimension (:), intent(in), contiguous :: &
+         nbrW     , & ! neighbour slot one step W
+         nbrSW    , & ! neighbour slot one step SW
+         nbrS        ! neighbour slot one step S
 
       ! (j-1)*nx_block+i of the cell owning each slot.  The five outputs are
       ! history and ridging fields read block-shaped elsewhere, so they are
@@ -3629,15 +3642,15 @@
     !$omp parallel do schedule(static) default(none)              &
     !$omp private(is, isW, isS, isSW, ijb, divT, tensionT, shearT, &
     !$omp         DeltaT, tmp, shearTsqr, DeltappTsqr) &
-    !$omp  shared(lo, hi, skipme, nbr, ijslot, uvelE, vvelE, uvelN, &
+    !$omp  shared(lo, hi, skipme, nbrW, nbrSW, nbrS, ijslot, uvelE, vvelE, uvelN, &
     !$omp         vvelN, dxN, dyE, dxT, dyT, tarear, uarea, uareaavg, &
     !$omp         shearU, vort, shear, divu, rdg_conv, rdg_shear, &
     !$omp         e_factor, epp2i)
     do is = lo, hi
        if (skipme(is)) cycle
 
-         isW  = nbr(is,nbr_W )
-         isS  = nbr(is,nbr_S )
+         isW  = nbrW(is)
+         isS  = nbrS(is)
 
          ! strain rates at T, formerly a separate pass over every slot
          ! writing divT/tensionT/shearT.  All are read only at this slot, so
@@ -3651,7 +3664,7 @@
 
          shearT   = (dxT(is)**2)*(uvelN(is)/dxN(is) - uvelN(isS)/dxN(isS)) &
                   + (dyT(is)**2)*(vvelE(is)/dyE(is) - vvelE(isW)/dyE(isW))
-         isSW = nbr(is,nbr_SW)
+         isSW = nbrSW(is)
          ijb  = ijslot(is)
 
          !-----------------------------------------------------------------
@@ -3829,7 +3842,7 @@
 ! CD is converted this one becomes the only version and the block one goes.
       subroutine strain_rates_U (lo,         hi,        &
                                  skipme,                &
-                                 nbr,                   &
+                                 nbrE, nbrN,                   &
                                  uvelE_s,    vvelE_s,   &
                                  uvelN_s,    vvelN_s,   &
                                  uvelU,      vvelU,     &
@@ -3852,8 +3865,9 @@
       ! ⚠ must be Nbr_Task with a task-wide range, never Nbr_Local: the
       ! latter holds BLOCK-LOCAL slots, so every neighbour would resolve
       ! into block 1 -- in bounds, silent, and wrong.
-      integer (kind=int_kind), dimension (:,:), intent(in) :: &
-         nbr          ! neighbour slots
+      integer (kind=int_kind), dimension (:), intent(in), contiguous :: &
+         nbrE     , & ! neighbour slot one step E
+         nbrN        ! neighbour slot one step N
 
       ! Compressed: this kernel reaches E for the N-point quantities and N for
       ! the E-point ones.  epm and npm are real 0/1 masks used arithmetically.
@@ -3921,8 +3935,8 @@
       do is = lo, hi
          if (skipme(is)) cycle
 
-         isE = nbr(is,nbr_E)   ! (i+1,j  )
-         isN = nbr(is,nbr_N)   ! (i  ,j+1)
+         isE = nbrE(is)   ! (i+1,j  )
+         isN = nbrN(is)   ! (i  ,j+1)
 
          uNip1j = uvelN_s(isE) * npm_s(isE) &
                 +(npm_s(is)-npm_s(isE)) * npm_s(is)   * ratiodxN(is)  * uvelN_s(is)

@@ -262,7 +262,8 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
           ns_boundary_type
       use ice_domain, only: blocks_ice, halo_info, maskhalo_dyn
       use ice_domain_size, only: max_blocks
-      use ice_dyn_shared, only: deformations, iceTmask, iceUmask, Nbr_Task, &
+      use ice_dyn_shared, only: deformations, iceTmask, iceUmask, &
+                               NbrW_Task, NbrSW_Task, NbrS_Task, &
           cxp, cyp, cxm, cym, &
           stressp_1_slot, stressp_2_slot, stressp_3_slot, stressp_4_slot, &
           stressm_1_slot, stressm_2_slot, stressm_3_slot, stressm_4_slot, &
@@ -644,7 +645,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                          cyp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),          &
                          cxm_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),          &
                          cym_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),          &
-                         Nbr_Local  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:),          &
+                         Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_W), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_SW), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_S),          &
                          zetax2_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),        &
                          etax2_s (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),        &
                          repprs_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),        &
@@ -669,7 +670,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          call pack_to_slots(vvel(:,iblk), dynMap(:,iblk), vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
          call deformations (                                                                                                              &
                             dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipT,                                                &
-                            Nbr_Task, dynIJ,          &
+                            NbrW_Task, NbrSW_Task, NbrS_Task, dynIJ,          &
                             uvel_slot, vvel_slot, &
                             dxT_slot, dyT_slot,   &
                             dxU_slot, dyU_slot,   &
@@ -1046,7 +1047,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                                 cym_slot      (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),    &
                                 DminTarea_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),    &
                                 strength_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),    &
-                                Nbr_Local        (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:),    &
+                                Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_W), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_SW), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_S),          &
                                 zetax2_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),        &
                                 etax2_s (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),        &
                                 repprs_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),        &
@@ -1087,14 +1088,14 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                             bx_s     (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),         &
                             by_s     (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),         &
                             vrel_s   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),         &
-                            Nbr_Local   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:))
+                            Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_E), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_NE), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_N))
 
 
             ! Compute nonlinear residual norm (PDE residual)
             mvu_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = uprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
             mvv_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = vprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
             call matvec (dynCnt(iblk), skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),                                                &
-                         skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:),          &
+                         skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_W), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_SW), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_S), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_E), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_NE), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_N),          &
                          dxT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
                          dxhy_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyhx_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                          cxp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), cyp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
@@ -1395,7 +1396,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                                 cxp     , cyp     , &
                                 cxm     , cym     , &
                                 DminTarea,strength, &
-                                nbr     ,           &
+                                nbrW, nbrSW, nbrS,           &
                                 zetax2  , etax2   , &
                                 rep_prs , stPr)
 
@@ -1425,8 +1426,10 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       ! (slot, direction) -> neighbour slot.  A missing neighbour points at the
       ! block's dead slot, which holds zero, so the four corners below need no
       ! branch -- the same arrangement EVP's stress uses.
-      integer (kind=int_kind), dimension (:,:), intent(in) :: &
-         nbr
+      integer (kind=int_kind), dimension (:), intent(in), contiguous :: &
+         nbrW     , & ! neighbour slot one step W
+         nbrSW    , & ! neighbour slot one step SW
+         nbrS        ! neighbour slot one step S
 
       real (kind=dbl_kind), dimension(:,:), intent(inout) :: &
          zetax2   , & ! zetax2 = 2*zeta (bulk viscosity)
@@ -1463,9 +1466,9 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       do is = 1, ncells
          if (skipme(is)) cycle
 
-         isW  = nbr(is,nbr_W )
-         isS  = nbr(is,nbr_S )
-         isSW = nbr(is,nbr_SW)
+         isW  = nbrW(is)
+         isS  = nbrS(is)
+         isSW = nbrSW(is)
 
       !-----------------------------------------------------------------
       ! strain rates
@@ -1592,7 +1595,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                             dxT       , dyT       , &
                             cxp       , cyp       , &
                             cxm       , cym       , &
-                            nbr       ,             &
+                            nbrW, nbrSW, nbrS,             &
                             zetax2    , etax2     , &
                             rep_prs   ,             &
                             stressp_1 , stressp_2 , &
@@ -1624,8 +1627,10 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       ! (slot, direction) -> neighbour slot.  A missing neighbour points at the
       ! block's dead slot, which holds zero, so the corners below need no
       ! branch -- the same arrangement calc_zeta_dPr and EVP's stress use.
-      integer (kind=int_kind), dimension (:,:), intent(in) :: &
-         nbr
+      integer (kind=int_kind), dimension (:), intent(in), contiguous :: &
+         nbrW     , & ! neighbour slot one step W
+         nbrSW    , & ! neighbour slot one step SW
+         nbrS        ! neighbour slot one step S
 
       ! The twelve stresses are written to the SLOT copies now.  They used
       ! to go to the block layout through ijslot, so that only the cells
@@ -1661,9 +1666,9 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       do is = 1, ncells
          if (skipme(is)) cycle
 
-         isW  = nbr(is,nbr_W )
-         isS  = nbr(is,nbr_S )
-         isSW = nbr(is,nbr_SW)
+         isW  = nbrW(is)
+         isS  = nbrS(is)
+         isSW = nbrSW(is)
 
       !-----------------------------------------------------------------
       ! strain rates
@@ -1780,7 +1785,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 ! Av = A(u,v)_[y] * vvel (y components of  A(u,v) * (u,v))
 
       subroutine matvec (ncells  , skipT   , &
-                         skipU   , nbr     , &
+                         skipU   , nbrW, nbrSW, nbrS, nbrE, nbrNE, nbrN     , &
                          dxT     , dyT     , &
                          dxhy    , dyhx    , &
                          cxp     , cyp     , &
@@ -1803,8 +1808,13 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          skipU       ! inactive-slot flag, U cells
 
       ! (slot, direction) -> neighbour slot; a missing one is the dead slot
-      integer (kind=int_kind), dimension (:,:), intent(in) :: &
-         nbr
+      integer (kind=int_kind), dimension (:), intent(in), contiguous :: &
+         nbrW     , & ! neighbour slot one step W
+         nbrSW    , & ! neighbour slot one step SW
+         nbrS     , & ! neighbour slot one step S
+         nbrE     , & ! neighbour slot one step E
+         nbrNE    , & ! neighbour slot one step NE
+         nbrN        ! neighbour slot one step N
 
       ! compressed: this block's slice, 1-based, cells 1..ncells, dead slot last
       real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
@@ -1893,9 +1903,9 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       do is = 1, ncells
          if (skipT(is)) cycle
 
-         isW  = nbr(is,nbr_W )
-         isS  = nbr(is,nbr_S )
-         isSW = nbr(is,nbr_SW)
+         isW  = nbrW(is)
+         isS  = nbrS(is)
+         isSW = nbrSW(is)
 
       !-----------------------------------------------------------------
       ! strain rates
@@ -2046,9 +2056,9 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       do is = 1, ncells
          if (skipU(is)) cycle
 
-         isE  = nbr(is,nbr_E )
-         isN  = nbr(is,nbr_N )
-         isNE = nbr(is,nbr_NE)
+         isE  = nbrE(is)
+         isN  = nbrN(is)
+         isNE = nbrNE(is)
 
          ! each neighbour slot read once, the six dependent loads issued
          ! together, as ice_dyn_core1d's stepu_1d does
@@ -2146,7 +2156,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                             waterxU , wateryU , &
                             bxfix   , byfix   , &
                             bx      , by      , &
-                            vrel    , nbr)
+                            vrel    , nbrE, nbrNE, nbrN)
 
       integer (kind=int_kind), intent(in) :: &
          ncells                ! slots held by this block
@@ -2166,8 +2176,10 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          stPr
 
       ! (slot, direction) -> neighbour slot; a missing one is the dead slot
-      integer (kind=int_kind), dimension (:,:), intent(in) :: &
-         nbr
+      integer (kind=int_kind), dimension (:), intent(in), contiguous :: &
+         nbrE     , & ! neighbour slot one step E
+         nbrNE    , & ! neighbour slot one step NE
+         nbrN        ! neighbour slot one step N
 
       real (kind=dbl_kind), dimension (:), intent(inout), contiguous :: &
          bx      , & ! b vector, bx = taux + bxfix (N/m^2)
@@ -2200,9 +2212,9 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
          ! the three T cells whose Pr stresses reach this U point, as EVP's
          ! stepu reads str: (+1,0), (0,+1) and (+1,+1)
-         isE  = nbr(is,nbr_E )
-         isN  = nbr(is,nbr_N )
-         isNE = nbr(is,nbr_NE)
+         isE  = nbrE(is)
+         isN  = nbrN(is)
+         isNE = nbrNE(is)
 
          ! ice/ocean stress
          taux = vrel(is)*waterxU(is) ! NOTE this is not the entire
@@ -3186,7 +3198,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       !$OMP PARALLEL DO PRIVATE(iblk)
       do iblk = 1, nblocks
          call matvec (dynCnt(iblk), skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),                                                &
-                      skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:),          &
+                      skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_W), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_SW), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_S), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_E), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_NE), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_N),          &
                       dxT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
                       dxhy_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyhx_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                       cxp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), cyp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
@@ -3279,7 +3291,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
             !$OMP PARALLEL DO PRIVATE(iblk)
             do iblk = 1, nblocks
                call matvec (dynCnt(iblk), skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),                                                    &
-                            skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:),              &
+                            skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_W), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_SW), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_S), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_E), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_NE), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_N),              &
                             dxT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),       &
                             dxhy_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyhx_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),     &
                             cxp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), cyp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),       &
@@ -3569,7 +3581,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       !$OMP PARALLEL DO PRIVATE(iblk)
       do iblk = 1, nblocks
          call matvec (dynCnt(iblk), skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),                                                &
-                      skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:),          &
+                      skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_W), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_SW), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_S), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_E), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_NE), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_N),          &
                       dxT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
                       dxhy_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyhx_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                       cxp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), cyp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
@@ -3661,7 +3673,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
             !$OMP PARALLEL DO PRIVATE(iblk)
             do iblk = 1, nblocks
                call matvec (dynCnt(iblk), skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),                                                    &
-                            skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:),              &
+                            skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_W), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_SW), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_S), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_E), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_NE), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_N),              &
                             dxT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),       &
                             dxhy_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyhx_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),     &
                             cxp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), cyp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),       &

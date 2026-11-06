@@ -135,7 +135,8 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
           str1_slot, str2_slot, str3_slot, str4_slot, &
           str5_slot, str6_slot, str7_slot, str8_slot, &
           denom1, uvel_init, vvel_init, dynOff, dynCnt, dynTot, dynMap, Nbr_Local, &
-          Nbr_Task, &
+          NbrW_Task , NbrSW_Task, NbrS_Task , NbrE_Task , &
+        NbrNE_Task, NbrN_Task , NbrNW_Task, NbrSE_Task, &
           nbr_W, nbr_S, nbr_SW, &
           skipT, skipU, arlx1i, &
           stressp_1_slot , stressp_2_slot , stressp_3_slot , stressp_4_slot , &
@@ -578,7 +579,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                               arlx1i,               denom1,               &
                               uvel_slot, &
                               vvel_slot, &
-                              Nbr_Task, &
+                              NbrW_Task, NbrSW_Task, NbrS_Task, &
                               dxT_slot, dyT_slot, &
                               dxU_slot, dyU_slot, &
                               dxhy_slot, dyhx_slot, &
@@ -645,7 +646,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                         taubxU_slot  , &
                         uvel_init,   vvel_init,   &
                         uvel_slot, vvel_slot, &
-                        Nbr_Task, &
+                        NbrE_Task, NbrNE_Task, NbrN_Task, &
                         ! always 1 here: the free-drift stress removal is not
                         ! implemented for EAP, as upstream notes in #1133
                         TbU_slot , &
@@ -718,7 +719,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                                   str2_slot      , str3_slot      , &
                                   str4_slot      , str5_slot      , &
                                   str6_slot      , str7_slot      , &
-                                  str8_slot      , Nbr_Task       , &
+                                  str8_slot      , NbrE_Task, NbrNE_Task, NbrN_Task       , &
                                   strintxU_slot  , strintyU_slot)
             call unpack_from_slots(strintxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), strintxU(:,iblk))
             call unpack_from_slots(strintyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), strintyU(:,iblk))
@@ -1409,7 +1410,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                               ksub,       ndte,           &
                               ldiag,                      &
                               arlx1i,     denom1,         &
-                              uvel,       vvel,     nbr,  &
+                              uvel,       vvel,     nbrW, nbrSW, nbrS,  &
                               dxT,        dyT,            &
                               dxU,        dyU,            &
                               dxhy,       dyhx,           &
@@ -1465,8 +1466,10 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          vvel         ! y-component of velocity (m/s)
 
       ! nbr(is,d) is the block-local slot one step in direction d from slot is
-      integer (kind=int_kind), dimension(:,:), intent(in) :: &
-         nbr          ! neighbour slots
+      integer (kind=int_kind), dimension (:), intent(in), contiguous :: &
+         nbrW     , & ! neighbour slot one step W
+         nbrSW    , & ! neighbour slot one step SW
+         nbrS        ! neighbour slot one step S
 
       ! All COMPRESSED, indexed by this block's slot: the kernel iterates
       ! slots, so no block subscript arithmetic is left and the two block
@@ -1594,7 +1597,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       !$omp         alpharne, alpharnw, alpharsw, alpharse         , &
       !$omp         alphasne, alphasnw, alphassw, alphasse)          &
       !$omp  shared(lo, hi, skipme, ksub, ndte, ldiag              , &
-      !$omp         arlx1i, denom1, uvel, vvel, nbr                , &
+      !$omp         arlx1i, denom1, uvel, vvel, nbrW, nbrSW, nbrS                , &
       !$omp         dxT, dyT, dxU, dyU, dxhy, dyhx                 , &
       !$omp         cxp, cyp, cxm, cym, tarear, strength           , &
       !$omp         a11_1, a11_2, a11_3, a11_4                     , &
@@ -1616,9 +1619,9 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          ! which is what the block layout carried at land.
          ! each neighbour slot was fetched twice, once for uvel and once for
          ! vvel; read them once instead
-         isW  = nbr(is,nbr_W )
-         isS  = nbr(is,nbr_S )
-         isSW = nbr(is,nbr_SW)
+         isW  = nbrW(is)
+         isS  = nbrS(is)
+         isSW = nbrSW(is)
 
          u00 = uvel(is)
          uW  = uvel(isW)

@@ -49,7 +49,9 @@
           dyn_prep1, dyn_prep2, dyn_finish, &
           ndte, yield_curve, ecci, denom1, arlx1i, &
           uvel_init, vvel_init, uvelE_init, vvelE_init, uvelN_init, vvelN_init, &
-          dynOff, dynCnt, dynMap, Nbr_Local, Nbr_Task, &
+          dynOff, dynCnt, dynMap, Nbr_Local, &
+        NbrW_Task , NbrSW_Task, NbrS_Task , NbrE_Task , &
+        NbrNE_Task, NbrN_Task , NbrNW_Task, NbrSE_Task, &
           uvel_slot, vvel_slot, aiU_slot, fmU_slot, TbU_slot, &
           rheofactU_slot, &
           umassdti_slot, waterxU_slot, wateryU_slot, &
@@ -299,7 +301,9 @@
           iceTmask, iceUmask, iceEmask, iceNmask, &
           dyn_haloUpdate, fld2, fld3, fld4, fld2c
       ! the compressed layout, and the C/CD slot arrays the subcycle runs on
-      use ice_dyn_shared, only: dynMap, dynOff, dynCnt, dynTot, Nbr_Local, Nbr_Task
+      use ice_dyn_shared, only: dynMap, dynOff, dynCnt, dynTot, Nbr_Local, &
+                               NbrW_Task , NbrSW_Task, NbrS_Task , NbrE_Task , &
+                               NbrNE_Task, NbrN_Task , NbrNW_Task, NbrSE_Task
       ! strint* and taub* are diagnostics: history is their only consumer,
       ! nothing in the dynamics reads them.  So when no stream wants them this
       ! step, the work that builds them is skipped outright.  Gated coarsely
@@ -1098,7 +1102,7 @@
                                stressm_3_slot, stressm_4_slot, &
                                stress12_1_slot, stress12_2_slot, &
                                stress12_3_slot, stress12_4_slot, &
-                               Nbr_Task, &
+                               NbrW_Task, NbrSW_Task, NbrS_Task, &
                                str1_slot, str2_slot, &
                                str3_slot, str4_slot, &
                                str5_slot, str6_slot, &
@@ -1125,7 +1129,7 @@
                               taubxU_slot  , &
                               uvel_init,   vvel_init,  &
                               uvel_slot, vvel_slot, &
-                              Nbr_Task, &
+                              NbrE_Task, NbrNE_Task, NbrN_Task, &
                               TbU_slot , &
                               rheofactU_slot)
 
@@ -1170,7 +1174,7 @@
                        str3_slot, str4_slot, &
                        str5_slot, str6_slot, &
                        str7_slot, str8_slot, &
-                       Nbr_Task, &
+                       NbrE_Task, NbrNE_Task, NbrN_Task, &
                        strintxU_slot, &
                        strintyU_slot)
                   call unpack_from_slots(strintxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), strintxU(:,iblk))
@@ -1195,7 +1199,7 @@
 
             call deformations (                                                                                                              &
                                1, dynTot, skipT,                                                &
-                               Nbr_Task, dynIJ,          &
+                               NbrW_Task, NbrSW_Task, NbrS_Task, dynIJ,          &
                                uvel_slot, vvel_slot, &
                                dxT_slot, dyT_slot,   &
                                dxU_slot, dyU_slot,   &
@@ -1247,7 +1251,7 @@
             !-----------------------------------------------------------------
             call strain_rates_U (1             , dynTot        , &
                                  skipU         ,                 &
-                                 Nbr_Task      ,                 &
+                                 NbrE_Task, NbrN_Task      ,                 &
                                  uvelE_slot    , vvelE_slot    , &
                                  uvelN_slot    , vvelN_slot    , &
                                  uvel_slot     , vvel_slot     , &
@@ -1270,7 +1274,7 @@
             call ice_timer_stop(timer_bound)
 
                call stressC_T (1, dynTot       , skipT, &
-                               Nbr_Task, &
+                               NbrW_Task, NbrSW_Task, NbrS_Task, &
                                uvelE_slot, &
                                vvelN_slot, &
                                dxN_slot  , &
@@ -1334,7 +1338,7 @@
 
 
                call div_stress_Ex (1, dynTot, skipE, &
-                                   Nbr_Task, &
+                                   NbrS_Task, NbrE_Task, &
                                    dxE_slot, dyE_slot, &
                                    dxU_slot  , &
                                    dyT_slot  , &
@@ -1345,7 +1349,7 @@
                                    strintxE_slot )
 
                call div_stress_Ny (1, dynTot, skipN, &
-                                   Nbr_Task, &
+                                   NbrW_Task, NbrN_Task, &
                                    dxN_slot, dyN_slot, &
                                    dxT_slot  , &
                                    dyU_slot  , &
@@ -1486,7 +1490,7 @@
          !-----------------------------------------------------------------
 
             call deformationsC_T (1, dynTot, skipT,               &
-                                  Nbr_Task, dynIJ,           &
+                                  NbrW_Task, NbrSW_Task, NbrS_Task, dynIJ,           &
                                   uvelE_slot, vvelE_slot,  &
                                   uvelN_slot, vvelN_slot,  &
                                   dxN_slot, dyE_slot,      &
@@ -1529,7 +1533,7 @@
          do ksub = 1,ndte        ! subcycling
 
                call stressCD_T (1, dynTot       , skipT, &
-                                Nbr_Task, &
+                                NbrW_Task, NbrS_Task, &
                                 uvelE_slot, &
                                 vvelE_slot, &
                                 uvelN_slot, &
@@ -1577,7 +1581,7 @@
             !-----------------------------------------------------------------
             call strain_rates_U (1             , dynTot        , &
                                  skipU         ,                 &
-                                 Nbr_Task      ,                 &
+                                 NbrE_Task, NbrN_Task      ,                 &
                                  uvelE_slot    , vvelE_slot    , &
                                  uvelN_slot    , vvelN_slot    , &
                                  uvel_slot     , vvel_slot     , &
@@ -1630,7 +1634,7 @@
 
 
                call div_stress_Ex (1, dynTot, skipE, &
-                                   Nbr_Task, &
+                                   NbrS_Task, NbrE_Task, &
                                    dxE_slot, dyE_slot, &
                                    dxU_slot  , &
                                    dyT_slot  , &
@@ -1641,7 +1645,7 @@
                                    strintxE_slot )
 
                call div_stress_Ey (1, dynTot, skipE, &
-                                   Nbr_Task, &
+                                   NbrS_Task, NbrE_Task, &
                                    dxE_slot, dyE_slot, &
                                    dxU_slot  , &
                                    dyT_slot  , &
@@ -1652,7 +1656,7 @@
                                    strintyE_slot )
 
                call div_stress_Nx (1, dynTot, skipN, &
-                                   Nbr_Task, &
+                                   NbrW_Task, NbrN_Task, &
                                    dxN_slot, dyN_slot, &
                                    dxT_slot  , &
                                    dyU_slot  , &
@@ -1663,7 +1667,7 @@
                                    strintxN_slot )
 
                call div_stress_Ny (1, dynTot, skipN, &
-                                   Nbr_Task, &
+                                   NbrW_Task, NbrN_Task, &
                                    dxN_slot, dyN_slot, &
                                    dxT_slot  , &
                                    dyU_slot  , &
@@ -1799,7 +1803,7 @@
          !-----------------------------------------------------------------
 
             call deformationsCD_T (1, dynTot, skipT,              &
-                                   Nbr_Task, dynIJ,          &
+                                   NbrW_Task, NbrS_Task, dynIJ,          &
                                    uvelE_slot, vvelE_slot, &
                                    uvelN_slot, vvelN_slot, &
                                    dxN_slot, dyE_slot,     &
@@ -2009,7 +2013,7 @@
                          stressm_3,  stressm_4,  &
                          stress12_1, stress12_2, &
                          stress12_3, stress12_4, &
-                         nbr,                    &
+                         nbrW, nbrSW, nbrS,                    &
                          str1, str2, str3, str4, &
                          str5, str6, str7, str8 )
 
@@ -2025,8 +2029,10 @@
          vvel         ! y-component of velocity (m/s)
 
       ! nbr(is,d) is the block-local slot one step in direction d from is
-      integer (kind=int_kind), dimension (:,:), intent(in) :: &
-         nbr          ! neighbour slots
+      integer (kind=int_kind), dimension (:), intent(in), contiguous :: &
+         nbrW     , & ! neighbour slot one step W
+         nbrSW    , & ! neighbour slot one step SW
+         nbrS        ! neighbour slot one step S
 
       ! Every one of these is COMPRESSED and indexed by this block's slot, so
       ! nothing here needs nx_block or ny_block -- the kernel iterates over
@@ -2120,7 +2126,7 @@
       !$omp         strp_tmp, strm_tmp)                            &
       !$omp  shared(lo, hi, skipme, uvel, vvel, dxT, dyT         , &
       !$omp         dxhy, dyhx, cxp, cyp, cxm, cym, DminTarea    , &
-      !$omp         strength, nbr                                , &
+      !$omp         strength, nbrW, nbrSW, nbrS                                , &
       !$omp         stressp_1, stressp_2, stressp_3, stressp_4   , &
       !$omp         stressm_1, stressm_2, stressm_3, stressm_4   , &
       !$omp         stress12_1, stress12_2, stress12_3, stress12_4, &
@@ -2131,9 +2137,9 @@
 
           ! each neighbour slot was fetched twice, once for uvel and once for
           ! vvel; read them once instead
-          isW  = nbr(is,nbr_W )
-          isS  = nbr(is,nbr_S )
-          isSW = nbr(is,nbr_SW)
+          isW  = nbrW(is)
+          isS  = nbrS(is)
+          isSW = nbrSW(is)
 
          !-----------------------------------------------------------------
          ! strain rates
@@ -2353,7 +2359,7 @@
 ! for solving the sea ice momentum equation. Ocean Model., 101, 59-67.
 
       subroutine stressC_T  (lo, hi  ,   skipme   , &
-                             nbr     ,              &
+                             nbrW, nbrSW, nbrS,              &
                              uvelE_s    , vvelN_s   , &
                              dxN_s      , dyE_s     , &
                              dxT_s        , dyT_s       , &
@@ -2375,8 +2381,10 @@
          skipme
 
       ! nbr(is,d) is the block-local slot one step in direction d from slot is
-      integer (kind=int_kind), dimension (:,:), intent(in) :: &
-         nbr          ! neighbour slots
+      integer (kind=int_kind), dimension (:), intent(in), contiguous :: &
+         nbrW     , & ! neighbour slot one step W
+         nbrSW    , & ! neighbour slot one step SW
+         nbrS        ! neighbour slot one step S
 
       ! Compressed, block-local slots 1..cnt with the dead slot last.  shearU
       ! and uarea are read at W, S and SW here; the velocities and their
@@ -2441,7 +2449,7 @@
       ! schedule(static), not runtime -- see the note in stress.
       !$omp parallel do schedule(static) default(none)              &
       !$omp private(is, isW, isS, isSW, divT, tensionT, shearT, shearTsqr, DeltaT, uareaavgr, rep_prsT) &
-      !$omp  shared(lo, hi, skipme, nbr, uvelE_s, vvelN_s, dxN_s, &
+      !$omp  shared(lo, hi, skipme, nbrW, nbrSW, nbrS, uvelE_s, vvelN_s, dxN_s, &
       !$omp         dyE_s, dxT_s, dyT_s, uarea_s, uareaavg_s, &
       !$omp         DminTarea_s, strength_s, shearU_s, zetax2T_s, &
       !$omp         etax2T_s, stresspT_s, stressmT_s, stress12T_s, &
@@ -2453,9 +2461,9 @@
          ! Square of shear strain rate at T obtained from interpolation of
          ! U point values (Bouillon et al., 2013, Kimmritz et al., 2016
          !-----------------------------------------------------------------
-         isS  = nbr(is,nbr_S )
-         isSW = nbr(is,nbr_SW)
-         isW  = nbr(is,nbr_W )
+         isS  = nbrS(is)
+         isSW = nbrSW(is)
+         isW  = nbrW(is)
 
          ! divergence and tension, formerly a separate pass over every slot
          ! writing divT/tensionT.  Both are read only at this slot, so they
@@ -2610,7 +2618,7 @@
 ! Nov 2021
 
       subroutine stressCD_T (lo, hi  ,   skipme   , &
-                             nbr     ,              &
+                             nbrW, nbrS,              &
                              uvelE_s ,   vvelE_s  , &
                              uvelN_s ,   vvelN_s  , &
                              dxN_s   ,   dyE_s    , &
@@ -2632,8 +2640,9 @@
          skipme
 
       ! nbr(is,d) is the block-local slot one step in direction d from slot is
-      integer (kind=int_kind), dimension (:,:), intent(in) :: &
-         nbr          ! neighbour slots
+      integer (kind=int_kind), dimension (:), intent(in), contiguous :: &
+         nbrW     , & ! neighbour slot one step W
+         nbrS        ! neighbour slot one step S
 
       ! Compressed: the fused strain rates reach W and S on these.
       real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
@@ -2694,7 +2703,7 @@
       ! schedule(static), not runtime -- see the note in stress.
       !$omp parallel do schedule(static) default(none)              &
       !$omp private(is, isW, isS, divT, tensionT, shearT, DeltaT, rep_prsT) &
-      !$omp  shared(lo, hi, skipme, nbr, uvelE_s, vvelE_s, uvelN_s, &
+      !$omp  shared(lo, hi, skipme, nbrW, nbrS, uvelE_s, vvelE_s, uvelN_s, &
       !$omp         vvelN_s, dxN_s, dyE_s, dxT_s, dyT_s, DminTarea_s, &
       !$omp         strength_s, zetax2T_s, etax2T_s, stresspT_s, &
       !$omp         stressmT_s, stress12T_s, e_factor, arlx1i, revp, &
@@ -2706,8 +2715,8 @@
          ! divT/tensionT/shearT/DeltaT.  All four are read only at this slot,
          ! so they are scalars: four array writes and six reads per slot gone,
          ! along with two whole traversals.
-         isW = nbr(is,nbr_W)
-         isS = nbr(is,nbr_S)
+         isW = nbrW(is)
+         isS = nbrS(is)
 
          divT     = dyE_s(is)*uvelE_s(is) - dyE_s(isW)*uvelE_s(isW) &
                   + dxN_s(is)*vvelN_s(is) - dxN_s(isS)*vvelN_s(isS)
@@ -2863,7 +2872,7 @@
 ! Ocean Model., 27, 174-184.
 
       subroutine div_stress_Ex(lo, hi  , skipme   , &
-                               nbr     ,            &
+                               nbrS, nbrE,            &
                                dxE_s     , dyE_s      , &
                                dxU_s   , dyT_s    , &
                                arear_s   , rheofactE_s, &
@@ -2881,8 +2890,9 @@
          skipme
 
       ! nbr(is,d) is the block-local slot one step in direction d from slot is
-      integer (kind=int_kind), dimension (:,:), intent(in) :: &
-         nbr          ! neighbour slots
+      integer (kind=int_kind), dimension (:), intent(in), contiguous :: &
+         nbrS     , & ! neighbour slot one step S
+         nbrE        ! neighbour slot one step E
 
       real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
          dxE_s     , & ! width of E-cell through the middle (m)
@@ -2918,13 +2928,13 @@
       ! schedule(static), not runtime -- see the note in stress.
       !$omp parallel do schedule(static) default(none)              &
       !$omp private(is, isA, isB)                                   &
-      !$omp  shared(lo, hi, skipme, nbr, dxE_s, dyE_s, dxU_s, dyT_s, &
+      !$omp  shared(lo, hi, skipme, nbrS, nbrE, dxE_s, dyE_s, dxU_s, dyT_s, &
       !$omp         arear_s, rheofactE_s, stressp_s, stressm_s, &
       !$omp         stress12_s, strintx_s)
       do is = lo, hi
          if (skipme(is)) cycle
-         isA = nbr(is,nbr_E)   ! (i+1,j  )
-         isB = nbr(is,nbr_S)   ! (i  ,j-1)
+         isA = nbrE(is)   ! (i+1,j  )
+         isB = nbrS(is)   ! (i  ,j-1)
          strintx_s(is) = rheofactE_s(is) * arear_s(is) * &
               ( p5 * dyE_s(is)  * ( stressp_s(isA)  - stressp_s (is ) ) &
               + (p5/ dyE_s(is)) * ( (dyT_s(isA)**2) * stressm_s (isA)   &
@@ -2939,7 +2949,7 @@
 !=======================================================================
 
       subroutine div_stress_Ey(lo, hi  , skipme   , &
-                               nbr     ,            &
+                               nbrS, nbrE,            &
                                dxE_s     , dyE_s      , &
                                dxU_s   , dyT_s    , &
                                arear_s   , rheofactE_s, &
@@ -2957,8 +2967,9 @@
          skipme
 
       ! nbr(is,d) is the block-local slot one step in direction d from slot is
-      integer (kind=int_kind), dimension (:,:), intent(in) :: &
-         nbr          ! neighbour slots
+      integer (kind=int_kind), dimension (:), intent(in), contiguous :: &
+         nbrS     , & ! neighbour slot one step S
+         nbrE        ! neighbour slot one step E
 
       real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
          dxE_s     , & ! width of E-cell through the middle (m)
@@ -2994,13 +3005,13 @@
       ! schedule(static), not runtime -- see the note in stress.
       !$omp parallel do schedule(static) default(none)              &
       !$omp private(is, isA, isB)                                   &
-      !$omp  shared(lo, hi, skipme, nbr, dxE_s, dyE_s, dxU_s, dyT_s, &
+      !$omp  shared(lo, hi, skipme, nbrS, nbrE, dxE_s, dyE_s, dxU_s, dyT_s, &
       !$omp         arear_s, rheofactE_s, stressp_s, stressm_s, &
       !$omp         stress12_s, strinty_s)
       do is = lo, hi
          if (skipme(is)) cycle
-         isA = nbr(is,nbr_S)   ! (i  ,j-1)
-         isB = nbr(is,nbr_E)   ! (i+1,j  )
+         isA = nbrS(is)   ! (i  ,j-1)
+         isB = nbrE(is)   ! (i+1,j  )
          strinty_s(is) = rheofactE_s(is) * arear_s(is) * &
               ( p5 * dxE_s(is)  * ( stressp_s(is )  - stressp_s (isA) ) &
               - (p5/ dxE_s(is)) * ( (dxU_s(is )**2) * stressm_s (is )   &
@@ -3015,7 +3026,7 @@
 !=======================================================================
 
       subroutine div_stress_Nx(lo, hi  , skipme   , &
-                               nbr     ,            &
+                               nbrW, nbrN,            &
                                dxN_s     , dyN_s      , &
                                dxT_s   , dyU_s    , &
                                arear_s   , rheofactN_s, &
@@ -3033,8 +3044,9 @@
          skipme
 
       ! nbr(is,d) is the block-local slot one step in direction d from slot is
-      integer (kind=int_kind), dimension (:,:), intent(in) :: &
-         nbr          ! neighbour slots
+      integer (kind=int_kind), dimension (:), intent(in), contiguous :: &
+         nbrW     , & ! neighbour slot one step W
+         nbrN        ! neighbour slot one step N
 
       real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
          dxN_s     , & ! width of N-cell through the middle (m)
@@ -3070,13 +3082,13 @@
       ! schedule(static), not runtime -- see the note in stress.
       !$omp parallel do schedule(static) default(none)              &
       !$omp private(is, isA, isB)                                   &
-      !$omp  shared(lo, hi, skipme, nbr, dxN_s, dyN_s, dxT_s, dyU_s, &
+      !$omp  shared(lo, hi, skipme, nbrW, nbrN, dxN_s, dyN_s, dxT_s, dyU_s, &
       !$omp         arear_s, rheofactN_s, stressp_s, stressm_s, &
       !$omp         stress12_s, strintx_s)
       do is = lo, hi
          if (skipme(is)) cycle
-         isA = nbr(is,nbr_W)   ! (i-1,j  )
-         isB = nbr(is,nbr_N)   ! (i  ,j+1)
+         isA = nbrW(is)   ! (i-1,j  )
+         isB = nbrN(is)   ! (i  ,j+1)
          strintx_s(is) = rheofactN_s(is) * arear_s(is) * &
               ( p5 * dyN_s(is)  * ( stressp_s(is )  - stressp_s (isA) ) &
               + (p5/ dyN_s(is)) * ( (dyU_s(is )**2) * stressm_s (is )   &
@@ -3091,7 +3103,7 @@
 !=======================================================================
 
       subroutine div_stress_Ny(lo, hi  , skipme   , &
-                               nbr     ,            &
+                               nbrW, nbrN,            &
                                dxN_s     , dyN_s      , &
                                dxT_s   , dyU_s    , &
                                arear_s   , rheofactN_s, &
@@ -3109,8 +3121,9 @@
          skipme
 
       ! nbr(is,d) is the block-local slot one step in direction d from slot is
-      integer (kind=int_kind), dimension (:,:), intent(in) :: &
-         nbr          ! neighbour slots
+      integer (kind=int_kind), dimension (:), intent(in), contiguous :: &
+         nbrW     , & ! neighbour slot one step W
+         nbrN        ! neighbour slot one step N
 
       real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
          dxN_s     , & ! width of N-cell through the middle (m)
@@ -3146,13 +3159,13 @@
       ! schedule(static), not runtime -- see the note in stress.
       !$omp parallel do schedule(static) default(none)              &
       !$omp private(is, isA, isB)                                   &
-      !$omp  shared(lo, hi, skipme, nbr, dxN_s, dyN_s, dxT_s, dyU_s, &
+      !$omp  shared(lo, hi, skipme, nbrW, nbrN, dxN_s, dyN_s, dxT_s, dyU_s, &
       !$omp         arear_s, rheofactN_s, stressp_s, stressm_s, &
       !$omp         stress12_s, strinty_s)
       do is = lo, hi
          if (skipme(is)) cycle
-         isA = nbr(is,nbr_N)   ! (i  ,j+1)
-         isB = nbr(is,nbr_W)   ! (i-1,j  )
+         isA = nbrN(is)   ! (i  ,j+1)
+         isB = nbrW(is)   ! (i-1,j  )
          strinty_s(is) = rheofactN_s(is) * arear_s(is) * &
               ( p5 * dxN_s(is)  * ( stressp_s(isA)  - stressp_s (is ) ) &
               - (p5/ dxN_s(is)) * ( (dxT_s(isA)**2) * stressm_s (isA)   &

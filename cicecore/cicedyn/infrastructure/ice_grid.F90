@@ -273,7 +273,17 @@
          dynOff, dynCnt, dynIJ
 
       integer (kind=int_kind), dimension(:,:), allocatable, public :: &
-         dynMap, Nbr_Local, Nbr_Task
+         dynMap, Nbr_Local
+
+      ! Neighbour slots, one contiguous vector per compass direction, as
+      ! evp1d has carried them all along (nbrW, nbrSW, ... there).  The
+      ! task-wide kernels read exactly one direction at a time, so a rank-2
+      ! Nbr_Task(:,d) handed to an assumed-shape dummy cost descriptor stride
+      ! arithmetic on every access and told the compiler nothing about
+      ! contiguity.  These are GLOBAL slot indices: no dynOff composition.
+      integer (kind=int_kind), dimension(:), allocatable, public :: &
+         NbrW_Task , NbrSW_Task, NbrS_Task , NbrE_Task , &
+         NbrNE_Task, NbrN_Task , NbrNW_Task, NbrSE_Task
 
       ! Grid metrics in compressed form.  Constant for the whole run, so they
       ! are packed once here at creation rather than by whichever solver wants
@@ -7422,6 +7432,10 @@
       type (block) :: this_block_x   ! block info for the edge scan
       integer (kind=int_kind) :: ierr, iblk, i, j, ijb, m
 
+      ! scratch only: set_neighbours still fills a rank-2 global form, which
+      ! is split into the per-direction vectors below and released here
+      integer (kind=int_kind), dimension(:,:), allocatable :: Nbr_Task
+
       character(len=*), parameter :: subname = '(init_ragged_layout)'
 
       ! ------------------------------------------------------------------
@@ -7549,6 +7563,24 @@
       allocate(Nbr_Local(dynTot,nbr_num), Nbr_Task(dynTot,nbr_num), stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
       call set_neighbours(dynMap, dynOff, dynCnt, Nbr_Local, Nbr_Task)
+
+      ! Split the global form into one vector per direction and drop the
+      ! rank-2 original; the builder keeps its d loop, the kernels get
+      ! contiguous rank-1 actuals.
+      allocate(NbrW_Task (dynTot), NbrSW_Task(dynTot), &
+               NbrS_Task (dynTot), NbrE_Task (dynTot), &
+               NbrNE_Task(dynTot), NbrN_Task (dynTot), &
+               NbrNW_Task(dynTot), NbrSE_Task(dynTot), stat=ierr)
+      if (ierr/=0) call abort_ice(subname//': Out of memory')
+      NbrW_Task (:) = Nbr_Task(:,nbr_W )
+      NbrSW_Task(:) = Nbr_Task(:,nbr_SW)
+      NbrS_Task (:) = Nbr_Task(:,nbr_S )
+      NbrE_Task (:) = Nbr_Task(:,nbr_E )
+      NbrNE_Task(:) = Nbr_Task(:,nbr_NE)
+      NbrN_Task (:) = Nbr_Task(:,nbr_N )
+      NbrNW_Task(:) = Nbr_Task(:,nbr_NW)
+      NbrSE_Task(:) = Nbr_Task(:,nbr_SE)
+      deallocate(Nbr_Task)
 
       allocate(dynIJ(dynTot), stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
