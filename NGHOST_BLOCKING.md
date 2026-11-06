@@ -157,6 +157,25 @@ differ across `nghost` values. **Compare diagnostics and history across
 physics-neutral, so any physics difference in leg B is attributable to the
 blocking.
 
+### Safety: the default path is untouched
+
+`nghost=1` makes `halo_blocking_width()` return 1, every widening evaluate
+to its original bounds, and the subcycle degenerate to the original loop.
+Verified against a clean `upstream/main` worktree -- not against a stashed
+copy of this branch, which is a mistake worth avoiding:
+
+```
+                evpB      box2001   rmap      gx3 (tripole)
+   gfortran     BFB       BFB       BFB       BFB
+   ifx          BFB       BFB       BFB       BFB
+```
+
+Four boundary regimes (linear_extrap, closed, cyclic/open, cyclic/tripole),
+both compilers, transport active in rmap and gx3.
+
+⚠ Still untested: multi-task MPI.  Every run above is nprocs=1, where a
+halo "exchange" is a local copy and no message is ever sent.
+
 ### Result as of this commit
 
 ```
