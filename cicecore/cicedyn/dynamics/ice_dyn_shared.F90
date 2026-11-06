@@ -2187,7 +2187,7 @@
       ! them there is no rank-2 read left in the loop, which is what lets the
       ! cell loop run on slots exactly as the B grid's stepu does.
       ! aiX and massdti are compressed like the rest
-      real (kind=dbl_kind), dimension (:), intent(in) :: &
+      real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
          aiX     , & ! ice fraction on X-grid
          massdti , & ! mass of [EN]-cell/dt (kg/m^2 s)
          uvel_init,& ! x-component of velocity (m/s), beginning of timestep
@@ -3295,10 +3295,10 @@
 
       ! tarear is assumed shape, 1D over the block in Fortran storage order,
       ! i.e. element (i,j) is stored at (j-1)*nx_block+i
-      real (kind=dbl_kind), dimension (:), intent(in) :: &
+      real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
          tarear       ! 1/tarea
 
-      real (kind=dbl_kind), dimension (:), intent(inout) :: &
+      real (kind=dbl_kind), dimension (:), intent(inout), contiguous :: &
          vort     , & ! vorticity (1/s)
          shear    , & ! strain rate II component (1/s)
          divu     , & ! strain rate I component, velocity divergence (1/s)
@@ -3453,7 +3453,7 @@
       ! on sequence association to present the block as one flat vector.  An
       ! assumed-shape dummy would reject that -- the outputs stay block-shaped
       ! and are written through ijslot.
-      real (kind=dbl_kind), dimension (:), intent(inout) :: &
+      real (kind=dbl_kind), dimension (:), intent(inout), contiguous :: &
          vort     , & ! vorticity (1/s)
          shear    , & ! strain rate II component (1/s)
          divu     , & ! strain rate I component, velocity divergence (1/s)
@@ -3601,7 +3601,7 @@
       ! on sequence association to present the block as one flat vector.  An
       ! assumed-shape dummy would reject that -- the outputs stay block-shaped
       ! and are written through ijslot.
-      real (kind=dbl_kind), dimension (:), intent(inout) :: &
+      real (kind=dbl_kind), dimension (:), intent(inout), contiguous :: &
          vort     , & ! vorticity (1/s)
          shear    , & ! strain rate II component (1/s)
          divu     , & ! strain rate I component, velocity divergence (1/s)
@@ -3932,6 +3932,14 @@
       shearU_s(lo:hi) = c0
       deltaU  (lo:hi) = c0
 
+      !$omp parallel do schedule(static) default(none)                   &
+      !$omp private(is, isE, isN, uNip1j, uNij, vEijp1, vEij,            &
+      !$omp         uEijp1, uEij, vNip1j, vNij)                          &
+      !$omp  shared(lo, hi, skipme, nbrE, nbrN, uvelE_s, vvelE_s,        &
+      !$omp         uvelN_s, vvelN_s, uvelU, vvelU, dxE_s, dyN_s,        &
+      !$omp         dxU, dyU, ratiodxN, ratiodxNr, ratiodyE, ratiodyEr,  &
+      !$omp         epm_s, npm_s, divergU, tensionU, shearU_s, DeltaU,   &
+      !$omp         e_factor)
       do is = lo, hi
          if (skipme(is)) cycle
 

@@ -2437,7 +2437,7 @@
 
       ! DminTarea_s is assumed shape, 1D over the block in Fortran storage order,
       ! i.e. element (i,j) is stored at (j-1)*nx_block+i
-      real (kind=dbl_kind), dimension (:), intent(in) :: &
+      real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
          DminTarea_s    ! deltaminEVP*tarea
 
       character(len=*), parameter :: subname = '(stressC_T)'
@@ -2589,6 +2589,10 @@
       !-----------------------------------------------------------------
 
       if (visc_method == 'avg_zeta') then
+         !$omp parallel do schedule(static) default(none) &
+         !$omp private(is)                                &
+         !$omp  shared(lo, hi, skipme, etax2U_s, shearU_s, &
+         !$omp         stress12U_s, arlx1i, revp, denom1)
          do is = lo, hi
          if (skipme(is)) cycle
             stress12U_s(is) = (stress12U_s(is)*(c1-arlx1i*revp) &
@@ -2596,6 +2600,11 @@
          enddo
 
       elseif (visc_method == 'avg_strength') then
+         !$omp parallel do schedule(static) default(none)              &
+         !$omp private(is, DminUarea, lzetax2U, letax2U, lrep_prsU)    &
+         !$omp  shared(lo, hi, skipme, uarea_s, strengthU_s, deltaU,   &
+         !$omp         shearU_s, stress12U_s, arlx1i, revp, denom1,    &
+         !$omp         deltaminEVP)
          do is = lo, hi
          if (skipme(is)) cycle
             DminUarea = deltaminEVP*uarea_s(is)
@@ -2690,7 +2699,7 @@
 
       ! DminTarea_s is assumed shape, 1D over the block in Fortran storage order,
       ! i.e. element (i,j) is stored at (j-1)*nx_block+i
-      real (kind=dbl_kind), dimension (:), intent(in) :: &
+      real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
          DminTarea_s    ! deltaminEVP*tarea
 
       character(len=*), parameter :: subname = '(stressCD_T)'
@@ -2815,6 +2824,12 @@
 
       character(len=*), parameter :: subname = '(stressCD_U)'
 
+      !$omp parallel do schedule(static) default(none)                 &
+      !$omp private(is, DminUarea, lzetax2U, letax2U, lrep_prsU)       &
+      !$omp  shared(lo, hi, skipme, uarea_s, zetax2U_s, etax2U_s,      &
+      !$omp         strengthU_s, divergU, tensionU, shearU_s, deltaU,  &
+      !$omp         stresspU_s, stressmU_s, stress12U_s,               &
+      !$omp         arlx1i, revp, denom1, deltaminEVP, visc_method, ktens)
       do is = lo, hi
          if (skipme(is)) cycle
 
@@ -2899,7 +2914,7 @@
          dyE_s     , & ! height of E-cell through the middle (m)
          rheofactE_s   ! mult. factor = 1, set to 0 if aiE <= rheo_area_min
 
-      real (kind=dbl_kind), dimension (:), intent(in) :: &
+      real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
          arear_s       ! earear or narear
 
       ! Read at a neighbour -- dyT to the E, dxU to the S -- so compressed.
@@ -2976,7 +2991,7 @@
          dyE_s     , & ! height of E-cell through the middle (m)
          rheofactE_s   ! mult. factor = 1, set to 0 if aiE <= rheo_area_min
 
-      real (kind=dbl_kind), dimension (:), intent(in) :: &
+      real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
          arear_s       ! earear or narear
 
       ! Read at a neighbour -- dxU to the S, dyT to the E -- so compressed.
@@ -3053,7 +3068,7 @@
          dyN_s     , & ! height of N-cell through the middle (m)
          rheofactN_s   ! mult. factor = 1, set to 0 if aiN <= rheo_area_min
 
-      real (kind=dbl_kind), dimension (:), intent(in) :: &
+      real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
          arear_s       ! earear or narear
 
       ! Read at a neighbour -- dyU to the W, dxT to the N -- so compressed.
@@ -3130,7 +3145,7 @@
          dyN_s     , & ! height of N-cell through the middle (m)
          rheofactN_s   ! mult. factor = 1, set to 0 if aiN <= rheo_area_min
 
-      real (kind=dbl_kind), dimension (:), intent(in) :: &
+      real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
          arear_s       ! earear or narear
 
       ! Read at a neighbour -- dxT to the N, dyU to the W -- so compressed.
