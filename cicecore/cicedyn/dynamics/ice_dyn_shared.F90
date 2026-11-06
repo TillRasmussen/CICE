@@ -14,7 +14,7 @@
       use ice_constants, only: c0, c1, c2, c3, c4, c6, c1p5, p25, p5, eps13
       use ice_constants, only: omega, spval_dbl, p01, p001
       use ice_constants, only: field_loc_center, field_type_vector
-      use ice_blocks, only: nx_block, ny_block
+      use ice_blocks, only: nx_block, ny_block, nghost
       use ice_domain_size, only: max_blocks
       use ice_fileunits, only: nu_diag
       use ice_exit, only: abort_ice
@@ -735,9 +735,15 @@
       !       where stresses are needed.
       !-----------------------------------------------------------------
 
+      ! ⚠ Widened by nghost-1 rings each way so that the halo-blocked
+      ! subcycling below can update the outer rings too: a block of nghost
+      ! passes between exchanges needs every ring it will consume to be
+      ! recomputed, or a later pass reads a ring nobody advanced.
+      ! At nghost=1 these bounds are exactly jlo..jhi+1 / ilo..ihi+1, so the
+      ! default configuration is untouched.
       icellT = 0
-      do j = jlo, jhi+1
-      do i = ilo, ihi+1
+      do j = jlo-nghost+1, jhi+nghost
+      do i = ilo-nghost+1, ihi+nghost
          if (iceTmask(i,j)) then
             icellT = icellT + 1
             indxTi(icellT) = i
@@ -754,8 +760,9 @@
 
       icellX = 0
 
-      do j = jlo, jhi
-      do i = ilo, ihi
+      ! Widened like icellT above; identical to jlo..jhi / ilo..ihi at nghost=1.
+      do j = jlo-nghost+1, jhi+nghost-1
+      do i = ilo-nghost+1, ihi+nghost-1
          iceXmask_old(i,j) = iceXmask(i,j) ! save
          ! ice extent mask (U-cells)
          iceXmask(i,j) = (Xmask(i,j)) .and. (aiX  (i,j) > dyn_area_min) &

@@ -267,7 +267,7 @@
       use ice_arrays_column, only: Cdn_ocn
       use ice_boundary, only: ice_halo, ice_HaloMask, ice_HaloUpdate, &
           ice_HaloDestroy, ice_HaloUpdate_stress
-      use ice_blocks, only: block, get_block, nx_block, ny_block, ns_boundary_type
+      use ice_blocks, only: block, get_block, nx_block, ny_block, ns_boundary_type, nghost
       use ice_domain, only: nblocks, blocks_ice, halo_info, maskhalo_dyn
       use ice_domain_size, only: max_blocks
       use ice_flux, only: rdg_conv, rdg_shear, strairxT, strairyT, &
@@ -310,6 +310,8 @@
 
       integer (kind=int_kind) :: &
          ksub           , & ! subcycle step
+         kouter         , & ! halo block: one exchange per block
+         kinner         , & ! pass within a halo block, 1..nghost
          iblk           , & ! block index
          ilo,ihi,jlo,jhi, & ! beginning and end of physical domain
          i, j, ij           ! local indices
@@ -862,7 +864,30 @@
 
          else ! evp_algorithm == standard_2d (Standard CICE)
 
-            do ksub = 1,ndte        ! subcycling
+            ! ------------------------------------------------------------------
+            ! Halo-blocked subcycling: one halo exchange serves nghost passes.
+            !
+            ! A pass consumes exactly one ring of halo -- uvel after stress and
+            ! stepu at (i,j) depends on uvel before the pass over (i-1:i+1,
+            ! j-1:j+1) -- so with nghost valid rings after an exchange, nghost
+            ! passes leave the physical domain exact.  The outer rings go stale
+            ! as the block proceeds, which is harmless: the next exchange
+            ! overwrites them.  The kernels therefore need no shrinking loop
+            ! bounds; dyn_prep2 widens icellT/icellU by nghost-1 so the outer
+            ! rings are actually advanced rather than left at their exchanged
+            ! values.
+            !
+            ! A SHORT block is always safe -- fewer passes consume less halo
+            ! than is available -- so an ndte that is not a multiple of nghost
+            ! needs nothing beyond the min() below.
+            !
+            ! At nghost=1 this is ndte blocks of one pass each with an exchange
+            ! after every pass, i.e. structurally the original loop.
+            ! ------------------------------------------------------------------
+            ksub = 0
+            do kouter = 1, (ndte + nghost - 1)/nghost
+            do kinner = 1, min(nghost, ndte - ksub)
+               ksub = ksub + 1
 
                !$OMP PARALLEL DO PRIVATE(iblk,strtmp) SCHEDULE(runtime)
                do iblk = 1, nblocks
@@ -909,6 +934,8 @@
                enddo  ! iblk
                !$OMP END PARALLEL DO
 
+               enddo  ! kinner -- nghost passes on one exchange
+
                ! U fields at NE corner
                ! calls ice_haloUpdate, controls bundles and masks
                call dyn_haloUpdate (halo_info,          halo_info_mask,    &
@@ -916,7 +943,7 @@
                                     uvel, vvel)
                call ice_restoring_halo(setfld='velocity')
 
-            enddo  ! sub cycling
+            enddo  ! kouter -- one halo exchange per block
          endif ! evp algorithm
 
          !-----------------------------------------------------------------
