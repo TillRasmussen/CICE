@@ -264,6 +264,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       use ice_domain_size, only: max_blocks
       use ice_dyn_shared, only: deformations, iceTmask, iceUmask, &
                                NbrW_Task, NbrSW_Task, NbrS_Task, &
+                               NbrE_Task, NbrNE_Task, NbrN_Task, &
           cxp, cyp, cxm, cym, &
           stressp_1_slot, stressp_2_slot, stressp_3_slot, stressp_4_slot, &
           stressm_1_slot, stressm_2_slot, stressm_3_slot, stressm_4_slot, &
@@ -272,7 +273,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
           strairxU, strairyU, uocn, vocn, ss_tltx, ss_tlty, fmU,                      &
           strtltxU, strtltyU, strocnxU, strocnyU, strintxU, strintyU, taubxU, taubyU, &
           strax, stray,                                                               &
-          hwater,                                                                &
+          hwater, hwater_slot,                                                                &
           stressp_1, stressp_2, stressp_3, stressp_4,                                 &
           stressm_1, stressm_2, stressm_3, stressm_4,                                 &
           stress12_1, stress12_2, stress12_3, stress12_4
@@ -584,11 +585,14 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
             !$OMP PARALLEL DO PRIVATE(iblk)
             do iblk = 1, nblocks
 
-               call seabed_stress_factor_prob (nx_block,         ny_block,                   &
-                                               icellT(iblk), indxTi(:,iblk), indxTj(:,iblk), &
-                                               icellU(iblk), indxUi(:,iblk), indxUj(:,iblk), &
-                                               aicen(:,:,:,iblk), vicen(:,:,:,iblk),         &
-                                               hwater(:,iblk), dynMap(:,iblk), TbU_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+               call seabed_stress_factor_prob (nx_block        , ny_block      , &
+                                               dynOff(iblk)+1  , dynOff(iblk)+dynCnt(iblk), &
+                                               skipT           , skipU         , &
+                                               dynIJ           ,                 &
+                                NbrE_Task       , NbrNE_Task    , &
+                                NbrN_Task       , &
+                                               aicen(:,:,:,iblk), vicen(:,:,:,iblk), &
+                                               hwater_slot     , TbU_s)
             enddo
             !$OMP END PARALLEL DO
 

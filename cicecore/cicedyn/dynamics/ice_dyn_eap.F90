@@ -136,6 +136,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
           str5_slot, str6_slot, str7_slot, str8_slot, &
           denom1, uvel_init, vvel_init, dynOff, dynCnt, dynTot, dynMap, Nbr_Local, &
           NbrW_Task , NbrSW_Task, NbrS_Task , NbrE_Task , &
+          NbrE_Task, NbrNE_Task, NbrN_Task, &
         NbrNE_Task, NbrN_Task , NbrNW_Task, NbrSE_Task, &
           nbr_W, nbr_S, nbr_SW, &
           skipT, skipU, arlx1i, &
@@ -166,7 +167,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
           strairxU, strairyU, uocn, vocn, ss_tltx, ss_tlty, fmU, &
           strtltxU, strtltyU, strocnxU, strocnyU, strintxU, strintyU, taubxU, taubyU, &
           strax, stray, &
-          hwater, &
+          hwater, hwater_slot, &
           stressp_1, stressp_2, stressp_3, stressp_4, &
           stressm_1, stressm_2, stressm_3, stressm_4, &
           stress12_1, stress12_2, stress12_3, stress12_4
@@ -509,11 +510,14 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          elseif ( seabed_stress_method == 'probabilistic' ) then
             !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
             do iblk = 1, nblocks
-               call seabed_stress_factor_prob (nx_block         , ny_block         , &
-                                               icellT(iblk), indxTi(:,iblk), indxTj(:,iblk), &
-                                               icellU(iblk), indxUi(:,iblk), indxUj(:,iblk), &
+               call seabed_stress_factor_prob (nx_block        , ny_block      , &
+                                               dynOff(iblk)+1  , dynOff(iblk)+dynCnt(iblk), &
+                                               skipT           , skipU         , &
+                                               dynIJ           ,                 &
+                                NbrE_Task       , NbrNE_Task    , &
+                                NbrN_Task       , &
                                                aicen(:,:,:,iblk), vicen(:,:,:,iblk), &
-                                               hwater (:,iblk), dynMap(:,iblk), TbU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                                               hwater_slot     , TbU_slot)
             enddo
             !$OMP END PARALLEL DO
          endif

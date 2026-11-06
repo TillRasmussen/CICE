@@ -435,6 +435,20 @@
          rdg_conv, & ! convergence term for ridging (1/s)
          rdg_shear   ! shear term for ridging (1/s)
 
+      ! Water depth, compressed.  Static: packed once in init_coupler_flux.
+      ! ⚠ Dead slots hold hwater_dead, NOT c0.  grid_neighbor_min reduces
+      ! hwater over a cell's corner neighbours, and a missing neighbour
+      ! resolves to the dead slot; c0 there would win every minimum, pass
+      ! hwu < threshold_hw and produce a spurious non-zero seabed stress.
+      ! A max over a non-negative field would not care -- a min does.
+      real (kind=dbl_kind), dimension (:), allocatable, public :: &
+         hwater_slot ! water depth (m), compressed
+
+      ! Far deeper than any ocean and than threshold_hw/max_depth, but small
+      ! enough that au*hwater_dead/k1 cannot overflow.
+      real (kind=dbl_kind), parameter, public :: &
+         hwater_dead = 1.0e10_dbl_kind
+
       real (kind=dbl_kind), dimension(:,:,:,:), allocatable, public :: &
          rsiden    ,&   ! fraction of ice that melts laterally
          salinz    ,&   ! initial salinity  profile (ppt)
@@ -471,7 +485,8 @@
       integer (int_kind) :: ierr
       character(len=*),parameter :: subname='(alloc_flux_slots)'
 
-      allocate(strtltxU(dynTot), strtltyU(dynTot), &
+      allocate(hwater_slot(dynTot), &
+               strtltxU(dynTot), strtltyU(dynTot), &
                strocnxU(dynTot), strocnyU(dynTot), &
                sig1(dynTot), sig2(dynTot), sigP(dynTot), &
                rdg_conv(dynTot), rdg_shear(dynTot), &
@@ -990,7 +1005,8 @@
       use ice_flux_bgc, only: flux_bio_atm, flux_bio, faero_atm, fiso_atm, &
            fnit, famm, fsil, fdmsp, fdms, fhum, fdust, falgalN, &
            fdoc, fdon, fdic, ffed, ffep
-      use ice_grid, only: bathymetry
+      use ice_grid, only: bathymetry, dynMap, dynOff, dynCnt, pack_to_slots
+      use ice_domain, only: nblocks
 
       integer (kind=int_kind) :: n
 
@@ -1116,6 +1132,19 @@
       qdp   (:,:,:) = c0              ! deep ocean heat flux (W/m^2)
       hmix  (:,:,:) = c20             ! ocean mixed layer depth (m)
       hwater = bathymetry             ! ocean water depth (m)
+
+      ! ⚠ INTERIM: pack after the block read.  The destination is a reader
+      ! that goes global -> compressed directly, with a halo update filling
+      ! the ghost slots, rather than block-then-pack.  bathymetry is a good
+      ! pilot for that: static, read once, and used by nothing but the
+      ! seabed stress kernels.
+      ! Dead slots get hwater_dead so they can never win a minimum.
+      hwater_slot(:) = hwater_dead
+      do iblk = 1, nblocks
+         call pack_to_slots(hwater(:,iblk), dynMap(:,iblk), &
+                            hwater_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         hwater_slot(dynOff(iblk)+dynCnt(iblk)+1) = hwater_dead
+      enddo
       daice_da(:,:,:) = c0            ! data assimilation increment rate
 
       !-----------------------------------------------------------------

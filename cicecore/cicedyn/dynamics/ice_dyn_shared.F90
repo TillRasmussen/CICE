@@ -2926,41 +2926,48 @@
 ! authors: D. Dumont, J.F. Lemieux, E. Dumas-Lefebvre, F. Dupont
 !
       subroutine seabed_stress_factor_prob (nx_block, ny_block,          &
-                                            icellT, indxTi,   indxTj,    &
-                                            icellU, indxUi,   indxUj,    &
+                                            lo,     hi,                  &
+                                            skipT,  skipU,   ijslot,     &
+                                            nbrE,   nbrNE,   nbrN,       &
                                             aicen,  vicen,               &
-                                            hwater, Xmap,   TbU,         &
+                                            hwater_s,        TbU,        &
                                             TbE,    TbN,                 &
-                                            icellE, indxEi,   indxEj,    &
-                                            icellN, indxNi,   indxNj)
+                                            skipE,  skipN)
 ! use modules
 
       use ice_arrays_column, only: hin_max
       use ice_domain_size, only: ncat
-      use ice_grid, only: grid_neighbor_min, grid_neighbor_max
 
       integer (kind=int_kind), intent(in) :: &
            nx_block, ny_block, &  ! block dimensions
-           icellT, icellU         ! no. of cells where ice[tu]mask = 1
+           lo, hi                 ! slot range to process
 
-      integer (kind=int_kind), dimension (nx_block*ny_block), intent(in) :: &
-           indxTi  , & ! compressed index in i-direction
-           indxTj  , & ! compressed index in j-direction
-           indxUi  , & ! compressed index in i-direction
-           indxUj      ! compressed index in j-direction
+      ! .true. where the slot carries no ice this step
+      logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
+         skipT   , & ! T cells
+         skipU       ! U cells
 
-      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
-           hwater      ! water depth at tracer location (m)
+      ! ijslot(is) is (j-1)*nx_block+i of the cell owning slot is.  aicen and
+      ! vicen have no slot form, so (i,j) is still needed to read them.
+      integer (kind=int_kind), dimension (:), intent(in), contiguous :: &
+         ijslot
+
+      ! One vector per direction, as everywhere else in the dynamics.  A
+      ! missing neighbour resolves to the block's dead slot, which Tbt holds
+      ! at c0 -- safe here because Tbt is non-negative, so a max cannot be
+      ! lowered by it.  A MIN over a dead slot would not be safe.
+      integer (kind=int_kind), dimension (:), intent(in), contiguous :: &
+         nbrE    , & ! neighbour slot one step E
+         nbrNE   , & ! neighbour slot one step NE
+         nbrN        ! neighbour slot one step N
+
+      real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
+           hwater_s    ! water depth at tracer location (m), compressed
 
       real (kind=dbl_kind), dimension (nx_block,ny_block,ncat), intent(in) :: &
            aicen,    & ! partial concentration for last thickness category in ITD
            vicen       ! partial volume for last thickness category in ITD (m)
 
-      ! Xmap gives each cell its block-local slot; TbU/TbE/TbN are COMPRESSED.
-      ! The loop stays on (i,j) because grid_neighbor_max reduces over block
-      ! neighbours of the local Tbt, but the outputs go straight to slots.
-      integer (kind=int_kind), dimension (nx_block*ny_block), intent(in) :: &
-           Xmap
 
       real (kind=dbl_kind), dimension (:), intent(inout), contiguous :: &
            TbU         ! seabed stress factor at U location (N/m^2)
@@ -2969,19 +2976,15 @@
            TbE,      & ! seabed stress factor at E location (N/m^2)
            TbN         ! seabed stress factor at N location (N/m^2)
 
-      integer (kind=int_kind), intent(in), optional :: &
-           icellE, icellN ! no. of cells where ice[en]mask = 1
 
-      integer (kind=int_kind), dimension (nx_block*ny_block), intent(in), optional :: &
-           indxEi  , & ! compressed index in i-direction
-           indxEj  , & ! compressed index in j-direction
-           indxNi  , & ! compressed index in i-direction
-           indxNj      ! compressed index in j-direction
+      logical (kind=log_kind), dimension (:), intent(in), optional, contiguous :: &
+         skipE   , & ! E cells
+         skipN       ! N cells
 
 ! local variables
 
       integer (kind=int_kind) :: &
-           i, j, ij, ii, n
+           i, j, ij, ii, n, is
 
       integer, parameter :: &
            ncat_b = 100, &  ! number of bathymetry categories
@@ -3024,8 +3027,10 @@
       real (kind=dbl_kind), dimension(ncat_i) :: &
            tb_tmp
 
-      real (kind=dbl_kind), dimension (nx_block,ny_block) :: &
-           Tbt    ! seabed stress factor at t point (N/m^2)
+      ! Over the range worked plus the dead slot, so a missing neighbour
+      ! in the max below lands on a real, zeroed element.
+      real (kind=dbl_kind), dimension (lo:hi+1) :: &
+           Tbt         ! seabed stress factor at T location (N/m^2)
 
       integer (kind=int_kind) :: m   ! this cell's slot
 
@@ -3036,17 +3041,19 @@
       if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
          file=__FILE__, line=__LINE__)
 
-      Tbt=c0
+      Tbt(:) = c0
 
-      do ij = 1, icellT
-         i = indxTi(ij)
-         j = indxTj(ij)
+      do is = lo, hi
+         if (skipT(is)) cycle
+         ij = ijslot(is)
+         j  = (ij-1)/nx_block + 1
+         i  = ij - (j-1)*nx_block
 
          atot = sum(aicen(i,j,1:ncat))
 
-         if (atot > 0.05_dbl_kind .and. hwater(i,j) < max_depth) then
+         if (atot > 0.05_dbl_kind .and. hwater_s(is) < max_depth) then
 
-            mu_b = hwater(i,j)           ! mean of PDF (normal dist) bathymetry
+            mu_b = hwater_s(is)           ! mean of PDF (normal dist) bathymetry
             wid_i = max_depth/ncat_i     ! width of ice categories
             wid_b = c6*sigma_b/ncat_b    ! width of bathymetry categories (6 sigma_b = 2x3 sigma_b)
 
@@ -3106,37 +3113,28 @@
                   tb_tmp(n) = max(mu_s*gravit*P_x(n)*sum(P_y(1:ii)*(rhoi*x_k(n) - rhow*y_n(1:ii))),c0)
                endif
             enddo
-            Tbt(i,j) = sum(tb_tmp)*exp(-alphab * (c1 - atot))
+            Tbt(is) = sum(tb_tmp)*exp(-alphab * (c1 - atot))
          endif
       enddo
 
       if (grid_ice == "B") then
-         do ij = 1, icellU
-            i = indxUi(ij)
-            j = indxUj(ij)
-            ! convert quantities to U-location
-            m = Xmap((j-1)*nx_block + i)
-            if (m > 0) TbU(m) = grid_neighbor_max(Tbt, i, j, 'U')
-         enddo                     ! ij
+         do is = lo, hi
+            if (skipU(is)) cycle
+            ! convert quantities to U-location: own, E, NE, N
+            TbU(is) = max(Tbt(is), Tbt(nbrE(is)), &
+                          Tbt(nbrNE(is)), Tbt(nbrN(is)))
+         enddo                     ! slot
       elseif (grid_ice == "C" .or. grid_ice == "CD") then
-         if (present(Tbe)    .and. present(TbN)    .and. &
-             present(icellE) .and. present(icellN) .and. &
-             present(indxEi) .and. present(indxEj) .and. &
-             present(indxNi) .and. present(indxNj)) then
+         if (present(TbE) .and. present(TbN) .and. &
+             present(skipE) .and. present(skipN)) then
 
-            do ij = 1, icellE
-               i = indxEi(ij)
-               j = indxEj(ij)
-               ! convert quantities to E-location
-                  m = Xmap((j-1)*nx_block + i)
-            if (m > 0) TbE(m) = grid_neighbor_max(Tbt, i, j, 'E')
+            do is = lo, hi
+               if (skipE(is)) cycle
+               TbE(is) = max(Tbt(is), Tbt(nbrE(is)))   ! own, E
             enddo
-            do ij = 1, icellN
-               i = indxNi(ij)
-               j = indxNj(ij)
-               ! convert quantities to N-location
-               m = Xmap((j-1)*nx_block + i)
-            if (m > 0) TbN(m) = grid_neighbor_max(Tbt, i, j, 'N')
+            do is = lo, hi
+               if (skipN(is)) cycle
+               TbN(is) = max(Tbt(is), Tbt(nbrN(is)))   ! own, N
             enddo
 
          else

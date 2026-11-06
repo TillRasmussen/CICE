@@ -51,6 +51,7 @@
           uvel_init, vvel_init, uvelE_init, vvelE_init, uvelN_init, vvelN_init, &
           dynOff, dynCnt, dynMap, Nbr_Local, &
         NbrW_Task , NbrSW_Task, NbrS_Task , NbrE_Task , &
+        NbrE_Task, NbrNE_Task, NbrN_Task, &
         NbrNE_Task, NbrN_Task , NbrNW_Task, NbrSE_Task, &
           uvel_slot, vvel_slot, aiU_slot, fmU_slot, TbU_slot, &
           rheofactU_slot, &
@@ -274,7 +275,7 @@
           strairxU, strairyU, uocn, vocn, ss_tltx, ss_tlty, fmU, &
           strtltxU, strtltyU, strocnxU, strocnyU, strintxU, strintyU, taubxU, taubyU, &
           strax, stray, &
-          hwater, &
+          hwater, hwater_slot, &
           strairxN, strairyN, fmN, &
           strtltxN, strtltyN, strocnxN, strocnyN, strintxN, strintyN, taubxN, taubyN, &
           strairxE, strairyE, fmE, &
@@ -936,11 +937,14 @@
             elseif ( seabed_stress_method == 'probabilistic' ) then
                !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
                do iblk = 1, nblocks
-                  call seabed_stress_factor_prob (nx_block    , ny_block      ,                 &
-                                                  icellT(iblk), indxTi(:,iblk), indxTj(:,iblk), &
-                                                  icellU(iblk), indxUi(:,iblk), indxUj(:,iblk), &
-                                                  aicen(:,:,:,iblk), vicen(:,:,:,iblk)        , &
-                                                  hwater (:,iblk), dynMap(:,iblk), TbU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                  call seabed_stress_factor_prob (nx_block        , ny_block      , &
+                                                  dynOff(iblk)+1  , dynOff(iblk)+dynCnt(iblk), &
+                                                  skipT           , skipU         , &
+                                                  dynIJ           ,                 &
+                                NbrE_Task       , NbrNE_Task    , &
+                                NbrN_Task       , &
+                                                  aicen(:,:,:,iblk), vicen(:,:,:,iblk), &
+                                                  hwater_slot     , TbU_slot)
                enddo
                !$OMP END PARALLEL DO
             endif
@@ -968,14 +972,16 @@
             elseif ( seabed_stress_method == 'probabilistic' ) then
                !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
                do iblk = 1, nblocks
-                  call seabed_stress_factor_prob (nx_block    , ny_block                      , &
-                                                  icellT(iblk), indxTi(:,iblk), indxTj(:,iblk), &
-                                                  icellU(iblk), indxUi(:,iblk), indxUj(:,iblk), &
-                                                  aicen(:,:,:,iblk), vicen(:,:,:,iblk)        , &
-                                                  hwater (:,iblk), dynMap(:,iblk), TbU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)        , &
-                                                  TbE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), TbN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)        , &
-                                                  icellE(iblk), indxEi(:,iblk), indxEj(:,iblk), &
-                                                  icellN(iblk), indxNi(:,iblk), indxNj(:,iblk)  )
+                  call seabed_stress_factor_prob (nx_block        , ny_block      , &
+                                                  dynOff(iblk)+1  , dynOff(iblk)+dynCnt(iblk), &
+                                                  skipT           , skipU         , &
+                                                  dynIJ           ,                 &
+                                NbrE_Task       , NbrNE_Task    , &
+                                NbrN_Task       , &
+                                                  aicen(:,:,:,iblk), vicen(:,:,:,iblk), &
+                                                  hwater_slot     , TbU_slot      , &
+                                                  TbE_slot        , TbN_slot      , &
+                                                  skipE           , skipN)
                enddo
                !$OMP END PARALLEL DO
             endif
