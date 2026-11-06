@@ -198,3 +198,50 @@ pass per exchange): diagnostics and history are identical, but the restart
 differs deep in the file. The restart stores the stress arrays *including*
 ghost cells, and widening the masks makes `stress` compute at a few more
 ghosts. No physical field is affected.
+
+## MPI results (4 tasks, Intel MPI) -- it works, and the cost is measured
+
+⚠ Everything before this section ran `nprocs=1`, where a halo "exchange" is
+a local copy and no message is ever sent. These are the first real ones.
+
+**Correctness.** `nghost=1` is bit-for-bit against unmodified upstream.
+`nghost=2` blocked gives identical diagnostics and history; only the restart
+differs, by block shape. So the blocking is correct under real MPI.
+
+**Communication.** This is what the change exists for:
+
+```
+   block 20x20        Bound 5.07 s -> 0.66 s     8x less
+   block 40x40        Bound 4.73 s -> 0.39 s    12x less
+```
+
+**But total evp time goes UP**, because redundant halo computation costs
+more than the messages saved:
+
+```
+   block      compute penalty   comms saving    net
+   20x20        +12.3 s           -4.4 s      +7.9 s
+   40x40         +8.5 s           -4.3 s      +4.1 s
+```
+
+Doubling the block halved the penalty, matching the 4*nghost/L geometry of
+a ghost frame. But the comms saving is CAPPED: once Bound is near zero there
+is nothing further to win, while the redundant compute keeps costing. So the
+trade improves with block size and converges to a small margin.
+
+⚠ Do not read a crossover off these numbers. Two single runs, local timing
+noise is 4-5%, and an 80x80 global domain cannot reach production block
+sizes. The honest statement is: communication falls by an order of
+magnitude, total time rises at both block sizes tested, and the gap narrows
+as blocks grow. Settling it needs a production-size measurement.
+
+### Why shrinking the stress range does not help here
+
+It was proposed to avoid the stress exchange. It does not: shrinking stops a
+ghost's stress state being advanced from STALE input, but does not keep it
+CURRENT. By the end of a block the outer rings are several passes behind the
+neighbour's copy, and the next block reads that. The exchange is required.
+
+And at nghost=2 shrinking saves almost nothing: stepu on pass p needs rings
+<= nblk-p and stress one more, so with nblk=2 the only trimmable work is
+stepu's outer ring on pass 2. It would pay at nghost=4 or more.
