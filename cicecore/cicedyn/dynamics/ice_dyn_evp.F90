@@ -943,6 +943,37 @@
 
                enddo  ! kinner -- nghost passes on one exchange
 
+               ! The stress tensor is persistent state that the subcycle
+               ! never exchanged.  With blocking its ghost rings advance
+               ! from stale velocities, and the error seeds the next
+               ! timestep.  Exchange it once per block, alongside uvel.
+               if (nblk > 1) then
+                  call ice_HaloUpdate(stressp_1, halo_info, &
+                       field_loc_center, field_type_scalar)
+                  call ice_HaloUpdate(stressp_2, halo_info, &
+                       field_loc_center, field_type_scalar)
+                  call ice_HaloUpdate(stressp_3, halo_info, &
+                       field_loc_center, field_type_scalar)
+                  call ice_HaloUpdate(stressp_4, halo_info, &
+                       field_loc_center, field_type_scalar)
+                  call ice_HaloUpdate(stressm_1, halo_info, &
+                       field_loc_center, field_type_scalar)
+                  call ice_HaloUpdate(stressm_2, halo_info, &
+                       field_loc_center, field_type_scalar)
+                  call ice_HaloUpdate(stressm_3, halo_info, &
+                       field_loc_center, field_type_scalar)
+                  call ice_HaloUpdate(stressm_4, halo_info, &
+                       field_loc_center, field_type_scalar)
+                  call ice_HaloUpdate(stress12_1, halo_info, &
+                       field_loc_center, field_type_scalar)
+                  call ice_HaloUpdate(stress12_2, halo_info, &
+                       field_loc_center, field_type_scalar)
+                  call ice_HaloUpdate(stress12_3, halo_info, &
+                       field_loc_center, field_type_scalar)
+                  call ice_HaloUpdate(stress12_4, halo_info, &
+                       field_loc_center, field_type_scalar)
+               endif
+
                ! U fields at NE corner
                ! calls ice_haloUpdate, controls bundles and masks
                call dyn_haloUpdate (halo_info,          halo_info_mask,    &
@@ -951,6 +982,7 @@
                call ice_restoring_halo(setfld='velocity')
 
             enddo  ! kouter -- one halo exchange per block
+
          endif ! evp algorithm
 
          !-----------------------------------------------------------------
