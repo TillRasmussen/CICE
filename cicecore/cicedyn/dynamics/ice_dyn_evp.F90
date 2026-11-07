@@ -246,6 +246,10 @@
                  ratiodyEr_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
          enddo
 
+         ! the block forms were only ever the scaffold the slots are built
+         ! from; strain_rates_U reads the slots
+         deallocate(ratiodxN, ratiodyE, ratiodxNr, ratiodyEr)
+
       endif
 
       end subroutine init_evp

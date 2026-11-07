@@ -600,49 +600,30 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       !-----------------------------------------------------------------
       ! Compute stresses
       !-----------------------------------------------------------------
-      !$OMP PARALLEL DO PRIVATE(iblk)
-      do iblk = 1, nblocks
-         ! The nonlinear iteration has finished, so ulin_s and vlin_s are free
-         ! to carry the converged velocity into the slot kernel.
-         call pack_to_slots(uvel(:,iblk), dynMap(:,iblk), ulin_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(vvel(:,iblk), dynMap(:,iblk), vlin_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-
-         call stress_vp (dynCnt(iblk), skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                         ulin_s  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),          &
-                         vlin_s  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),          &
-                         dxT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),          &
-                         dyT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),          &
-                         cxp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),          &
-                         cyp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),          &
-                         cxm_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),          &
-                         cym_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),          &
-                         Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_W), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_SW), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_S),          &
-                         zetax2_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),        &
-                         etax2_s (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),        &
-                         repprs_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),        &
-                         stressp_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), stressp_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),                        &
-                         stressp_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), stressp_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),                        &
-                         stressm_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), stressm_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),                        &
-                         stressm_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), stressm_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),                        &
-                         stress12_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), stress12_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),                        &
-                         stress12_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), stress12_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-      enddo ! iblk
-      !$OMP END PARALLEL DO
+      ! uvel_slot/vvel_slot carry the converged velocity already; the pack
+      ! from the block form was an identity, dead slots included.
+      call stress_vp (1, dynTot, skipT,                 &
+                      uvel_slot , vvel_slot ,           &
+                      dxT_slot  , dyT_slot  ,           &
+                      cxp_slot  , cyp_slot  ,           &
+                      cxm_slot  , cym_slot  ,           &
+                      NbrW_Task , NbrSW_Task, NbrS_Task,&
+                      zetax2_s  , etax2_s   ,           &
+                      repprs_s  ,                       &
+                      stressp_1_slot , stressp_2_slot , &
+                      stressp_3_slot , stressp_4_slot , &
+                      stressm_1_slot , stressm_2_slot , &
+                      stressm_3_slot , stressm_4_slot , &
+                      stress12_1_slot, stress12_2_slot, &
+                      stress12_3_slot, stress12_4_slot)
 
       !-----------------------------------------------------------------
       ! Compute deformations
       !-----------------------------------------------------------------
-      !$OMP PARALLEL DO PRIVATE(iblk)
-      do iblk = 1, nblocks
-         ! VP's velocity is block-resident at this point (vec_to_arrays wrote
-         ! it), so it is packed for the kernel.  EVP keeps uvel_slot current
-         ! across its subcycles and needs no such pack.
-         call pack_to_slots(uvel(:,iblk), dynMap(:,iblk), uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(vvel(:,iblk), dynMap(:,iblk), vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-      enddo
-      !$OMP END PARALLEL DO
-
-      ! Task-wide: one call, outside the pack loop, as evp already does.
+      ! uvel_slot/vvel_slot already hold the converged velocity: the solver
+      ! writes them through vec_to_slots and the compressed halo update keeps
+      ! the dead slots zero, so packing them back from the block form was an
+      ! identity.
       call deformations (                                                                                                              &
                          1, dynTot, skipT,                                                &
                          NbrW_Task, NbrSW_Task, NbrS_Task, dynIJ,          &
@@ -664,15 +645,14 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
             ! The shared kernel EVP already uses.  It carries Cb in the
             ! taub array -- reads it, overwrites it with the stress -- so
             ! taubx_s is seeded with Cb rather than passed alongside it.
-            call pack_to_slots(uvel(:,iblk), dynMap(:,iblk), ulin_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(vvel(:,iblk), dynMap(:,iblk), vlin_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             taubx_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = &
                Cb_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
 
+            ! uvel_slot/vvel_slot are already the converged velocity
             call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipU, &
-                 ulin_s ,                                   &
+                 uvel_slot,                                 &
                  taubx_s,                                   &
-                 vlin_s ,                                   &
+                 vvel_slot,                                 &
                  tauby_s)
 
             call unpack_from_slots(taubx_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), taubxU(:,iblk))
@@ -1540,7 +1520,8 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 ! Lemieux, J.-F., and Dupont, F. (2020), On the calculation of normalized
 ! viscous-plastic sea ice stresses, Geosci. Model Dev., 13, 1763–1769,
 
-      subroutine stress_vp (ncells    , skipme    , &
+      subroutine stress_vp (lo        , hi        , &
+                            skipme    ,             &
                             uvel      , vvel      , &
                             dxT       , dyT       , &
                             cxp       , cyp       , &
@@ -1558,7 +1539,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       use ice_dyn_shared, only: strain_rates
 
       integer (kind=int_kind), intent(in) :: &
-         ncells                ! slots held by this block
+         lo, hi                ! first and last slot to visit
 
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
          skipme       ! inactive-slot flag, T cells
@@ -1613,7 +1594,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
       character(len=*), parameter :: subname = '(stress_vp)'
 
-      do is = 1, ncells
+      do is = lo, hi
          if (skipme(is)) cycle
 
          isW  = nbrW(is)
