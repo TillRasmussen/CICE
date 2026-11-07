@@ -557,19 +557,13 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                                            hwater_slot     , TbU_s)
 
          elseif ( seabed_stress_method == 'probabilistic' ) then
-            !$OMP PARALLEL DO PRIVATE(iblk)
-            do iblk = 1, nblocks
 
-               call seabed_stress_factor_prob (nx_block        , ny_block      , &
-                                               dynOff(iblk)+1  , dynOff(iblk)+dynCnt(iblk), &
-                                               skipT           , skipU         , &
-                                               dynIJ           ,                 &
-                                NbrE_Task       , NbrNE_Task    , &
-                                NbrN_Task       , &
-                                               aicen(:,:,:,iblk), vicen(:,:,:,iblk), &
-                                               hwater_slot     , TbU_s)
-            enddo
-            !$OMP END PARALLEL DO
+            call seabed_stress_factor_prob (1               , dynTot        , &
+                                            skipT           , skipU         , &
+                                            NbrE_Task       , NbrNE_Task    , &
+                                            NbrN_Task       ,                 &
+                                            aicen_slot      , vicen_slot    , &
+                                            hwater_slot     , TbU_s)
 
          endif
       endif

@@ -2930,11 +2930,10 @@
 !
 ! authors: D. Dumont, J.F. Lemieux, E. Dumas-Lefebvre, F. Dupont
 !
-      subroutine seabed_stress_factor_prob (nx_block, ny_block,          &
-                                            lo,     hi,                  &
-                                            skipT,  skipU,   ijslot,     &
+      subroutine seabed_stress_factor_prob (lo,     hi,                  &
+                                            skipT,  skipU,               &
                                             nbrE,   nbrNE,   nbrN,       &
-                                            aicen,  vicen,               &
+                                            aicen_s, vicen_s,            &
                                             hwater_s,        TbU,        &
                                             TbE,    TbN,                 &
                                             skipE,  skipN)
@@ -2944,7 +2943,6 @@
       use ice_domain_size, only: ncat
 
       integer (kind=int_kind), intent(in) :: &
-           nx_block, ny_block, &  ! block dimensions
            lo, hi                 ! slot range to process
 
       ! .true. where the slot carries no ice this step
@@ -2952,10 +2950,6 @@
          skipT   , & ! T cells
          skipU       ! U cells
 
-      ! ijslot(is) is (j-1)*nx_block+i of the cell owning slot is.  aicen and
-      ! vicen have no slot form, so (i,j) is still needed to read them.
-      integer (kind=int_kind), dimension (:), intent(in), contiguous :: &
-         ijslot
 
       ! One vector per direction, as everywhere else in the dynamics.  A
       ! missing neighbour resolves to the block's dead slot, which Tbt holds
@@ -2969,9 +2963,11 @@
       real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
            hwater_s    ! water depth at tracer location (m), compressed
 
-      real (kind=dbl_kind), dimension (nx_block,ny_block,ncat), intent(in) :: &
-           aicen,    & ! partial concentration for last thickness category in ITD
-           vicen       ! partial volume for last thickness category in ITD (m)
+      ! Compressed, (slot,ncat).  bound_state packs these inside update_state,
+      ! which runs before the dynamics, so they are current here.
+      real (kind=dbl_kind), dimension (:,:), intent(in), contiguous :: &
+           aicen_s,  & ! partial concentration by thickness category
+           vicen_s     ! partial volume by thickness category (m)
 
 
       real (kind=dbl_kind), dimension (:), intent(inout), contiguous :: &
@@ -2989,7 +2985,8 @@
 ! local variables
 
       integer (kind=int_kind) :: &
-           i, j, ij, ii, n, is
+           i             , & ! implied-do index in the x_k/y_n constructors
+           ii, n, is
 
       integer, parameter :: &
            ncat_b = 100, &  ! number of bathymetry categories
@@ -3050,11 +3047,7 @@
 
       do is = lo, hi
          if (skipT(is)) cycle
-         ij = ijslot(is)
-         j  = (ij-1)/nx_block + 1
-         i  = ij - (j-1)*nx_block
-
-         atot = sum(aicen(i,j,1:ncat))
+         atot = sum(aicen_s(is,1:ncat))
 
          if (atot > 0.05_dbl_kind .and. hwater_s(is) < max_depth) then
 
@@ -3065,8 +3058,8 @@
             x_k = (/( wid_i*( real(i,kind=dbl_kind) - p5 ), i=1, ncat_i )/)
             y_n = (/( ( mu_b-c3*sigma_b )+( real(i,kind=dbl_kind) - p5 )*( c6*sigma_b/ncat_b ), i=1, ncat_b )/)
 
-            vcat(1:ncat) = vicen(i,j,1:ncat)
-            acat(1:ncat) = aicen(i,j,1:ncat)
+            vcat(1:ncat) = vicen_s(is,1:ncat)
+            acat(1:ncat) = aicen_s(is,1:ncat)
 
             m_i = sum(vcat)
 
