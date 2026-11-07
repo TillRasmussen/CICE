@@ -1594,6 +1594,18 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
       character(len=*), parameter :: subname = '(stress_vp)'
 
+      !$omp parallel do schedule(static) default(none)              &
+      !$omp private(is, isW, isS, isSW,                             &
+      !$omp         divune, divunw, divuse, divusw,                 &
+      !$omp         tensionne, tensionnw, tensionse, tensionsw,     &
+      !$omp         shearne, shearnw, shearse, shearsw,             &
+      !$omp         Deltane, Deltanw, Deltase, Deltasw)             &
+      !$omp  shared(lo, hi, skipme, nbrW, nbrSW, nbrS,              &
+      !$omp         uvel, vvel, dxT, dyT, cxp, cyp, cxm, cym,       &
+      !$omp         zetax2, etax2, rep_prs,                         &
+      !$omp         stressp_1, stressp_2, stressp_3, stressp_4,     &
+      !$omp         stressm_1, stressm_2, stressm_3, stressm_4,     &
+      !$omp         stress12_1, stress12_2, stress12_3, stress12_4)
       do is = lo, hi
          if (skipme(is)) cycle
 
@@ -1642,6 +1654,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          stress12_4(is) = etax2(is,4)*shearse*p5
 
       enddo                     ! is
+      !$omp end parallel do
 
       end subroutine stress_vp
 

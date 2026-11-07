@@ -76,18 +76,11 @@
       implicit none
       private
 
-      real (kind=dbl_kind), dimension (:,:,:), allocatable, public :: &
-         ratiodxN    , & ! - dxN(i+1,j)   / dxN(i,j)
-         ratiodyE    , & ! - dyE(i  ,j+1) / dyE(i,j)
-         ratiodxNr   , & !   1 / ratiodxN
-         ratiodyEr       !   1 / ratiodyE
-
-      ! The same four, compressed.  They are PACKED from the block forms
-      ! rather than rebuilt in slots: the block expression reads dxN at the E
-      ! neighbour, and where that neighbour has no slot the compressed read
-      ! would fall on the dead slot and give a different number.  Packing
-      ! copies whatever the block arrays hold, which is what the kernels used
-      ! to see.
+      ! Grid ratios for the BCs, built once in slots.  The OWN metric comes
+      ! from the slot's cell, but the NEIGHBOUR metric is read from the block
+      ! array: dxN at the E neighbour is often ordinary land, which carries a
+      ! real metric yet has no slot, so Nbr*_Task would resolve it to the
+      ! shared dead slot and read c1 instead.
       real (kind=dbl_kind), dimension (:), allocatable :: &
          ratiodxN_slot , ratiodyE_slot , &
          ratiodxNr_slot, ratiodyEr_slot
@@ -135,6 +128,7 @@
       use ice_domain_size, only: max_blocks
       use ice_domain, only: nblocks, blocks_ice
       use ice_grid, only: grid_ice, dxN, dyE
+      use ice_grid, only: dynIJ, dynBlk
       use ice_calendar, only: dt_dyn
       use ice_dyn_shared, only: init_dyn_shared, evp_algorithm, &
           dynTot, dynOff, dynCnt, dynMap
@@ -152,6 +146,7 @@
       integer (kind=int_kind) :: &
          i, j, iblk            , & ! block index
          ijb                   , & ! 1D index of (i,j) in the flattened block layout
+         is                    , & ! slot index
          ilo,ihi,jlo,jhi           ! beginning and end of physical domain
 
 
@@ -189,33 +184,6 @@
          if (ierr/=0) call abort_ice(subname//' ERROR: Out of memory U evp')
 
 
-         allocate( ratiodxN (nx_block,ny_block,max_blocks), &
-                   ratiodyE (nx_block,ny_block,max_blocks), &
-                   ratiodxNr(nx_block,ny_block,max_blocks), &
-                   ratiodyEr(nx_block,ny_block,max_blocks), &
-                   stat=ierr)
-         if (ierr/=0) call abort_ice(subname//' ERROR: Out of memory ratio')
-
-         !$OMP PARALLEL DO PRIVATE(iblk,i,j,ijb,ilo,ihi,jlo,jhi,this_block)
-         do iblk = 1, nblocks
-            this_block = get_block(blocks_ice(iblk),iblk)
-            ilo = this_block%ilo
-            ihi = this_block%ihi
-            jlo = this_block%jlo
-            jhi = this_block%jhi
-
-            do j = jlo, jhi
-            do i = ilo, ihi
-               ijb = (j-1)*nx_block + i
-               ratiodxN (i,j,iblk) = - dxN(ijb+1       ,iblk) / dxN(ijb,iblk)
-               ratiodyE (i,j,iblk) = - dyE(ijb+nx_block,iblk) / dyE(ijb,iblk)
-               ratiodxNr(i,j,iblk) =   c1 / ratiodxN(i,j,iblk)
-               ratiodyEr(i,j,iblk) =   c1 / ratiodyE(i,j,iblk)
-            enddo
-            enddo
-         enddo                     ! iblk
-         !$OMP END PARALLEL DO
-
          allocate( ratiodxN_slot (dynTot), ratiodyE_slot (dynTot), &
                    ratiodxNr_slot(dynTot), ratiodyEr_slot(dynTot), &
                    rheofactE_slot(dynTot), rheofactN_slot(dynTot), &
@@ -233,22 +201,28 @@
          rheofactE_slot = c1
          rheofactN_slot = c1
 
-         ! constant for the run, so packed once here
-         do iblk = 1, nblocks
-            if (dynCnt(iblk) == 0) cycle
-            call pack_to_slots(ratiodxN (:,:,iblk), dynMap(:,iblk), &
-                 ratiodxN_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(ratiodyE (:,:,iblk), dynMap(:,iblk), &
-                 ratiodyE_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(ratiodxNr(:,:,iblk), dynMap(:,iblk), &
-                 ratiodxNr_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(ratiodyEr(:,:,iblk), dynMap(:,iblk), &
-                 ratiodyEr_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         ! Constant for the run, so built once here, in a slot loop.
+         !
+         ! The NEIGHBOUR metric is still read from the block array.  It has
+         ! to be: dxN at the E neighbour is often an ordinary LAND cell,
+         ! which carries a real metric but is outside mask_any and so has no
+         ! slot of its own -- Nbr*_Task would resolve it to the shared dead
+         ! slot and read c1 instead of the cell's value.  dynIJ/dynBlk give
+         ! the same element the block loop this replaced indexed.
+         do is = 1, dynTot
+            ijb = dynIJ(is)
+            if (ijb == 0) cycle                  ! dead slot
+            iblk = dynBlk(is)
+            this_block = get_block(blocks_ice(iblk),iblk)
+            j = (ijb-1)/nx_block + 1
+            i = ijb - (j-1)*nx_block
+            if (i < this_block%ilo .or. i > this_block%ihi .or. &
+                j < this_block%jlo .or. j > this_block%jhi) cycle
+            ratiodxN_slot (is) = - dxN(ijb+1       ,iblk) / dxN(ijb,iblk)
+            ratiodyE_slot (is) = - dyE(ijb+nx_block,iblk) / dyE(ijb,iblk)
+            ratiodxNr_slot(is) =   c1 / ratiodxN_slot(is)
+            ratiodyEr_slot(is) =   c1 / ratiodyE_slot(is)
          enddo
-
-         ! the block forms were only ever the scaffold the slots are built
-         ! from; strain_rates_U reads the slots
-         deallocate(ratiodxN, ratiodyE, ratiodxNr, ratiodyEr)
 
       endif
 
