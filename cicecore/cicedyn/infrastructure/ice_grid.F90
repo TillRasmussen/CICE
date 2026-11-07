@@ -7432,9 +7432,11 @@
       use ice_domain_size, only: max_blocks
 
       logical (kind=log_kind), dimension(:,:), allocatable :: mask_any
+      ! snapshot of the active set, so the ring is not grown from itself
+      logical (kind=log_kind), dimension(:,:), allocatable :: mask_act
       logical (kind=log_kind) :: lextrap_ew, lextrap_ns
       type (block) :: this_block_x   ! block info for the edge scan
-      integer (kind=int_kind) :: ierr, iblk, i, j, ijb, m
+      integer (kind=int_kind) :: ierr, iblk, i, j, ijb, m, ii, jj
 
       ! scratch only: set_neighbours still fills a rank-2 global form, which
       ! is split into the per-direction vectors below and released here
@@ -7459,6 +7461,41 @@
       else
          mask_any = tmask .or. umaskCD .or. nmask .or. emask
       endif
+
+      ! ------------------------------------------------------------------
+      ! Every cell an active cell READS also joins the map -- the full 3x3
+      ! ring, matching the eight directions set_neighbours builds.
+      !
+      ! Without this a land cell beside an active cell owns no slot, yet it
+      ! carries a real grid metric in the block layout.  Every neighbour
+      ! lookup to it then resolves to the block's dead slot and reads the
+      ! dead-slot convention instead of the cell's value: c1 for dxN_slot
+      ! and dyE_slot because they are divided by, c0 elsewhere.  That is why
+      ! ratiod* has to read its neighbour metric from the block array, why
+      ! hwater_slot needs a large sentinel for grid_neighbor_min, and why
+      ! area must never be summed over neighbour slots.
+      !
+      ! Marked from a SNAPSHOT of the active set, not in place: growing the
+      ! ring from cells the ring itself added would widen it without bound.
+      ! ------------------------------------------------------------------
+      allocate(mask_act(nx_block*ny_block,max_blocks), stat=ierr)
+      if (ierr/=0) call abort_ice(subname//': Out of memory')
+      mask_act = mask_any
+
+      do iblk = 1, nblocks
+         do j = 1, ny_block
+         do i = 1, nx_block
+            if (.not. mask_act((j-1)*nx_block+i,iblk)) cycle
+            do jj = max(j-1,1), min(j+1,ny_block)
+            do ii = max(i-1,1), min(i+1,nx_block)
+               mask_any((jj-1)*nx_block+ii,iblk) = .true.
+            enddo
+            enddo
+         enddo
+         enddo
+      enddo
+
+      deallocate(mask_act)
 
       ! ------------------------------------------------------------------
       ! The whole ghost region joins the map, whatever the masks say.
