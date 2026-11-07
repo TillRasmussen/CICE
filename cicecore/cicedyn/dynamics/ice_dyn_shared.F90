@@ -3148,20 +3148,20 @@
 !
 ! author: Elizabeth C. Hunke, LANL
 
-      subroutine principal_stress(nx_block,   ny_block,  &
-                                  stressp,    stressm,   &
-                                  stress12,   strength,  &
+      subroutine principal_stress(lo,         hi,        &
+                                  stressp_s,  stressm_s, &
+                                  stress12_s, strength_s,&
                                   sig1,       sig2,      &
-                                  sigP,       map)
+                                  sigP)
 
       integer (kind=int_kind), intent(in) :: &
-         nx_block, ny_block  ! block dimensions
+         lo, hi              ! first and last slot of the block
 
-      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
-         stressp   , & ! sigma11 + sigma22
-         stressm   , & ! sigma11 - sigma22
-         stress12  , & ! sigma12
-         strength      ! for normalization of sig1 and sig2
+      real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
+         stressp_s , & ! sigma11 + sigma22
+         stressm_s , & ! sigma11 - sigma22
+         stress12_s, & ! sigma12
+         strength_s    ! for normalization of sig1 and sig2
 
       ! ⚠ Compressed.  Written at every slot this block owns, so the
       ! consumer in accum_hist -- which cycles unmapped cells and indexes
@@ -3175,13 +3175,10 @@
          sig2    , & ! normalized principal stress component
          sigP        ! internal ice pressure (N/m)
 
-      integer (kind=int_kind), dimension (:), intent(in), contiguous :: &
-         map         ! block-local slot of each cell, 0 if none
-
       ! local variables
 
       integer (kind=int_kind) :: &
-         i, j, ms
+         is
 
       real (kind=dbl_kind) :: &
          puny
@@ -3193,31 +3190,26 @@
       if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
          file=__FILE__, line=__LINE__)
 
-      ! The inputs are still block-shaped; the outputs are slots.  A cell with
-      ! no slot is skipped -- the block form wrote spval_dbl over the whole
-      ! block, ghosts and land included, and none of that was read back:
-      ! accum_hist cycles unmapped cells before it touches sig1.
-      do j = 1, ny_block
-      do i = 1, nx_block
-         ms = map((j-1)*nx_block + i)
-         if (ms < 1) cycle
-         if (strength(i,j) > puny) then
+      ! Dead slots are left untouched: the block form never wrote them
+      ! either, and spval here would be a value no consumer defined.
+      do is = lo, hi
+         if (dynIJ(is) == 0) cycle
+         if (strength_s(is) > puny) then
             ! ice internal pressure
-            sigP(ms) = -p5*stressp(i,j)
-      
+            sigP(is) = -p5*stressp_s(is)
+
             ! normalized principal stresses
-            sig1(ms) = (p5*(stressp(i,j) &
-                     + sqrt(stressm(i,j)**2+c4*stress12(i,j)**2))) &
-                     / strength(i,j)
-            sig2(ms) = (p5*(stressp(i,j) &
-                     - sqrt(stressm(i,j)**2+c4*stress12(i,j)**2))) &
-                     / strength(i,j)
+            sig1(is) = (p5*(stressp_s(is) &
+                     + sqrt(stressm_s(is)**2+c4*stress12_s(is)**2))) &
+                     / strength_s(is)
+            sig2(is) = (p5*(stressp_s(is) &
+                     - sqrt(stressm_s(is)**2+c4*stress12_s(is)**2))) &
+                     / strength_s(is)
          else
-            sig1(ms) = spval_dbl
-            sig2(ms) = spval_dbl
-            sigP(ms) = spval_dbl
+            sig1(is) = spval_dbl
+            sig2(is) = spval_dbl
+            sigP(is) = spval_dbl
          endif
-      enddo
       enddo
 
       end subroutine principal_stress

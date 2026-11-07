@@ -2226,6 +2226,8 @@
           strintxU_slot, strintyU_slot, taubxU_slot, taubyU_slot, &
           stressp_1_slot, stressp_2_slot, stressp_3_slot, stressp_4_slot, &
           stressm_1_slot, stress12_1_slot, &
+          stresspT_slot, stressmT_slot, stress12T_slot, &
+          strength_slot, &
           dynMap, dynOff, dynCnt
       use ice_dyn_shared, only: fmU_slot, fmN_slot, fmE_slot
       use ice_flux, only: fsw, flw, fsnow, frain, sst, sss, uocn, vocn, &
@@ -2277,11 +2279,6 @@
          dt      ! time step
 
       ! local variables
-
-      ! ⚠ PRIVATE in the block loop below: one block's expansion of the
-      ! three B-grid stresses, for principal_stress.
-      real (kind=dbl_kind), dimension (nx_block,ny_block) :: &
-           worksig1, worksig2, worksig3
 
       integer (kind=int_kind) :: &
          is             , & ! slot index
@@ -3958,7 +3955,7 @@
         ! it is per-iteration state; left shared it races and a thread reads
         ! another's value -- or 0 before any thread has set one, which is what
         ! aborted the gx3 history write with "Subscript #1 of A2D has value 0".
-        !$OMP PARALLEL DO PRIVATE(iblk,i,j,is,ij,ms,msh,worksig1,worksig2,worksig3,ilo,ihi,jlo,jhi,this_block, &
+        !$OMP PARALLEL DO PRIVATE(iblk,i,j,is,ij,ms,msh,ilo,ihi,jlo,jhi,this_block, &
         !$OMP                     n,nn,ravgctz,ravgip,ravgip_init,ravgip_pond, &
         !$OMP                     ravgip_ridge,ravgipn)
         do iblk = 1, nblocks
@@ -4489,37 +4486,41 @@
                ! slot stresses were never allocated.  The block arrays this used to
                ! read are allocated and zeroed by alloc_flux whatever kdyn is, so
                ! zero here reproduces exactly what it produced before.
+               ! kdyn <= 0 means init_dyn_shared never ran, so the slot
+               ! stresses were never allocated.  sig* keep the fill value
+               ! the block form produced there.
                if (allocated(stressp_1_slot)) then
-                  call unpack_from_slots(stressp_1_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                         dynMap(:,iblk), worksig1)
-                  call unpack_from_slots(stressm_1_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                         dynMap(:,iblk), worksig2)
-                  call unpack_from_slots(stress12_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                         dynMap(:,iblk), worksig3)
+                  call principal_stress (dynOff(iblk)+1,                &
+                                         dynOff(iblk)+dynCnt(iblk)+1,   &
+                                         stressp_1_slot  ,              &
+                                         stressm_1_slot  ,              &
+                                         stress12_1_slot ,              &
+                                         strength_slot   ,              &
+                                         sig1, sig2, sigP)
                else
-                  worksig1(:,:) = c0
-                  worksig2(:,:) = c0
-                  worksig3(:,:) = c0
+                  do is = dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk)
+                     sig1(is) = spval_dbl
+                     sig2(is) = spval_dbl
+                     sigP(is) = spval_dbl
+                  enddo
                endif
-               call principal_stress (nx_block,  ny_block,  &
-                                      worksig1          , &
-                                      worksig2          , &
-                                      worksig3          , &
-                                      strength  (:,:,iblk), &
-                                      sig1(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                      sig2(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                      sigP(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                      dynMap(:,iblk))
             case('CD','C')
-               call principal_stress (nx_block,  ny_block,  &
-                                      stresspT  (:,iblk), &
-                                      stressmT  (:,iblk), &
-                                      stress12T (:,iblk), &
-                                      strength  (:,:,iblk), &
-                                      sig1(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                      sig2(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                      sigP(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                      dynMap(:,iblk))
+               ! guarded as the B arm is: kdyn <= 0 leaves the slots unallocated
+               if (allocated(stresspT_slot)) then
+                  call principal_stress (dynOff(iblk)+1,                &
+                                         dynOff(iblk)+dynCnt(iblk)+1,   &
+                                         stresspT_slot   ,              &
+                                         stressmT_slot   ,              &
+                                         stress12T_slot  ,              &
+                                         strength_slot   ,              &
+                                         sig1, sig2, sigP)
+               else
+                  do is = dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk)
+                     sig1(is) = spval_dbl
+                     sig2(is) = spval_dbl
+                     sigP(is) = spval_dbl
+                  enddo
+               endif
             end select
 
            do is = 1, dynCnt(iblk)
