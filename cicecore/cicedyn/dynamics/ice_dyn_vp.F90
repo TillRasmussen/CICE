@@ -3830,16 +3830,14 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
          ! Normalize the first Arnoldi vector
          inverse_norm = c1 / norm_residual
-         !$OMP PARALLEL DO PRIVATE(iblk,is)
-         do iblk = 1, nblocks
-            do is = dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk)
-                  if (skipU(is)) cycle
+         !$omp parallel do schedule(static) private(is)
+         do is = 1, dynTot
+               if (skipU(is)) cycle
 
-               arnoldi_basis_x(is,1) = arnoldi_basis_x(is,1) * inverse_norm
-               arnoldi_basis_y(is,1) = arnoldi_basis_y(is,1) * inverse_norm
-            enddo ! ij
+            arnoldi_basis_x(is,1) = arnoldi_basis_x(is,1) * inverse_norm
+            arnoldi_basis_y(is,1) = arnoldi_basis_y(is,1) * inverse_norm
          enddo
-         !$OMP END PARALLEL DO
+         !$omp end parallel do
 
          if (outiter == 0) then
             relative_tolerance = tolerance * norm_residual
@@ -3915,16 +3913,14 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
             if (.not. almost_zero( hessenberg(nextit,initer) ) ) then
                ! Normalize next Arnoldi vector
                inverse_norm = c1 / hessenberg(nextit,initer)
-               !$OMP PARALLEL DO PRIVATE(iblk,is)
-               do iblk = 1, nblocks
-                  do is = dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk)
-                  if (skipU(is)) cycle
+               !$omp parallel do schedule(static) private(is)
+               do is = 1, dynTot
+               if (skipU(is)) cycle
 
-                     arnoldi_basis_x(is,nextit) = arnoldi_basis_x(is,nextit)*inverse_norm
-                     arnoldi_basis_y(is,nextit) = arnoldi_basis_y(is,nextit)*inverse_norm
-                  enddo ! ij
+                  arnoldi_basis_x(is,nextit) = arnoldi_basis_x(is,nextit)*inverse_norm
+                  arnoldi_basis_y(is,nextit) = arnoldi_basis_y(is,nextit)*inverse_norm
                enddo
-               !$OMP END PARALLEL DO
+               !$omp end parallel do
             end if
 
             ! Apply previous Givens rotation to the last column of the Hessenberg matrix
@@ -3980,16 +3976,14 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          ! Form linear combination to get new solution iterate
          do it = 1, initer
             t = rhs_hess(it)
-            !$OMP PARALLEL DO PRIVATE(iblk,is)
-            do iblk = 1, nblocks
-               do is = dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk)
-                  if (skipU(is)) cycle
+            !$omp parallel do schedule(static) private(is)
+            do is = 1, dynTot
+               if (skipU(is)) cycle
 
-                  solx(is) = solx(is) + t * orig_basis_x(is,it)
-                  soly(is) = soly(is) + t * orig_basis_y(is,it)
-               enddo ! ij
+               solx(is) = solx(is) + t * orig_basis_x(is,it)
+               soly(is) = soly(is) + t * orig_basis_y(is,it)
             enddo
-            !$OMP END PARALLEL DO
+            !$omp end parallel do
          end do
 
          ! Increment outer loop counter and check for convergence
@@ -4023,16 +4017,14 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          workspace_x = c0
          workspace_y = c0
          do it = 1, nextit
-            !$OMP PARALLEL DO PRIVATE(iblk,is)
-            do iblk = 1, nblocks
-               do is = dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk)
-                  if (skipU(is)) cycle
+            !$omp parallel do schedule(static) private(is)
+            do is = 1, dynTot
+               if (skipU(is)) cycle
 
-                  workspace_x(is) = workspace_x(is) + rhs_hess(it) * arnoldi_basis_x(is,it)
-                  workspace_y(is) = workspace_y(is) + rhs_hess(it) * arnoldi_basis_y(is,it)
-               enddo ! ij
+               workspace_x(is) = workspace_x(is) + rhs_hess(it) * arnoldi_basis_x(is,it)
+               workspace_y(is) = workspace_y(is) + rhs_hess(it) * arnoldi_basis_y(is,it)
             enddo
-            !$OMP END PARALLEL DO
+            !$omp end parallel do
             arnoldi_basis_x(:,1) = workspace_x
             arnoldi_basis_y(:,1) = workspace_y
          end do
@@ -4213,16 +4205,14 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
          ! Normalize the first Arnoldi vector
          inverse_norm = c1 / norm_residual
-         !$OMP PARALLEL DO PRIVATE(iblk,is)
-         do iblk = 1, nblocks
-            do is = dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk)
-                  if (skipU(is)) cycle
+         !$omp parallel do schedule(static) private(is)
+         do is = 1, dynTot
+               if (skipU(is)) cycle
 
-               arnoldi_basis_x(is,1) = arnoldi_basis_x(is,1) * inverse_norm
-               arnoldi_basis_y(is,1) = arnoldi_basis_y(is,1) * inverse_norm
-            enddo ! ij
+            arnoldi_basis_x(is,1) = arnoldi_basis_x(is,1) * inverse_norm
+            arnoldi_basis_y(is,1) = arnoldi_basis_y(is,1) * inverse_norm
          enddo
-         !$OMP END PARALLEL DO
+         !$omp end parallel do
 
          if (outiter == 0) then
             relative_tolerance = tolerance * norm_residual
@@ -4297,16 +4287,14 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
             if (.not. almost_zero( hessenberg(nextit,initer) ) ) then
                ! Normalize next Arnoldi vector
                inverse_norm = c1 / hessenberg(nextit,initer)
-               !$OMP PARALLEL DO PRIVATE(iblk,is)
-               do iblk = 1, nblocks
-                  do is = dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk)
-                  if (skipU(is)) cycle
+               !$omp parallel do schedule(static) private(is)
+               do is = 1, dynTot
+               if (skipU(is)) cycle
 
-                     arnoldi_basis_x(is,nextit) = arnoldi_basis_x(is,nextit)*inverse_norm
-                     arnoldi_basis_y(is,nextit) = arnoldi_basis_y(is,nextit)*inverse_norm
-                  enddo ! ij
+                  arnoldi_basis_x(is,nextit) = arnoldi_basis_x(is,nextit)*inverse_norm
+                  arnoldi_basis_y(is,nextit) = arnoldi_basis_y(is,nextit)*inverse_norm
                enddo
-               !$OMP END PARALLEL DO
+               !$omp end parallel do
             end if
 
             ! Apply previous Givens rotation to the last column of the Hessenberg matrix
@@ -4364,16 +4352,14 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          workspace_y = c0
          do it = 1, initer
             t = rhs_hess(it)
-            !$OMP PARALLEL DO PRIVATE(iblk,is)
-            do iblk = 1, nblocks
-               do is = dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk)
-                  if (skipU(is)) cycle
+            !$omp parallel do schedule(static) private(is)
+            do is = 1, dynTot
+               if (skipU(is)) cycle
 
-                  workspace_x(is) = workspace_x(is) + t * arnoldi_basis_x(is,it)
-                  workspace_y(is) = workspace_y(is) + t * arnoldi_basis_y(is,it)
-               enddo ! ij
+               workspace_x(is) = workspace_x(is) + t * arnoldi_basis_x(is,it)
+               workspace_y(is) = workspace_y(is) + t * arnoldi_basis_y(is,it)
             enddo
-            !$OMP END PARALLEL DO
+            !$omp end parallel do
          end do
 
          ! Call preconditioner
@@ -4419,16 +4405,14 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          workspace_x = c0
          workspace_y = c0
          do it = 1, nextit
-            !$OMP PARALLEL DO PRIVATE(iblk,is)
-            do iblk = 1, nblocks
-               do is = dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk)
-                  if (skipU(is)) cycle
+            !$omp parallel do schedule(static) private(is)
+            do is = 1, dynTot
+               if (skipU(is)) cycle
 
-                  workspace_x(is) = workspace_x(is) + rhs_hess(it) * arnoldi_basis_x(is,it)
-                  workspace_y(is) = workspace_y(is) + rhs_hess(it) * arnoldi_basis_y(is,it)
-               enddo ! ij
+               workspace_x(is) = workspace_x(is) + rhs_hess(it) * arnoldi_basis_x(is,it)
+               workspace_y(is) = workspace_y(is) + rhs_hess(it) * arnoldi_basis_y(is,it)
             enddo
-            !$OMP END PARALLEL DO
+            !$omp end parallel do
             arnoldi_basis_x(:,1) = workspace_x
             arnoldi_basis_y(:,1) = workspace_y
          end do
@@ -4501,16 +4485,14 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          wx = vx
          wy = vy
       elseif (precond_type == 'diag') then ! Jacobi preconditioner (diagonal)
-         !$OMP PARALLEL DO PRIVATE(iblk,is)
-         do iblk = 1, nblocks
-            do is = dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk)
-               if (skipU(is)) cycle
+         !$omp parallel do schedule(static) private(is)
+         do is = 1, dynTot
+            if (skipU(is)) cycle
 
-               wx(is) = vx(is) / diagx(is)
-               wy(is) = vy(is) / diagy(is)
-            enddo ! is
+            wx(is) = vx(is) / diagx(is)
+            wy(is) = vy(is) / diagy(is)
          enddo
-         !$OMP END PARALLEL DO
+         !$omp end parallel do
       elseif (precond_type == 'pgmres') then ! PGMRES (Jacobi-preconditioned GMRES)
          ! Initialize preconditioned vector to 0 ! TODO: try with wx = vx or vx/diagx
          wx = c0
@@ -4581,18 +4563,16 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          end do
          ! Second loop of Gram-Schmidt (orthonormalize)
          do it = 1, initer
-            !$OMP PARALLEL DO PRIVATE(iblk,is)
-            do iblk = 1, nblocks
-               do is = dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk)
-                  if (skipU(is)) cycle
+            !$omp parallel do schedule(static) private(is)
+            do is = 1, dynTot
+               if (skipU(is)) cycle
 
-                  arnoldi_basis_x(is,nextit) = arnoldi_basis_x(is,nextit) &
-                                                        - hessenberg(it,initer) * arnoldi_basis_x(is,it)
-                  arnoldi_basis_y(is,nextit) = arnoldi_basis_y(is,nextit) &
-                                                        - hessenberg(it,initer) * arnoldi_basis_y(is,it)
-               enddo ! is
+               arnoldi_basis_x(is,nextit) = arnoldi_basis_x(is,nextit) &
+                                                     - hessenberg(it,initer) * arnoldi_basis_x(is,it)
+               arnoldi_basis_y(is,nextit) = arnoldi_basis_y(is,nextit) &
+                                                     - hessenberg(it,initer) * arnoldi_basis_y(is,it)
             enddo
-            !$OMP END PARALLEL DO
+            !$omp end parallel do
          end do
       elseif (trim(ortho_type) == 'mgs') then ! Modified Gram-Schmidt
          ! Modified Gram-Schmidt orthogonalisation process
@@ -4602,18 +4582,16 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                                                         arnoldi_basis_x(:,nextit), &
                                                         arnoldi_basis_y(:,nextit))
 
-            !$OMP PARALLEL DO PRIVATE(iblk,is)
-            do iblk = 1, nblocks
-               do is = dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk)
-                  if (skipU(is)) cycle
+            !$omp parallel do schedule(static) private(is)
+            do is = 1, dynTot
+               if (skipU(is)) cycle
 
-                  arnoldi_basis_x(is,nextit) = arnoldi_basis_x(is,nextit) &
-                                                        - hessenberg(it,initer) * arnoldi_basis_x(is,it)
-                  arnoldi_basis_y(is,nextit) = arnoldi_basis_y(is,nextit) &
-                                                        - hessenberg(it,initer) * arnoldi_basis_y(is,it)
-               enddo ! is
+               arnoldi_basis_x(is,nextit) = arnoldi_basis_x(is,nextit) &
+                                                     - hessenberg(it,initer) * arnoldi_basis_x(is,it)
+               arnoldi_basis_y(is,nextit) = arnoldi_basis_y(is,nextit) &
+                                                     - hessenberg(it,initer) * arnoldi_basis_y(is,it)
             enddo
-            !$OMP END PARALLEL DO
+            !$omp end parallel do
          end do
       else
          call abort_ice(error_message='wrong orthonalization in ' // subname, &
