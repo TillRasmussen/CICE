@@ -49,6 +49,7 @@
           cosw, sinw, uvel_init, vvel_init, dynOff, dynCnt, dynMap, dynIJ, dynMaxCnt, skipT, skipU, &
           dynTot, pack_to_slots, unpack_from_slots, calc_seabed_stress_slot, &
           Nbr_Local, nbr_W, nbr_S, nbr_SW, nbr_E, nbr_N, nbr_NE, uarear_slot, &
+          NbrE_Task, NbrN_Task, NbrNE_Task, &
           dxT_slot, dyT_slot, dxhy_slot, dyhx_slot, cxp_slot, cyp_slot, &
           uvel_slot, vvel_slot, tarear_slot, dxU_slot, dyU_slot, &
           cxm_slot, cym_slot, DminTarea_slot, strength_slot, &
@@ -898,8 +899,15 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       ! OMP-private scratch that never leaves the formDiag pair, so it is
       ! sized for the largest block rather than dynTot: step1 fills it one
       ! block at a time.  The +1 is the block's dead slot.
-      real (kind=dbl_kind), dimension (dynMaxCnt+1,8):: &
-         diag_rheo      ! contributions of the rhelogy term to the diagonal
+      ! dynTot-sized and SHARED, not block-sized and OMP-private: each block
+      ! writes only its own slot range, so threads never overlap.  Costs
+      ! 8*dynTot doubles once rather than per thread, which is what lets the
+      ! block loop below collapse.
+      real (kind=dbl_kind), dimension (dynTot):: &
+         diag_rheo1, diag_rheo2, diag_rheo3, diag_rheo4, &
+         diag_rheo5, diag_rheo6, diag_rheo7, diag_rheo8
+                        ! contributions of the rheology term to the diagonal,
+                        ! one vector per term as evp carries str1..str8
 
       real (kind=dbl_kind), dimension (ntot) :: &
          res        , & ! current residual
@@ -1095,32 +1103,23 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
             ! Prepare diagonal for preconditioner
             if (precond == 'diag' .or. precond == 'pgmres') then
-               !$OMP PARALLEL DO PRIVATE(iblk,diag_rheo)
-               do iblk = 1, nblocks
-                  ! first compute diagonal contributions due to rheology term
-                  call formDiag_step1 (dynCnt(iblk), skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                                       dxT_slot   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),       &
-                                       dyT_slot   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),       &
-                                       dxhy_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),       &
-                                       dyhx_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),       &
-                                       cxp_slot   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),       &
-                                       cyp_slot   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),       &
-                                       cxm_slot   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),       &
-                                       cym_slot   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),       &
-                                       Nbr_Local     (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:),       &
-                                       zetax2_s   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),     &
-                                       etax2_s    (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),     &
-                                       diag_rheo(:,:))
-                  ! second compute the full diagonal
-                  call formDiag_step2 (dynCnt(iblk), skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                                       diag_rheo(:,:),                                                &
-                                       vrel_s     (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),       &
-                                       umassdti_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),       &
-                                       uarear_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),       &
-                                       Cb_s       (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),       &
-                                       diagx_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), diagy_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-               enddo
-               !$OMP END PARALLEL DO
+               ! first compute diagonal contributions due to rheology term
+               call formDiag_step1 (1             , dynTot, skipU, &
+                                    dxT_slot , dyT_slot , &
+                                    dxhy_slot, dyhx_slot, &
+                                    cxp_slot , cyp_slot , &
+                                    cxm_slot , cym_slot , &
+                                    NbrE_Task, NbrN_Task, NbrNE_Task, &
+                                    zetax2_s , etax2_s  , &
+                                    diag_rheo1, diag_rheo2, diag_rheo3, diag_rheo4, &
+                  diag_rheo5, diag_rheo6, diag_rheo7, diag_rheo8)
+               ! second compute the full diagonal
+               call formDiag_step2 (1             , dynTot, skipU, &
+                                    diag_rheo1, diag_rheo2, diag_rheo3, diag_rheo4, &
+                  diag_rheo5, diag_rheo6, diag_rheo7, diag_rheo8, &
+                  vrel_s, &
+                                    umassdti_slot, uarear_slot, &
+                                    Cb_s, diagx_s, diagy_s)
             endif
 
             ! FGMRES linear solver.  Everything it touches is compressed, so
@@ -2225,22 +2224,23 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 ! Form the diagonal of the matrix A(u,v) (first part of the computation)
 ! Part 1: compute the contributions to the diagonal from the rheology term
 
-      subroutine formDiag_step1  (ncells  , skipme  , &
+      subroutine formDiag_step1  (lo, hi  , skipme  , &
                                   dxT     , dyT     , &
                                   dxhy    , dyhx    , &
                                   cxp     , cyp     , &
                                   cxm     , cym     , &
-                                  nbr     ,           &
+                                  nbrE, nbrN, nbrNE,           &
                                   zetax2  , etax2   , &
-                                  Drheo)
+                                  Drheo1, Drheo2, Drheo3, Drheo4, &
+                                 Drheo5, Drheo6, Drheo7, Drheo8)
 
       integer (kind=int_kind), intent(in) :: &
-         ncells                ! slots held by this block
+         lo, hi             ! slot range to process
 
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
          skipme       ! inactive-slot flag, U cells
 
-      ! compressed: this block's slice, 1-based, cells 1..ncells, dead slot last
+      ! compressed: the slot range lo..hi, dead slot last
       real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
          dxT      , & ! width of T-cell through the middle (m)
          dyT      , & ! height of T-cell through the middle (m)
@@ -2255,15 +2255,22 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       ! reads one of the four T cells around this U cell: its own, or one step
       ! E, N or NE.  A missing neighbour points at the block's dead slot,
       ! which holds zero, so no edge test is needed.
-      integer (kind=int_kind), dimension (:,:), intent(in) :: &
-         nbr
+      ! The unrolled terms name their direction directly, so the rank-2
+      ! table and its runtime tdir index are no longer needed here.
+      integer (kind=int_kind), dimension (:), intent(in), contiguous :: &
+         nbrE    , & ! neighbour slot one step E
+         nbrN    , & ! neighbour slot one step N
+         nbrNE       ! neighbour slot one step NE
 
       real (kind=dbl_kind), dimension (:,:), intent(in) :: &
          zetax2   , & ! zetax2 = 2*zeta (bulk viscosity)
          etax2        ! etax2  = 2*eta  (shear viscosity)
 
-      real (kind=dbl_kind), dimension (:,:), intent(out) :: &
-         Drheo          ! intermediate value for diagonal components of matrix A associated
+      ! One vector per term, as evp carries str1..str8.  Bounds lo:hi+1 so
+      ! the caller's block-sized scratch maps by sequence association.
+      real (kind=dbl_kind), dimension (:), intent(out) :: &
+         Drheo1, Drheo2, Drheo3, Drheo4, &
+         Drheo5, Drheo6, Drheo7, Drheo8
                        ! with rheology term
 
       ! local variables
@@ -2271,7 +2278,6 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       integer (kind=int_kind) :: &
          is             , & ! U slot counter
          ist            , & ! the T slot this term reads (self, E, N or NE)
-         tdir           , & ! direction from the U slot to that T slot
          cc                 ! which of the eight diagonal terms
 
       real (kind=dbl_kind) :: &
@@ -2298,151 +2304,72 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       ! Initialize
       !-----------------------------------------------------------------
 
-      Drheo(:,:) = c0
+      Drheo1(:) = c0
+      Drheo2(:) = c0
+      Drheo3(:) = c0
+      Drheo4(:) = c0
+      Drheo5(:) = c0
+      Drheo6(:) = c0
+      Drheo7(:) = c0
+      Drheo8(:) = c0
 
-      ! Be careful: Drheo contains 4 terms for u and 4 terms for v.
+      ! Be careful: Drheo1..4 are the u terms, Drheo5..8 the v terms.
       ! These 8 terms come from the surrounding T cells but are all
       ! refrerenced to the i,j (u point) :
 
-      ! Drheo(ist,1) corresponds to str(ist,1)
-      ! Drheo(ist,2) corresponds to str((j-1)*nx_block+i+1,2)
-      ! Drheo(ist,3) corresponds to str((j+1-1)*nx_block+i,3)
-      ! Drheo(ist,4) corresponds to str((j+1-1)*nx_block+i+1,4))
-      ! Drheo(ist,5) corresponds to str(ist,5)
-      ! Drheo(ist,6) corresponds to str((j+1-1)*nx_block+i,6)
-      ! Drheo(ist,7) corresponds to str((j-1)*nx_block+i+1,7)
-      ! Drheo(ist,8) corresponds to str((j+1-1)*nx_block+i+1,8))
+      ! Drheo1 corresponds to str(ist,1)
+      ! Drheo2 corresponds to str((j-1)*nx_block+i+1,2)
+      ! Drheo3 corresponds to str((j+1-1)*nx_block+i,3)
+      ! Drheo4 corresponds to str((j+1-1)*nx_block+i+1,4))
+      ! Drheo5 corresponds to str(ist,5)
+      ! Drheo6 corresponds to str((j+1-1)*nx_block+i,6)
+      ! Drheo7 corresponds to str((j-1)*nx_block+i+1,7)
+      ! Drheo8 corresponds to str((j+1-1)*nx_block+i+1,8))
 
-      do cc = 1, 8 ! 4 for u and 4 for v
+      ! The cc = 1,8 loop is unrolled.  Each term selects exactly ONE of
+      ! the eight coefficients, so substituting the one-hot values lets the
+      ! compiler fold seven of every eight products away, and removes both
+      ! per-cell branches: the tdir test and the Drheo arm selection.
+      ! The eight terms are the same ones evp carries as str1..str8.
 
-         if (cc == 1) then     ! u comp, T cell i,j
-            uij   = c1
-            ui1j  = c0
-            uij1  = c0
-            ui1j1 = c0
-            vij   = c0
-            vi1j  = c0
-            vij1  = c0
-            vi1j1 = c0
-            tdir  = 0       ! this U cell's own T slot
-         elseif (cc == 2) then ! u comp, T cell i+1,j
-            uij   = c0
-            ui1j  = c1
-            uij1  = c0
-            ui1j1 = c0
-            vij   = c0
-            vi1j  = c0
-            vij1  = c0
-            vi1j1 = c0
-            tdir  = nbr_E   ! T cell one step east
-         elseif (cc == 3) then ! u comp, T cell i,j+1
-            uij   = c0
-            ui1j  = c0
-            uij1  = c1
-            ui1j1 = c0
-            vij   = c0
-            vi1j  = c0
-            vij1  = c0
-            vi1j1 = c0
-            tdir  = nbr_N   ! T cell one step north
-         elseif (cc == 4) then ! u comp, T cell i+1,j+1
-            uij   = c0
-            ui1j  = c0
-            uij1  = c0
-            ui1j1 = c1
-            vij   = c0
-            vi1j  = c0
-            vij1  = c0
-            vi1j1 = c0
-            tdir  = nbr_NE  ! T cell one step north-east
-         elseif (cc == 5) then ! v comp, T cell i,j
-            uij   = c0
-            ui1j  = c0
-            uij1  = c0
-            ui1j1 = c0
-            vij   = c1
-            vi1j  = c0
-            vij1  = c0
-            vi1j1 = c0
-            tdir  = 0       ! this U cell's own T slot
-         elseif (cc == 6) then ! v comp, T cell i,j+1
-            uij   = c0
-            ui1j  = c0
-            uij1  = c0
-            ui1j1 = c0
-            vij   = c0
-            vi1j  = c0
-            vij1  = c1
-            vi1j1 = c0
-            tdir  = nbr_N   ! T cell one step north
-         elseif (cc == 7) then ! v comp, T cell i+1,j
-            uij   = c0
-            ui1j  = c0
-            uij1  = c0
-            ui1j1 = c0
-            vij   = c0
-            vi1j  = c1
-            vij1  = c0
-            vi1j1 = c0
-            tdir  = nbr_E   ! T cell one step east
-         elseif (cc == 8) then ! v comp, T cell i+1,j+1
-            uij   = c0
-            ui1j  = c0
-            uij1  = c0
-            ui1j1 = c0
-            vij   = c0
-            vi1j  = c0
-            vij1  = c0
-            vi1j1 = c1
-            tdir  = nbr_NE  ! T cell one step north-east
-         endif
-
-         do is = 1, ncells
-            if (skipme(is)) cycle
-
-            ! ist is the SHIFTED T slot this cc term reads, not the U slot;
-            ! every metric and viscosity below is read there.  A missing
-            ! neighbour points at the block's dead slot, which holds zero, so
-            ! this needs no edge test -- the same arrangement matvec uses.
-            if (tdir == 0) then
-               ist = is
-            else
-               ist = nbr(is,tdir)
-            endif
+      ! ---- term 1: uij = c1, T cell own slot ----
+      do is = lo, hi
+         if (skipme(is)) cycle
+         ist = is
 
          !-----------------------------------------------------------------
          ! strain rates
          ! NOTE these are actually strain rates * area  (m^2/s)
          !-----------------------------------------------------------------
             ! divergence  =  e_11 + e_22
-            divune    = cyp(ist)*uij   - dyT(ist)*ui1j  &
-                      + cxp(ist)*vij   - dxT(ist)*vij1
-            divunw    = cym(ist)*ui1j  + dyT(ist)*uij   &
-                      + cxp(ist)*vi1j  - dxT(ist)*vi1j1
-            divusw    = cym(ist)*ui1j1 + dyT(ist)*uij1  &
-                      + cxm(ist)*vi1j1 + dxT(ist)*vi1j
-            divuse    = cyp(ist)*uij1  - dyT(ist)*ui1j1 &
-                      + cxm(ist)*vij1  + dxT(ist)*vij
+            divune    = cyp(ist)*c1   - dyT(ist)*c0  &
+                      + cxp(ist)*c0   - dxT(ist)*c0
+            divunw    = cym(ist)*c0  + dyT(ist)*c1   &
+                      + cxp(ist)*c0  - dxT(ist)*c0
+            divusw    = cym(ist)*c0 + dyT(ist)*c0  &
+                      + cxm(ist)*c0 + dxT(ist)*c0
+            divuse    = cyp(ist)*c0  - dyT(ist)*c0 &
+                      + cxm(ist)*c0  + dxT(ist)*c0
 
             ! tension strain rate  =  e_11 - e_22
-            tensionne = -cym(ist)*uij   - dyT(ist)*ui1j  &
-                      +  cxm(ist)*vij   + dxT(ist)*vij1
-            tensionnw = -cyp(ist)*ui1j  + dyT(ist)*uij   &
-                      +  cxm(ist)*vi1j  + dxT(ist)*vi1j1
-            tensionsw = -cyp(ist)*ui1j1 + dyT(ist)*uij1  &
-                      +  cxp(ist)*vi1j1 - dxT(ist)*vi1j
-            tensionse = -cym(ist)*uij1  - dyT(ist)*ui1j1 &
-                      +  cxp(ist)*vij1  - dxT(ist)*vij
+            tensionne = -cym(ist)*c1   - dyT(ist)*c0  &
+                      +  cxm(ist)*c0   + dxT(ist)*c0
+            tensionnw = -cyp(ist)*c0  + dyT(ist)*c1   &
+                      +  cxm(ist)*c0  + dxT(ist)*c0
+            tensionsw = -cyp(ist)*c0 + dyT(ist)*c0  &
+                      +  cxp(ist)*c0 - dxT(ist)*c0
+            tensionse = -cym(ist)*c0  - dyT(ist)*c0 &
+                      +  cxp(ist)*c0  - dxT(ist)*c0
 
             ! shearing strain rate  =  2*e_12
-            shearne = -cym(ist)*vij   - dyT(ist)*vi1j  &
-                    -  cxm(ist)*uij   - dxT(ist)*uij1
-            shearnw = -cyp(ist)*vi1j  + dyT(ist)*vij   &
-                    -  cxm(ist)*ui1j  - dxT(ist)*ui1j1
-            shearsw = -cyp(ist)*vi1j1 + dyT(ist)*vij1  &
-                    -  cxp(ist)*ui1j1 + dxT(ist)*ui1j
-            shearse = -cym(ist)*vij1  - dyT(ist)*vi1j1 &
-                    -  cxp(ist)*uij1  + dxT(ist)*uij
+            shearne = -cym(ist)*c0   - dyT(ist)*c0  &
+                    -  cxm(ist)*c1   - dxT(ist)*c0
+            shearnw = -cyp(ist)*c0  + dyT(ist)*c0   &
+                    -  cxm(ist)*c0  - dxT(ist)*c0
+            shearsw = -cyp(ist)*c0 + dyT(ist)*c0  &
+                    -  cxp(ist)*c0 + dxT(ist)*c0
+            shearse = -cym(ist)*c0  - dyT(ist)*c0 &
+                    -  cxp(ist)*c0  + dxT(ist)*c1
 
          !-----------------------------------------------------------------
          ! the stresses                            ! kg/s^2
@@ -2517,87 +2444,874 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          ! for dF/dx (u momentum)
          !-----------------------------------------------------------------
 
-            if (cc == 1) then ! T cell i,j
 
                strp_tmp  = p25*dyT(ist)*(p333*ssigpn  + p166*ssigps)
                strm_tmp  = p25*dyT(ist)*(p333*ssigmn  + p166*ssigms)
 
                ! northeast(ist)
-               Drheo(is,1) = -strp_tmp - strm_tmp - str12ew &
+               Drheo1(is) = -strp_tmp - strm_tmp - str12ew &
                   + dxhy(ist)*(-csigpne + csigmne) + dyhx(ist)*csig12ne
 
-            elseif (cc == 2) then ! T cell i+1,j
+      enddo
+
+      ! ---- term 2: ui1j = c1, T cell one step E ----
+      do is = lo, hi
+         if (skipme(is)) cycle
+         ist = nbrE(is)
+
+         !-----------------------------------------------------------------
+         ! strain rates
+         ! NOTE these are actually strain rates * area  (m^2/s)
+         !-----------------------------------------------------------------
+            ! divergence  =  e_11 + e_22
+            divune    = cyp(ist)*c0   - dyT(ist)*c1  &
+                      + cxp(ist)*c0   - dxT(ist)*c0
+            divunw    = cym(ist)*c1  + dyT(ist)*c0   &
+                      + cxp(ist)*c0  - dxT(ist)*c0
+            divusw    = cym(ist)*c0 + dyT(ist)*c0  &
+                      + cxm(ist)*c0 + dxT(ist)*c0
+            divuse    = cyp(ist)*c0  - dyT(ist)*c0 &
+                      + cxm(ist)*c0  + dxT(ist)*c0
+
+            ! tension strain rate  =  e_11 - e_22
+            tensionne = -cym(ist)*c0   - dyT(ist)*c1  &
+                      +  cxm(ist)*c0   + dxT(ist)*c0
+            tensionnw = -cyp(ist)*c1  + dyT(ist)*c0   &
+                      +  cxm(ist)*c0  + dxT(ist)*c0
+            tensionsw = -cyp(ist)*c0 + dyT(ist)*c0  &
+                      +  cxp(ist)*c0 - dxT(ist)*c0
+            tensionse = -cym(ist)*c0  - dyT(ist)*c0 &
+                      +  cxp(ist)*c0  - dxT(ist)*c0
+
+            ! shearing strain rate  =  2*e_12
+            shearne = -cym(ist)*c0   - dyT(ist)*c0  &
+                    -  cxm(ist)*c0   - dxT(ist)*c0
+            shearnw = -cyp(ist)*c0  + dyT(ist)*c0   &
+                    -  cxm(ist)*c1  - dxT(ist)*c0
+            shearsw = -cyp(ist)*c0 + dyT(ist)*c0  &
+                    -  cxp(ist)*c0 + dxT(ist)*c1
+            shearse = -cym(ist)*c0  - dyT(ist)*c0 &
+                    -  cxp(ist)*c0  + dxT(ist)*c0
+
+         !-----------------------------------------------------------------
+         ! the stresses                            ! kg/s^2
+         ! (1) northeast, (2) northwest, (3) southwest, (4) southeast
+         !-----------------------------------------------------------------
+
+            stressp_1 = zetax2(ist,1)*divune
+            stressp_2 = zetax2(ist,2)*divunw
+            stressp_3 = zetax2(ist,3)*divusw
+            stressp_4 = zetax2(ist,4)*divuse
+
+            stressm_1 = etax2(ist,1)*tensionne
+            stressm_2 = etax2(ist,2)*tensionnw
+            stressm_3 = etax2(ist,3)*tensionsw
+            stressm_4 = etax2(ist,4)*tensionse
+
+            stress12_1 = etax2(ist,1)*shearne*p5
+            stress12_2 = etax2(ist,2)*shearnw*p5
+            stress12_3 = etax2(ist,3)*shearsw*p5
+            stress12_4 = etax2(ist,4)*shearse*p5
+
+         !-----------------------------------------------------------------
+         ! combinations of the stresses for the momentum equation ! kg/s^2
+         !-----------------------------------------------------------------
+
+            ssigpn  = stressp_1 + stressp_2
+            ssigps  = stressp_3 + stressp_4
+            ssigpe  = stressp_1 + stressp_4
+            ssigpw  = stressp_2 + stressp_3
+            ssigp1  =(stressp_1 + stressp_3)*p055
+            ssigp2  =(stressp_2 + stressp_4)*p055
+
+            ssigmn  = stressm_1 + stressm_2
+            ssigms  = stressm_3 + stressm_4
+            ssigme  = stressm_1 + stressm_4
+            ssigmw  = stressm_2 + stressm_3
+            ssigm1  =(stressm_1 + stressm_3)*p055
+            ssigm2  =(stressm_2 + stressm_4)*p055
+
+            ssig12n = stress12_1 + stress12_2
+            ssig12s = stress12_3 + stress12_4
+            ssig12e = stress12_1 + stress12_4
+            ssig12w = stress12_2 + stress12_3
+            ssig121 =(stress12_1 + stress12_3)*p111
+            ssig122 =(stress12_2 + stress12_4)*p111
+
+            csigpne = p111*stressp_1 + ssigp2 + p027*stressp_3
+            csigpnw = p111*stressp_2 + ssigp1 + p027*stressp_4
+            csigpsw = p111*stressp_3 + ssigp2 + p027*stressp_1
+            csigpse = p111*stressp_4 + ssigp1 + p027*stressp_2
+
+            csigmne = p111*stressm_1 + ssigm2 + p027*stressm_3
+            csigmnw = p111*stressm_2 + ssigm1 + p027*stressm_4
+            csigmsw = p111*stressm_3 + ssigm2 + p027*stressm_1
+            csigmse = p111*stressm_4 + ssigm1 + p027*stressm_2
+
+            csig12ne = p222*stress12_1 + ssig122 &
+                     + p055*stress12_3
+            csig12nw = p222*stress12_2 + ssig121 &
+                     + p055*stress12_4
+            csig12sw = p222*stress12_3 + ssig122 &
+                     + p055*stress12_1
+            csig12se = p222*stress12_4 + ssig121 &
+                     + p055*stress12_2
+
+            str12ew = p5*dxT(ist)*(p333*ssig12e + p166*ssig12w)
+            str12we = p5*dxT(ist)*(p333*ssig12w + p166*ssig12e)
+            str12ns = p5*dyT(ist)*(p333*ssig12n + p166*ssig12s)
+            str12sn = p5*dyT(ist)*(p333*ssig12s + p166*ssig12n)
+
+         !-----------------------------------------------------------------
+         ! for dF/dx (u momentum)
+         !-----------------------------------------------------------------
+
 
                strp_tmp  = p25*dyT(ist)*(p333*ssigpn  + p166*ssigps)
                strm_tmp  = p25*dyT(ist)*(p333*ssigmn  + p166*ssigms)
 
                ! northwest((j-1)*nx_block+i+1)
-               Drheo(is,2) = strp_tmp + strm_tmp - str12we &
+               Drheo2(is) = strp_tmp + strm_tmp - str12we &
                   + dxhy(ist)*(-csigpnw + csigmnw) + dyhx(ist)*csig12nw
 
-            elseif (cc == 3) then ! T cell i,j+1
+      enddo
+
+      ! ---- term 3: uij1 = c1, T cell one step N ----
+      do is = lo, hi
+         if (skipme(is)) cycle
+         ist = nbrN(is)
+
+         !-----------------------------------------------------------------
+         ! strain rates
+         ! NOTE these are actually strain rates * area  (m^2/s)
+         !-----------------------------------------------------------------
+            ! divergence  =  e_11 + e_22
+            divune    = cyp(ist)*c0   - dyT(ist)*c0  &
+                      + cxp(ist)*c0   - dxT(ist)*c0
+            divunw    = cym(ist)*c0  + dyT(ist)*c0   &
+                      + cxp(ist)*c0  - dxT(ist)*c0
+            divusw    = cym(ist)*c0 + dyT(ist)*c1  &
+                      + cxm(ist)*c0 + dxT(ist)*c0
+            divuse    = cyp(ist)*c1  - dyT(ist)*c0 &
+                      + cxm(ist)*c0  + dxT(ist)*c0
+
+            ! tension strain rate  =  e_11 - e_22
+            tensionne = -cym(ist)*c0   - dyT(ist)*c0  &
+                      +  cxm(ist)*c0   + dxT(ist)*c0
+            tensionnw = -cyp(ist)*c0  + dyT(ist)*c0   &
+                      +  cxm(ist)*c0  + dxT(ist)*c0
+            tensionsw = -cyp(ist)*c0 + dyT(ist)*c1  &
+                      +  cxp(ist)*c0 - dxT(ist)*c0
+            tensionse = -cym(ist)*c1  - dyT(ist)*c0 &
+                      +  cxp(ist)*c0  - dxT(ist)*c0
+
+            ! shearing strain rate  =  2*e_12
+            shearne = -cym(ist)*c0   - dyT(ist)*c0  &
+                    -  cxm(ist)*c0   - dxT(ist)*c1
+            shearnw = -cyp(ist)*c0  + dyT(ist)*c0   &
+                    -  cxm(ist)*c0  - dxT(ist)*c0
+            shearsw = -cyp(ist)*c0 + dyT(ist)*c0  &
+                    -  cxp(ist)*c0 + dxT(ist)*c0
+            shearse = -cym(ist)*c0  - dyT(ist)*c0 &
+                    -  cxp(ist)*c1  + dxT(ist)*c0
+
+         !-----------------------------------------------------------------
+         ! the stresses                            ! kg/s^2
+         ! (1) northeast, (2) northwest, (3) southwest, (4) southeast
+         !-----------------------------------------------------------------
+
+            stressp_1 = zetax2(ist,1)*divune
+            stressp_2 = zetax2(ist,2)*divunw
+            stressp_3 = zetax2(ist,3)*divusw
+            stressp_4 = zetax2(ist,4)*divuse
+
+            stressm_1 = etax2(ist,1)*tensionne
+            stressm_2 = etax2(ist,2)*tensionnw
+            stressm_3 = etax2(ist,3)*tensionsw
+            stressm_4 = etax2(ist,4)*tensionse
+
+            stress12_1 = etax2(ist,1)*shearne*p5
+            stress12_2 = etax2(ist,2)*shearnw*p5
+            stress12_3 = etax2(ist,3)*shearsw*p5
+            stress12_4 = etax2(ist,4)*shearse*p5
+
+         !-----------------------------------------------------------------
+         ! combinations of the stresses for the momentum equation ! kg/s^2
+         !-----------------------------------------------------------------
+
+            ssigpn  = stressp_1 + stressp_2
+            ssigps  = stressp_3 + stressp_4
+            ssigpe  = stressp_1 + stressp_4
+            ssigpw  = stressp_2 + stressp_3
+            ssigp1  =(stressp_1 + stressp_3)*p055
+            ssigp2  =(stressp_2 + stressp_4)*p055
+
+            ssigmn  = stressm_1 + stressm_2
+            ssigms  = stressm_3 + stressm_4
+            ssigme  = stressm_1 + stressm_4
+            ssigmw  = stressm_2 + stressm_3
+            ssigm1  =(stressm_1 + stressm_3)*p055
+            ssigm2  =(stressm_2 + stressm_4)*p055
+
+            ssig12n = stress12_1 + stress12_2
+            ssig12s = stress12_3 + stress12_4
+            ssig12e = stress12_1 + stress12_4
+            ssig12w = stress12_2 + stress12_3
+            ssig121 =(stress12_1 + stress12_3)*p111
+            ssig122 =(stress12_2 + stress12_4)*p111
+
+            csigpne = p111*stressp_1 + ssigp2 + p027*stressp_3
+            csigpnw = p111*stressp_2 + ssigp1 + p027*stressp_4
+            csigpsw = p111*stressp_3 + ssigp2 + p027*stressp_1
+            csigpse = p111*stressp_4 + ssigp1 + p027*stressp_2
+
+            csigmne = p111*stressm_1 + ssigm2 + p027*stressm_3
+            csigmnw = p111*stressm_2 + ssigm1 + p027*stressm_4
+            csigmsw = p111*stressm_3 + ssigm2 + p027*stressm_1
+            csigmse = p111*stressm_4 + ssigm1 + p027*stressm_2
+
+            csig12ne = p222*stress12_1 + ssig122 &
+                     + p055*stress12_3
+            csig12nw = p222*stress12_2 + ssig121 &
+                     + p055*stress12_4
+            csig12sw = p222*stress12_3 + ssig122 &
+                     + p055*stress12_1
+            csig12se = p222*stress12_4 + ssig121 &
+                     + p055*stress12_2
+
+            str12ew = p5*dxT(ist)*(p333*ssig12e + p166*ssig12w)
+            str12we = p5*dxT(ist)*(p333*ssig12w + p166*ssig12e)
+            str12ns = p5*dyT(ist)*(p333*ssig12n + p166*ssig12s)
+            str12sn = p5*dyT(ist)*(p333*ssig12s + p166*ssig12n)
+
+         !-----------------------------------------------------------------
+         ! for dF/dx (u momentum)
+         !-----------------------------------------------------------------
+
 
                strp_tmp  = p25*dyT(ist)*(p333*ssigps  + p166*ssigpn)
                strm_tmp  = p25*dyT(ist)*(p333*ssigms  + p166*ssigmn)
 
                ! southeast((j+1-1)*nx_block+i)
-               Drheo(is,3) = -strp_tmp - strm_tmp + str12ew &
+               Drheo3(is) = -strp_tmp - strm_tmp + str12ew &
                   + dxhy(ist)*(-csigpse + csigmse) + dyhx(ist)*csig12se
 
-            elseif (cc == 4) then ! T cell i+1,j+1
+      enddo
+
+      ! ---- term 4: ui1j1 = c1, T cell one step NE ----
+      do is = lo, hi
+         if (skipme(is)) cycle
+         ist = nbrNE(is)
+
+         !-----------------------------------------------------------------
+         ! strain rates
+         ! NOTE these are actually strain rates * area  (m^2/s)
+         !-----------------------------------------------------------------
+            ! divergence  =  e_11 + e_22
+            divune    = cyp(ist)*c0   - dyT(ist)*c0  &
+                      + cxp(ist)*c0   - dxT(ist)*c0
+            divunw    = cym(ist)*c0  + dyT(ist)*c0   &
+                      + cxp(ist)*c0  - dxT(ist)*c0
+            divusw    = cym(ist)*c1 + dyT(ist)*c0  &
+                      + cxm(ist)*c0 + dxT(ist)*c0
+            divuse    = cyp(ist)*c0  - dyT(ist)*c1 &
+                      + cxm(ist)*c0  + dxT(ist)*c0
+
+            ! tension strain rate  =  e_11 - e_22
+            tensionne = -cym(ist)*c0   - dyT(ist)*c0  &
+                      +  cxm(ist)*c0   + dxT(ist)*c0
+            tensionnw = -cyp(ist)*c0  + dyT(ist)*c0   &
+                      +  cxm(ist)*c0  + dxT(ist)*c0
+            tensionsw = -cyp(ist)*c1 + dyT(ist)*c0  &
+                      +  cxp(ist)*c0 - dxT(ist)*c0
+            tensionse = -cym(ist)*c0  - dyT(ist)*c1 &
+                      +  cxp(ist)*c0  - dxT(ist)*c0
+
+            ! shearing strain rate  =  2*e_12
+            shearne = -cym(ist)*c0   - dyT(ist)*c0  &
+                    -  cxm(ist)*c0   - dxT(ist)*c0
+            shearnw = -cyp(ist)*c0  + dyT(ist)*c0   &
+                    -  cxm(ist)*c0  - dxT(ist)*c1
+            shearsw = -cyp(ist)*c0 + dyT(ist)*c0  &
+                    -  cxp(ist)*c1 + dxT(ist)*c0
+            shearse = -cym(ist)*c0  - dyT(ist)*c0 &
+                    -  cxp(ist)*c0  + dxT(ist)*c0
+
+         !-----------------------------------------------------------------
+         ! the stresses                            ! kg/s^2
+         ! (1) northeast, (2) northwest, (3) southwest, (4) southeast
+         !-----------------------------------------------------------------
+
+            stressp_1 = zetax2(ist,1)*divune
+            stressp_2 = zetax2(ist,2)*divunw
+            stressp_3 = zetax2(ist,3)*divusw
+            stressp_4 = zetax2(ist,4)*divuse
+
+            stressm_1 = etax2(ist,1)*tensionne
+            stressm_2 = etax2(ist,2)*tensionnw
+            stressm_3 = etax2(ist,3)*tensionsw
+            stressm_4 = etax2(ist,4)*tensionse
+
+            stress12_1 = etax2(ist,1)*shearne*p5
+            stress12_2 = etax2(ist,2)*shearnw*p5
+            stress12_3 = etax2(ist,3)*shearsw*p5
+            stress12_4 = etax2(ist,4)*shearse*p5
+
+         !-----------------------------------------------------------------
+         ! combinations of the stresses for the momentum equation ! kg/s^2
+         !-----------------------------------------------------------------
+
+            ssigpn  = stressp_1 + stressp_2
+            ssigps  = stressp_3 + stressp_4
+            ssigpe  = stressp_1 + stressp_4
+            ssigpw  = stressp_2 + stressp_3
+            ssigp1  =(stressp_1 + stressp_3)*p055
+            ssigp2  =(stressp_2 + stressp_4)*p055
+
+            ssigmn  = stressm_1 + stressm_2
+            ssigms  = stressm_3 + stressm_4
+            ssigme  = stressm_1 + stressm_4
+            ssigmw  = stressm_2 + stressm_3
+            ssigm1  =(stressm_1 + stressm_3)*p055
+            ssigm2  =(stressm_2 + stressm_4)*p055
+
+            ssig12n = stress12_1 + stress12_2
+            ssig12s = stress12_3 + stress12_4
+            ssig12e = stress12_1 + stress12_4
+            ssig12w = stress12_2 + stress12_3
+            ssig121 =(stress12_1 + stress12_3)*p111
+            ssig122 =(stress12_2 + stress12_4)*p111
+
+            csigpne = p111*stressp_1 + ssigp2 + p027*stressp_3
+            csigpnw = p111*stressp_2 + ssigp1 + p027*stressp_4
+            csigpsw = p111*stressp_3 + ssigp2 + p027*stressp_1
+            csigpse = p111*stressp_4 + ssigp1 + p027*stressp_2
+
+            csigmne = p111*stressm_1 + ssigm2 + p027*stressm_3
+            csigmnw = p111*stressm_2 + ssigm1 + p027*stressm_4
+            csigmsw = p111*stressm_3 + ssigm2 + p027*stressm_1
+            csigmse = p111*stressm_4 + ssigm1 + p027*stressm_2
+
+            csig12ne = p222*stress12_1 + ssig122 &
+                     + p055*stress12_3
+            csig12nw = p222*stress12_2 + ssig121 &
+                     + p055*stress12_4
+            csig12sw = p222*stress12_3 + ssig122 &
+                     + p055*stress12_1
+            csig12se = p222*stress12_4 + ssig121 &
+                     + p055*stress12_2
+
+            str12ew = p5*dxT(ist)*(p333*ssig12e + p166*ssig12w)
+            str12we = p5*dxT(ist)*(p333*ssig12w + p166*ssig12e)
+            str12ns = p5*dyT(ist)*(p333*ssig12n + p166*ssig12s)
+            str12sn = p5*dyT(ist)*(p333*ssig12s + p166*ssig12n)
+
+         !-----------------------------------------------------------------
+         ! for dF/dx (u momentum)
+         !-----------------------------------------------------------------
+
 
                strp_tmp  = p25*dyT(ist)*(p333*ssigps  + p166*ssigpn)
                strm_tmp  = p25*dyT(ist)*(p333*ssigms  + p166*ssigmn)
 
                ! southwest((j+1-1)*nx_block+i+1)
-               Drheo(is,4) = strp_tmp + strm_tmp + str12we &
+               Drheo4(is) = strp_tmp + strm_tmp + str12we &
                   + dxhy(ist)*(-csigpsw + csigmsw) + dyhx(ist)*csig12sw
 
          !-----------------------------------------------------------------
          ! for dF/dy (v momentum)
          !-----------------------------------------------------------------
 
-            elseif (cc == 5) then ! T cell i,j
+      enddo
+
+      ! ---- term 5: vij = c1, T cell own slot ----
+      do is = lo, hi
+         if (skipme(is)) cycle
+         ist = is
+
+         !-----------------------------------------------------------------
+         ! strain rates
+         ! NOTE these are actually strain rates * area  (m^2/s)
+         !-----------------------------------------------------------------
+            ! divergence  =  e_11 + e_22
+            divune    = cyp(ist)*c0   - dyT(ist)*c0  &
+                      + cxp(ist)*c1   - dxT(ist)*c0
+            divunw    = cym(ist)*c0  + dyT(ist)*c0   &
+                      + cxp(ist)*c0  - dxT(ist)*c0
+            divusw    = cym(ist)*c0 + dyT(ist)*c0  &
+                      + cxm(ist)*c0 + dxT(ist)*c0
+            divuse    = cyp(ist)*c0  - dyT(ist)*c0 &
+                      + cxm(ist)*c0  + dxT(ist)*c1
+
+            ! tension strain rate  =  e_11 - e_22
+            tensionne = -cym(ist)*c0   - dyT(ist)*c0  &
+                      +  cxm(ist)*c1   + dxT(ist)*c0
+            tensionnw = -cyp(ist)*c0  + dyT(ist)*c0   &
+                      +  cxm(ist)*c0  + dxT(ist)*c0
+            tensionsw = -cyp(ist)*c0 + dyT(ist)*c0  &
+                      +  cxp(ist)*c0 - dxT(ist)*c0
+            tensionse = -cym(ist)*c0  - dyT(ist)*c0 &
+                      +  cxp(ist)*c0  - dxT(ist)*c1
+
+            ! shearing strain rate  =  2*e_12
+            shearne = -cym(ist)*c1   - dyT(ist)*c0  &
+                    -  cxm(ist)*c0   - dxT(ist)*c0
+            shearnw = -cyp(ist)*c0  + dyT(ist)*c1   &
+                    -  cxm(ist)*c0  - dxT(ist)*c0
+            shearsw = -cyp(ist)*c0 + dyT(ist)*c0  &
+                    -  cxp(ist)*c0 + dxT(ist)*c0
+            shearse = -cym(ist)*c0  - dyT(ist)*c0 &
+                    -  cxp(ist)*c0  + dxT(ist)*c0
+
+         !-----------------------------------------------------------------
+         ! the stresses                            ! kg/s^2
+         ! (1) northeast, (2) northwest, (3) southwest, (4) southeast
+         !-----------------------------------------------------------------
+
+            stressp_1 = zetax2(ist,1)*divune
+            stressp_2 = zetax2(ist,2)*divunw
+            stressp_3 = zetax2(ist,3)*divusw
+            stressp_4 = zetax2(ist,4)*divuse
+
+            stressm_1 = etax2(ist,1)*tensionne
+            stressm_2 = etax2(ist,2)*tensionnw
+            stressm_3 = etax2(ist,3)*tensionsw
+            stressm_4 = etax2(ist,4)*tensionse
+
+            stress12_1 = etax2(ist,1)*shearne*p5
+            stress12_2 = etax2(ist,2)*shearnw*p5
+            stress12_3 = etax2(ist,3)*shearsw*p5
+            stress12_4 = etax2(ist,4)*shearse*p5
+
+         !-----------------------------------------------------------------
+         ! combinations of the stresses for the momentum equation ! kg/s^2
+         !-----------------------------------------------------------------
+
+            ssigpn  = stressp_1 + stressp_2
+            ssigps  = stressp_3 + stressp_4
+            ssigpe  = stressp_1 + stressp_4
+            ssigpw  = stressp_2 + stressp_3
+            ssigp1  =(stressp_1 + stressp_3)*p055
+            ssigp2  =(stressp_2 + stressp_4)*p055
+
+            ssigmn  = stressm_1 + stressm_2
+            ssigms  = stressm_3 + stressm_4
+            ssigme  = stressm_1 + stressm_4
+            ssigmw  = stressm_2 + stressm_3
+            ssigm1  =(stressm_1 + stressm_3)*p055
+            ssigm2  =(stressm_2 + stressm_4)*p055
+
+            ssig12n = stress12_1 + stress12_2
+            ssig12s = stress12_3 + stress12_4
+            ssig12e = stress12_1 + stress12_4
+            ssig12w = stress12_2 + stress12_3
+            ssig121 =(stress12_1 + stress12_3)*p111
+            ssig122 =(stress12_2 + stress12_4)*p111
+
+            csigpne = p111*stressp_1 + ssigp2 + p027*stressp_3
+            csigpnw = p111*stressp_2 + ssigp1 + p027*stressp_4
+            csigpsw = p111*stressp_3 + ssigp2 + p027*stressp_1
+            csigpse = p111*stressp_4 + ssigp1 + p027*stressp_2
+
+            csigmne = p111*stressm_1 + ssigm2 + p027*stressm_3
+            csigmnw = p111*stressm_2 + ssigm1 + p027*stressm_4
+            csigmsw = p111*stressm_3 + ssigm2 + p027*stressm_1
+            csigmse = p111*stressm_4 + ssigm1 + p027*stressm_2
+
+            csig12ne = p222*stress12_1 + ssig122 &
+                     + p055*stress12_3
+            csig12nw = p222*stress12_2 + ssig121 &
+                     + p055*stress12_4
+            csig12sw = p222*stress12_3 + ssig122 &
+                     + p055*stress12_1
+            csig12se = p222*stress12_4 + ssig121 &
+                     + p055*stress12_2
+
+            str12ew = p5*dxT(ist)*(p333*ssig12e + p166*ssig12w)
+            str12we = p5*dxT(ist)*(p333*ssig12w + p166*ssig12e)
+            str12ns = p5*dyT(ist)*(p333*ssig12n + p166*ssig12s)
+            str12sn = p5*dyT(ist)*(p333*ssig12s + p166*ssig12n)
+
+         !-----------------------------------------------------------------
+         ! for dF/dx (u momentum)
+         !-----------------------------------------------------------------
+
 
                strp_tmp  = p25*dxT(ist)*(p333*ssigpe  + p166*ssigpw)
                strm_tmp  = p25*dxT(ist)*(p333*ssigme  + p166*ssigmw)
 
                ! northeast(ist)
-               Drheo(is,5) = -strp_tmp + strm_tmp - str12ns &
+               Drheo5(is) = -strp_tmp + strm_tmp - str12ns &
                   - dyhx(ist)*(csigpne + csigmne) + dxhy(ist)*csig12ne
 
-            elseif (cc == 6) then ! T cell i,j+1
+      enddo
+
+      ! ---- term 6: vij1 = c1, T cell one step N ----
+      do is = lo, hi
+         if (skipme(is)) cycle
+         ist = nbrN(is)
+
+         !-----------------------------------------------------------------
+         ! strain rates
+         ! NOTE these are actually strain rates * area  (m^2/s)
+         !-----------------------------------------------------------------
+            ! divergence  =  e_11 + e_22
+            divune    = cyp(ist)*c0   - dyT(ist)*c0  &
+                      + cxp(ist)*c0   - dxT(ist)*c1
+            divunw    = cym(ist)*c0  + dyT(ist)*c0   &
+                      + cxp(ist)*c0  - dxT(ist)*c0
+            divusw    = cym(ist)*c0 + dyT(ist)*c0  &
+                      + cxm(ist)*c0 + dxT(ist)*c0
+            divuse    = cyp(ist)*c0  - dyT(ist)*c0 &
+                      + cxm(ist)*c1  + dxT(ist)*c0
+
+            ! tension strain rate  =  e_11 - e_22
+            tensionne = -cym(ist)*c0   - dyT(ist)*c0  &
+                      +  cxm(ist)*c0   + dxT(ist)*c1
+            tensionnw = -cyp(ist)*c0  + dyT(ist)*c0   &
+                      +  cxm(ist)*c0  + dxT(ist)*c0
+            tensionsw = -cyp(ist)*c0 + dyT(ist)*c0  &
+                      +  cxp(ist)*c0 - dxT(ist)*c0
+            tensionse = -cym(ist)*c0  - dyT(ist)*c0 &
+                      +  cxp(ist)*c1  - dxT(ist)*c0
+
+            ! shearing strain rate  =  2*e_12
+            shearne = -cym(ist)*c0   - dyT(ist)*c0  &
+                    -  cxm(ist)*c0   - dxT(ist)*c0
+            shearnw = -cyp(ist)*c0  + dyT(ist)*c0   &
+                    -  cxm(ist)*c0  - dxT(ist)*c0
+            shearsw = -cyp(ist)*c0 + dyT(ist)*c1  &
+                    -  cxp(ist)*c0 + dxT(ist)*c0
+            shearse = -cym(ist)*c1  - dyT(ist)*c0 &
+                    -  cxp(ist)*c0  + dxT(ist)*c0
+
+         !-----------------------------------------------------------------
+         ! the stresses                            ! kg/s^2
+         ! (1) northeast, (2) northwest, (3) southwest, (4) southeast
+         !-----------------------------------------------------------------
+
+            stressp_1 = zetax2(ist,1)*divune
+            stressp_2 = zetax2(ist,2)*divunw
+            stressp_3 = zetax2(ist,3)*divusw
+            stressp_4 = zetax2(ist,4)*divuse
+
+            stressm_1 = etax2(ist,1)*tensionne
+            stressm_2 = etax2(ist,2)*tensionnw
+            stressm_3 = etax2(ist,3)*tensionsw
+            stressm_4 = etax2(ist,4)*tensionse
+
+            stress12_1 = etax2(ist,1)*shearne*p5
+            stress12_2 = etax2(ist,2)*shearnw*p5
+            stress12_3 = etax2(ist,3)*shearsw*p5
+            stress12_4 = etax2(ist,4)*shearse*p5
+
+         !-----------------------------------------------------------------
+         ! combinations of the stresses for the momentum equation ! kg/s^2
+         !-----------------------------------------------------------------
+
+            ssigpn  = stressp_1 + stressp_2
+            ssigps  = stressp_3 + stressp_4
+            ssigpe  = stressp_1 + stressp_4
+            ssigpw  = stressp_2 + stressp_3
+            ssigp1  =(stressp_1 + stressp_3)*p055
+            ssigp2  =(stressp_2 + stressp_4)*p055
+
+            ssigmn  = stressm_1 + stressm_2
+            ssigms  = stressm_3 + stressm_4
+            ssigme  = stressm_1 + stressm_4
+            ssigmw  = stressm_2 + stressm_3
+            ssigm1  =(stressm_1 + stressm_3)*p055
+            ssigm2  =(stressm_2 + stressm_4)*p055
+
+            ssig12n = stress12_1 + stress12_2
+            ssig12s = stress12_3 + stress12_4
+            ssig12e = stress12_1 + stress12_4
+            ssig12w = stress12_2 + stress12_3
+            ssig121 =(stress12_1 + stress12_3)*p111
+            ssig122 =(stress12_2 + stress12_4)*p111
+
+            csigpne = p111*stressp_1 + ssigp2 + p027*stressp_3
+            csigpnw = p111*stressp_2 + ssigp1 + p027*stressp_4
+            csigpsw = p111*stressp_3 + ssigp2 + p027*stressp_1
+            csigpse = p111*stressp_4 + ssigp1 + p027*stressp_2
+
+            csigmne = p111*stressm_1 + ssigm2 + p027*stressm_3
+            csigmnw = p111*stressm_2 + ssigm1 + p027*stressm_4
+            csigmsw = p111*stressm_3 + ssigm2 + p027*stressm_1
+            csigmse = p111*stressm_4 + ssigm1 + p027*stressm_2
+
+            csig12ne = p222*stress12_1 + ssig122 &
+                     + p055*stress12_3
+            csig12nw = p222*stress12_2 + ssig121 &
+                     + p055*stress12_4
+            csig12sw = p222*stress12_3 + ssig122 &
+                     + p055*stress12_1
+            csig12se = p222*stress12_4 + ssig121 &
+                     + p055*stress12_2
+
+            str12ew = p5*dxT(ist)*(p333*ssig12e + p166*ssig12w)
+            str12we = p5*dxT(ist)*(p333*ssig12w + p166*ssig12e)
+            str12ns = p5*dyT(ist)*(p333*ssig12n + p166*ssig12s)
+            str12sn = p5*dyT(ist)*(p333*ssig12s + p166*ssig12n)
+
+         !-----------------------------------------------------------------
+         ! for dF/dx (u momentum)
+         !-----------------------------------------------------------------
+
 
                strp_tmp  = p25*dxT(ist)*(p333*ssigpe  + p166*ssigpw)
                strm_tmp  = p25*dxT(ist)*(p333*ssigme  + p166*ssigmw)
 
                ! southeast((j+1-1)*nx_block+i)
-               Drheo(is,6) = strp_tmp - strm_tmp - str12sn &
+               Drheo6(is) = strp_tmp - strm_tmp - str12sn &
                   - dyhx(ist)*(csigpse + csigmse) + dxhy(ist)*csig12se
 
-            elseif (cc == 7) then ! T cell i,j+1
+      enddo
+
+      ! ---- term 7: vi1j = c1, T cell one step E ----
+      do is = lo, hi
+         if (skipme(is)) cycle
+         ist = nbrE(is)
+
+         !-----------------------------------------------------------------
+         ! strain rates
+         ! NOTE these are actually strain rates * area  (m^2/s)
+         !-----------------------------------------------------------------
+            ! divergence  =  e_11 + e_22
+            divune    = cyp(ist)*c0   - dyT(ist)*c0  &
+                      + cxp(ist)*c0   - dxT(ist)*c0
+            divunw    = cym(ist)*c0  + dyT(ist)*c0   &
+                      + cxp(ist)*c1  - dxT(ist)*c0
+            divusw    = cym(ist)*c0 + dyT(ist)*c0  &
+                      + cxm(ist)*c0 + dxT(ist)*c1
+            divuse    = cyp(ist)*c0  - dyT(ist)*c0 &
+                      + cxm(ist)*c0  + dxT(ist)*c0
+
+            ! tension strain rate  =  e_11 - e_22
+            tensionne = -cym(ist)*c0   - dyT(ist)*c0  &
+                      +  cxm(ist)*c0   + dxT(ist)*c0
+            tensionnw = -cyp(ist)*c0  + dyT(ist)*c0   &
+                      +  cxm(ist)*c1  + dxT(ist)*c0
+            tensionsw = -cyp(ist)*c0 + dyT(ist)*c0  &
+                      +  cxp(ist)*c0 - dxT(ist)*c1
+            tensionse = -cym(ist)*c0  - dyT(ist)*c0 &
+                      +  cxp(ist)*c0  - dxT(ist)*c0
+
+            ! shearing strain rate  =  2*e_12
+            shearne = -cym(ist)*c0   - dyT(ist)*c1  &
+                    -  cxm(ist)*c0   - dxT(ist)*c0
+            shearnw = -cyp(ist)*c1  + dyT(ist)*c0   &
+                    -  cxm(ist)*c0  - dxT(ist)*c0
+            shearsw = -cyp(ist)*c0 + dyT(ist)*c0  &
+                    -  cxp(ist)*c0 + dxT(ist)*c0
+            shearse = -cym(ist)*c0  - dyT(ist)*c0 &
+                    -  cxp(ist)*c0  + dxT(ist)*c0
+
+         !-----------------------------------------------------------------
+         ! the stresses                            ! kg/s^2
+         ! (1) northeast, (2) northwest, (3) southwest, (4) southeast
+         !-----------------------------------------------------------------
+
+            stressp_1 = zetax2(ist,1)*divune
+            stressp_2 = zetax2(ist,2)*divunw
+            stressp_3 = zetax2(ist,3)*divusw
+            stressp_4 = zetax2(ist,4)*divuse
+
+            stressm_1 = etax2(ist,1)*tensionne
+            stressm_2 = etax2(ist,2)*tensionnw
+            stressm_3 = etax2(ist,3)*tensionsw
+            stressm_4 = etax2(ist,4)*tensionse
+
+            stress12_1 = etax2(ist,1)*shearne*p5
+            stress12_2 = etax2(ist,2)*shearnw*p5
+            stress12_3 = etax2(ist,3)*shearsw*p5
+            stress12_4 = etax2(ist,4)*shearse*p5
+
+         !-----------------------------------------------------------------
+         ! combinations of the stresses for the momentum equation ! kg/s^2
+         !-----------------------------------------------------------------
+
+            ssigpn  = stressp_1 + stressp_2
+            ssigps  = stressp_3 + stressp_4
+            ssigpe  = stressp_1 + stressp_4
+            ssigpw  = stressp_2 + stressp_3
+            ssigp1  =(stressp_1 + stressp_3)*p055
+            ssigp2  =(stressp_2 + stressp_4)*p055
+
+            ssigmn  = stressm_1 + stressm_2
+            ssigms  = stressm_3 + stressm_4
+            ssigme  = stressm_1 + stressm_4
+            ssigmw  = stressm_2 + stressm_3
+            ssigm1  =(stressm_1 + stressm_3)*p055
+            ssigm2  =(stressm_2 + stressm_4)*p055
+
+            ssig12n = stress12_1 + stress12_2
+            ssig12s = stress12_3 + stress12_4
+            ssig12e = stress12_1 + stress12_4
+            ssig12w = stress12_2 + stress12_3
+            ssig121 =(stress12_1 + stress12_3)*p111
+            ssig122 =(stress12_2 + stress12_4)*p111
+
+            csigpne = p111*stressp_1 + ssigp2 + p027*stressp_3
+            csigpnw = p111*stressp_2 + ssigp1 + p027*stressp_4
+            csigpsw = p111*stressp_3 + ssigp2 + p027*stressp_1
+            csigpse = p111*stressp_4 + ssigp1 + p027*stressp_2
+
+            csigmne = p111*stressm_1 + ssigm2 + p027*stressm_3
+            csigmnw = p111*stressm_2 + ssigm1 + p027*stressm_4
+            csigmsw = p111*stressm_3 + ssigm2 + p027*stressm_1
+            csigmse = p111*stressm_4 + ssigm1 + p027*stressm_2
+
+            csig12ne = p222*stress12_1 + ssig122 &
+                     + p055*stress12_3
+            csig12nw = p222*stress12_2 + ssig121 &
+                     + p055*stress12_4
+            csig12sw = p222*stress12_3 + ssig122 &
+                     + p055*stress12_1
+            csig12se = p222*stress12_4 + ssig121 &
+                     + p055*stress12_2
+
+            str12ew = p5*dxT(ist)*(p333*ssig12e + p166*ssig12w)
+            str12we = p5*dxT(ist)*(p333*ssig12w + p166*ssig12e)
+            str12ns = p5*dyT(ist)*(p333*ssig12n + p166*ssig12s)
+            str12sn = p5*dyT(ist)*(p333*ssig12s + p166*ssig12n)
+
+         !-----------------------------------------------------------------
+         ! for dF/dx (u momentum)
+         !-----------------------------------------------------------------
+
 
                strp_tmp  = p25*dxT(ist)*(p333*ssigpw  + p166*ssigpe)
                strm_tmp  = p25*dxT(ist)*(p333*ssigmw  + p166*ssigme)
 
                ! northwest((j-1)*nx_block+i+1)
-               Drheo(is,7) = -strp_tmp + strm_tmp + str12ns &
+               Drheo7(is) = -strp_tmp + strm_tmp + str12ns &
                   - dyhx(ist)*(csigpnw + csigmnw) + dxhy(ist)*csig12nw
 
-            elseif (cc == 8) then ! T cell i+1,j+1
+      enddo
+
+      ! ---- term 8: vi1j1 = c1, T cell one step NE ----
+      do is = lo, hi
+         if (skipme(is)) cycle
+         ist = nbrNE(is)
+
+         !-----------------------------------------------------------------
+         ! strain rates
+         ! NOTE these are actually strain rates * area  (m^2/s)
+         !-----------------------------------------------------------------
+            ! divergence  =  e_11 + e_22
+            divune    = cyp(ist)*c0   - dyT(ist)*c0  &
+                      + cxp(ist)*c0   - dxT(ist)*c0
+            divunw    = cym(ist)*c0  + dyT(ist)*c0   &
+                      + cxp(ist)*c0  - dxT(ist)*c1
+            divusw    = cym(ist)*c0 + dyT(ist)*c0  &
+                      + cxm(ist)*c1 + dxT(ist)*c0
+            divuse    = cyp(ist)*c0  - dyT(ist)*c0 &
+                      + cxm(ist)*c0  + dxT(ist)*c0
+
+            ! tension strain rate  =  e_11 - e_22
+            tensionne = -cym(ist)*c0   - dyT(ist)*c0  &
+                      +  cxm(ist)*c0   + dxT(ist)*c0
+            tensionnw = -cyp(ist)*c0  + dyT(ist)*c0   &
+                      +  cxm(ist)*c0  + dxT(ist)*c1
+            tensionsw = -cyp(ist)*c0 + dyT(ist)*c0  &
+                      +  cxp(ist)*c1 - dxT(ist)*c0
+            tensionse = -cym(ist)*c0  - dyT(ist)*c0 &
+                      +  cxp(ist)*c0  - dxT(ist)*c0
+
+            ! shearing strain rate  =  2*e_12
+            shearne = -cym(ist)*c0   - dyT(ist)*c0  &
+                    -  cxm(ist)*c0   - dxT(ist)*c0
+            shearnw = -cyp(ist)*c0  + dyT(ist)*c0   &
+                    -  cxm(ist)*c0  - dxT(ist)*c0
+            shearsw = -cyp(ist)*c1 + dyT(ist)*c0  &
+                    -  cxp(ist)*c0 + dxT(ist)*c0
+            shearse = -cym(ist)*c0  - dyT(ist)*c1 &
+                    -  cxp(ist)*c0  + dxT(ist)*c0
+
+         !-----------------------------------------------------------------
+         ! the stresses                            ! kg/s^2
+         ! (1) northeast, (2) northwest, (3) southwest, (4) southeast
+         !-----------------------------------------------------------------
+
+            stressp_1 = zetax2(ist,1)*divune
+            stressp_2 = zetax2(ist,2)*divunw
+            stressp_3 = zetax2(ist,3)*divusw
+            stressp_4 = zetax2(ist,4)*divuse
+
+            stressm_1 = etax2(ist,1)*tensionne
+            stressm_2 = etax2(ist,2)*tensionnw
+            stressm_3 = etax2(ist,3)*tensionsw
+            stressm_4 = etax2(ist,4)*tensionse
+
+            stress12_1 = etax2(ist,1)*shearne*p5
+            stress12_2 = etax2(ist,2)*shearnw*p5
+            stress12_3 = etax2(ist,3)*shearsw*p5
+            stress12_4 = etax2(ist,4)*shearse*p5
+
+         !-----------------------------------------------------------------
+         ! combinations of the stresses for the momentum equation ! kg/s^2
+         !-----------------------------------------------------------------
+
+            ssigpn  = stressp_1 + stressp_2
+            ssigps  = stressp_3 + stressp_4
+            ssigpe  = stressp_1 + stressp_4
+            ssigpw  = stressp_2 + stressp_3
+            ssigp1  =(stressp_1 + stressp_3)*p055
+            ssigp2  =(stressp_2 + stressp_4)*p055
+
+            ssigmn  = stressm_1 + stressm_2
+            ssigms  = stressm_3 + stressm_4
+            ssigme  = stressm_1 + stressm_4
+            ssigmw  = stressm_2 + stressm_3
+            ssigm1  =(stressm_1 + stressm_3)*p055
+            ssigm2  =(stressm_2 + stressm_4)*p055
+
+            ssig12n = stress12_1 + stress12_2
+            ssig12s = stress12_3 + stress12_4
+            ssig12e = stress12_1 + stress12_4
+            ssig12w = stress12_2 + stress12_3
+            ssig121 =(stress12_1 + stress12_3)*p111
+            ssig122 =(stress12_2 + stress12_4)*p111
+
+            csigpne = p111*stressp_1 + ssigp2 + p027*stressp_3
+            csigpnw = p111*stressp_2 + ssigp1 + p027*stressp_4
+            csigpsw = p111*stressp_3 + ssigp2 + p027*stressp_1
+            csigpse = p111*stressp_4 + ssigp1 + p027*stressp_2
+
+            csigmne = p111*stressm_1 + ssigm2 + p027*stressm_3
+            csigmnw = p111*stressm_2 + ssigm1 + p027*stressm_4
+            csigmsw = p111*stressm_3 + ssigm2 + p027*stressm_1
+            csigmse = p111*stressm_4 + ssigm1 + p027*stressm_2
+
+            csig12ne = p222*stress12_1 + ssig122 &
+                     + p055*stress12_3
+            csig12nw = p222*stress12_2 + ssig121 &
+                     + p055*stress12_4
+            csig12sw = p222*stress12_3 + ssig122 &
+                     + p055*stress12_1
+            csig12se = p222*stress12_4 + ssig121 &
+                     + p055*stress12_2
+
+            str12ew = p5*dxT(ist)*(p333*ssig12e + p166*ssig12w)
+            str12we = p5*dxT(ist)*(p333*ssig12w + p166*ssig12e)
+            str12ns = p5*dyT(ist)*(p333*ssig12n + p166*ssig12s)
+            str12sn = p5*dyT(ist)*(p333*ssig12s + p166*ssig12n)
+
+         !-----------------------------------------------------------------
+         ! for dF/dx (u momentum)
+         !-----------------------------------------------------------------
+
 
                strp_tmp  = p25*dxT(ist)*(p333*ssigpw  + p166*ssigpe)
                strm_tmp  = p25*dxT(ist)*(p333*ssigmw  + p166*ssigme)
 
                ! southwest((j+1-1)*nx_block+i+1)
-               Drheo(is,8) = strp_tmp - strm_tmp + str12sn &
+               Drheo8(is) = strp_tmp - strm_tmp + str12sn &
                   - dyhx(ist)*(csigpsw + csigmsw) + dxhy(ist)*csig12sw
 
-            endif
+      enddo
 
-         enddo                     ! ij
-
-      enddo                     ! cc
 
       end subroutine formDiag_step1
 
@@ -2606,27 +3320,32 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 ! Form the diagonal of the matrix A(u,v) (second part of the computation)
 ! Part 2: compute diagonal
 
-      subroutine formDiag_step2 (ncells  , skipme  , &
-                                 Drheo   , vrel    , &
+      subroutine formDiag_step2 (lo, hi  , skipme  , &
+                                 Drheo1, Drheo2, Drheo3, Drheo4, &
+                                 Drheo5, Drheo6, Drheo7, Drheo8, &
+                                 vrel    , &
                                  umassdti,           &
                                  uarear  , Cb      , &
                                  diagx   , diagy)
 
       integer (kind=int_kind), intent(in) :: &
-         ncells                ! slots held by this block
+         lo, hi             ! slot range to process
 
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
          skipme       ! inactive-slot flag, U cells
 
-      ! compressed: this block's slice, 1-based, cells 1..ncells, dead slot last
+      ! compressed: the slot range lo..hi, dead slot last
       real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
          umassdti, & ! mass of U-cell/dt (kg/m^2 s)
          uarear  , & ! 1/uarea
          vrel    , & ! coefficient for tauw
          Cb          ! coefficient for seabed stress
 
-      real (kind=dbl_kind), dimension (:,:), intent(in) :: &
-         Drheo
+      ! One vector per term, as evp carries str1..str8.  Bounds lo:hi+1 so
+      ! the caller's block-sized scratch maps by sequence association.
+      real (kind=dbl_kind), dimension (:), intent(in) :: &
+         Drheo1, Drheo2, Drheo3, Drheo4, &
+         Drheo5, Drheo6, Drheo7, Drheo8
 
       ! compressed as well: fgmres reads the diagonal in the slot layout, so
       ! there is no reason to build it block-shaped and pack it afterwards.
@@ -2652,28 +3371,28 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       strintx = c0
       strinty = c0
 
-      ! Be careful: Drheo contains 4 terms for u and 4 terms for v.
+      ! Be careful: Drheo1..4 are the u terms, Drheo5..8 the v terms.
       ! These 8 terms come from the surrounding T cells but are all
       ! refrerenced to the i,j (u point) :
 
-      ! Drheo(ijb,1) corresponds to str(ijb,1)
-      ! Drheo(ijb,2) corresponds to str((j-1)*nx_block+i+1,2)
-      ! Drheo(ijb,3) corresponds to str((j+1-1)*nx_block+i,3)
-      ! Drheo(ijb,4) corresponds to str((j+1-1)*nx_block+i+1,4))
-      ! Drheo(ijb,5) corresponds to str(ijb,5)
-      ! Drheo(ijb,6) corresponds to str((j+1-1)*nx_block+i,6)
-      ! Drheo(ijb,7) corresponds to str((j-1)*nx_block+i+1,7)
-      ! Drheo(ijb,8) corresponds to str((j+1-1)*nx_block+i+1,8))
+      ! Drheo1 corresponds to str(ijb,1)
+      ! Drheo2 corresponds to str((j-1)*nx_block+i+1,2)
+      ! Drheo3 corresponds to str((j+1-1)*nx_block+i,3)
+      ! Drheo4 corresponds to str((j+1-1)*nx_block+i+1,4))
+      ! Drheo5 corresponds to str(ijb,5)
+      ! Drheo6 corresponds to str((j+1-1)*nx_block+i,6)
+      ! Drheo7 corresponds to str((j-1)*nx_block+i+1,7)
+      ! Drheo8 corresponds to str((j+1-1)*nx_block+i+1,8))
 
-      do is = 1, ncells
+      do is = lo, hi
          if (skipme(is)) cycle
 
          ccaimp = umassdti(is) + vrel(is) * cosw + Cb(is) ! kg/m^2 s
 
          strintx = uarear(is)* &
-             (Drheo(is,1) + Drheo(is,2) + Drheo(is,3) + Drheo(is,4))
+             (Drheo1(is) + Drheo2(is) + Drheo3(is) + Drheo4(is))
          strinty = uarear(is)* &
-             (Drheo(is,5) + Drheo(is,6) + Drheo(is,7) + Drheo(is,8))
+             (Drheo5(is) + Drheo6(is) + Drheo7(is) + Drheo8(is))
 
          diagx(is) = ccaimp - strintx
          diagy(is) = ccaimp - strinty
