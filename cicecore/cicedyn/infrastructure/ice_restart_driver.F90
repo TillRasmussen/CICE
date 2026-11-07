@@ -40,6 +40,13 @@
       private
       public :: dumpfile, restartfile, restartfile_v4
 
+      ! Scratch for write_restart_slot.  Every slot-backed field shares one
+      ! dynMap, so the cells no slot writes are the same for all of them and
+      ! only have to be zeroed once per dump, not once per field.
+      real (kind=dbl_kind), dimension(:,:,:), allocatable, target :: wrk_slot
+      ! same storage seen as (ij,iblk), so the unpack needs no block loop
+      real (kind=dbl_kind), dimension(:,:), pointer :: wrk_flat => null()
+
 !=======================================================================
 
       contains
@@ -58,7 +65,12 @@
       use ice_blocks, only: nx_block, ny_block
       use ice_domain, only: nblocks
       use ice_domain_size, only: nilyr, nslyr, ncat, max_blocks
-      use ice_dyn_shared, only: iceUmask, iceEmask, iceNmask, kdyn
+      use ice_dyn_shared, only: iceUmask, iceEmask, iceNmask, kdyn, &
+          stressp_1_slot, stressp_2_slot, stressp_3_slot, stressp_4_slot, &
+          stressm_1_slot, stressm_2_slot, stressm_3_slot, stressm_4_slot, &
+          stress12_1_slot, stress12_2_slot, stress12_3_slot, stress12_4_slot, &
+          stresspT_slot, stressmT_slot, stress12T_slot,                       &
+          stresspU_slot, stressmU_slot, stress12U_slot
       use ice_flux, only: scale_factor, swvdr, swvdf, swidr, swidf, &
           strocnxT_iavg, strocnyT_iavg, sst, frzmlt, &
           stressp_1, stressp_2, stressp_3, stressp_4, &
@@ -188,34 +200,34 @@
       ! restart writer takes
       call stresses_to_block
 
-      call write_restart_field(nu_dump,0,stressp_1,'ruf8','stressp_1',1,diag)
-      call write_restart_field(nu_dump,0,stressp_3,'ruf8','stressp_3',1,diag)
-      call write_restart_field(nu_dump,0,stressp_2,'ruf8','stressp_2',1,diag)
-      call write_restart_field(nu_dump,0,stressp_4,'ruf8','stressp_4',1,diag)
+      call write_restart_slot (nu_dump,stressp_1_slot,'stressp_1',diag)
+      call write_restart_slot (nu_dump,stressp_3_slot,'stressp_3',diag)
+      call write_restart_slot (nu_dump,stressp_2_slot,'stressp_2',diag)
+      call write_restart_slot (nu_dump,stressp_4_slot,'stressp_4',diag)
 
-      call write_restart_field(nu_dump,0,stressm_1,'ruf8','stressm_1',1,diag)
-      call write_restart_field(nu_dump,0,stressm_3,'ruf8','stressm_3',1,diag)
-      call write_restart_field(nu_dump,0,stressm_2,'ruf8','stressm_2',1,diag)
-      call write_restart_field(nu_dump,0,stressm_4,'ruf8','stressm_4',1,diag)
+      call write_restart_slot (nu_dump,stressm_1_slot,'stressm_1',diag)
+      call write_restart_slot (nu_dump,stressm_3_slot,'stressm_3',diag)
+      call write_restart_slot (nu_dump,stressm_2_slot,'stressm_2',diag)
+      call write_restart_slot (nu_dump,stressm_4_slot,'stressm_4',diag)
 
-      call write_restart_field(nu_dump,0,stress12_1,'ruf8','stress12_1',1,diag)
-      call write_restart_field(nu_dump,0,stress12_3,'ruf8','stress12_3',1,diag)
-      call write_restart_field(nu_dump,0,stress12_2,'ruf8','stress12_2',1,diag)
-      call write_restart_field(nu_dump,0,stress12_4,'ruf8','stress12_4',1,diag)
+      call write_restart_slot (nu_dump,stress12_1_slot,'stress12_1',diag)
+      call write_restart_slot (nu_dump,stress12_3_slot,'stress12_3',diag)
+      call write_restart_slot (nu_dump,stress12_2_slot,'stress12_2',diag)
+      call write_restart_slot (nu_dump,stress12_4_slot,'stress12_4',diag)
 
       if (grid_ice == 'CD') then
-         call write_restart_field(nu_dump,0,stresspT ,'ruf8','stresspT' ,1,diag)
-         call write_restart_field(nu_dump,0,stressmT ,'ruf8','stressmT' ,1,diag)
-         call write_restart_field(nu_dump,0,stress12T,'ruf8','stress12T',1,diag)
-         call write_restart_field(nu_dump,0,stresspU ,'ruf8','stresspU' ,1,diag)
-         call write_restart_field(nu_dump,0,stressmU ,'ruf8','stressmU' ,1,diag)
-         call write_restart_field(nu_dump,0,stress12U,'ruf8','stress12U',1,diag)
+         call write_restart_slot (nu_dump,stresspT_slot ,'stresspT' ,diag)
+         call write_restart_slot (nu_dump,stressmT_slot ,'stressmT' ,diag)
+         call write_restart_slot (nu_dump,stress12T_slot,'stress12T',diag)
+         call write_restart_slot (nu_dump,stresspU_slot ,'stresspU' ,diag)
+         call write_restart_slot (nu_dump,stressmU_slot ,'stressmU' ,diag)
+         call write_restart_slot (nu_dump,stress12U_slot,'stress12U',diag)
       endif
 
       if (grid_ice == 'C') then
-         call write_restart_field(nu_dump,0,stresspT ,'ruf8','stresspT' ,1,diag)
-         call write_restart_field(nu_dump,0,stressmT ,'ruf8','stressmT' ,1,diag)
-         call write_restart_field(nu_dump,0,stress12U,'ruf8','stress12U',1,diag)
+         call write_restart_slot (nu_dump,stresspT_slot ,'stresspT' ,diag)
+         call write_restart_slot (nu_dump,stressmT_slot ,'stressmT' ,diag)
+         call write_restart_slot (nu_dump,stress12U_slot,'stress12U',diag)
       endif
 
       !-----------------------------------------------------------------
@@ -276,6 +288,62 @@
       endif
 
       end subroutine dumpfile
+
+!=======================================================================
+! Write one COMPRESSED field to the restart.
+!
+! The block layout is a file format here, not a second copy kept in step:
+! the slots are the authority, and the block shape is materialised in a
+! local work array at the writer and thrown away.  write_restart_field
+! takes (nx_block,ny_block,ndim3,max_blocks) and the work array matches by
+! sequence association, so nothing in the file changes.
+!
+! ⚠ The work array is zeroed first.  unpack_from_slots is intent(inout)
+! and writes only cells that own a slot, so land would otherwise keep
+! whatever was on the stack.  Zero is what the block arrays hold there --
+! dyn_prep2 zeroes the stresses wherever iceTmask is false.
+
+      subroutine write_restart_slot (nu, fld_s, vname, diag)
+
+      use ice_blocks, only: nx_block, ny_block
+      use ice_domain, only: nblocks
+      use ice_domain_size, only: max_blocks
+      use ice_grid, only: dynTot, dynIJ, dynBlk
+      use ice_constants, only: c0
+
+      integer (kind=int_kind), intent(in) :: nu
+      real (kind=dbl_kind), dimension(:), allocatable, intent(in) :: fld_s
+      character(len=*), intent(in) :: vname
+      logical (kind=log_kind), intent(in) :: diag
+
+      integer (kind=int_kind) :: is, ierr
+
+      character(len=*), parameter :: subname = '(write_restart_slot)'
+
+      ! Zeroed once, at allocation: dynMap is static, so the cells no slot
+      ! writes are the same for every field and every dump.
+      if (.not. allocated(wrk_slot)) then
+         allocate(wrk_slot(nx_block,ny_block,max_blocks), stat=ierr)
+         if (ierr /= 0) call abort_ice(subname//' ERROR: out of memory')
+         wrk_slot(:,:,:) = c0
+         wrk_flat(1:nx_block*ny_block,1:max_blocks) => wrk_slot
+      endif
+
+      ! kdyn<=0 leaves every ice_dyn_shared slot array unallocated, but the
+      ! field must still appear in the restart file.  Zero is what the block
+      ! arrays held on that path.
+      if (allocated(fld_s)) then
+         do is = 1, dynTot
+            if (dynIJ(is) == 0) cycle      ! dead slot, owned by no cell
+            wrk_flat(dynIJ(is),dynBlk(is)) = fld_s(is)
+         enddo
+      else
+         wrk_slot(:,:,:) = c0
+      endif
+      call write_restart_field(nu,0,wrk_slot,'ruf8',vname,1,diag)
+
+      end subroutine write_restart_slot
+
 
 !=======================================================================
 

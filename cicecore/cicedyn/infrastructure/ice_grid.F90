@@ -235,7 +235,8 @@
 !   dynCnt(iblk)    number of slots that block holds
 !   dynTot          total slots over all local blocks
 !   dynMap(ij,iblk) block-local slot of a cell, 0 if not stored
-!   dynIJ(slot)     reverse of dynMap
+!   dynIJ(slot)     reverse of dynMap, 0 at a dead slot
+!   dynBlk(slot)    block owning each slot, 0 at a dead slot
 !   Nbr_Local(slot,d)  block-local slot one step in direction d
 !   Nbr_Task(slot,d) the SAME neighbour as a global slot index
 !
@@ -270,7 +271,7 @@
          dynMaxCnt     ! largest dynCnt over the local blocks
 
       integer (kind=int_kind), dimension(:), allocatable, public :: &
-         dynOff, dynCnt, dynIJ
+         dynOff, dynCnt, dynIJ, dynBlk
 
       integer (kind=int_kind), dimension(:,:), allocatable, public :: &
          dynMap, Nbr_Local
@@ -7186,7 +7187,7 @@
 ! to address the block-layout arrays it still has to write.  Dead slots are
 ! left at zero and are never looked up.
 
-      subroutine set_slot_cells(map, off, cnt, ijmap)
+      subroutine set_slot_cells(map, off, cnt, ijmap, blkmap)
 
       use ice_domain, only: nblocks
 
@@ -7199,7 +7200,8 @@
          cnt                ! number of slots held by each block
 
       integer (kind=int_kind), dimension(:), intent(out) :: &
-         ijmap              ! (j-1)*nx_block+i of the cell owning each slot
+         ijmap          , & ! (j-1)*nx_block+i of the cell owning each slot
+         blkmap             ! block owning each slot, 0 at a dead slot
 
       ! local variables
 
@@ -7208,7 +7210,8 @@
 
       character(len=*), parameter :: subname = '(set_slot_cells)'
 
-      ijmap(:) = 0
+      ijmap(:)  = 0
+      blkmap(:) = 0
 
       do iblk = 1, nblocks
          if (cnt(iblk) == 0) cycle
@@ -7216,7 +7219,8 @@
          do i = 1, nx_block
             ij = (j-1)*nx_block + i
             if (map(ij,iblk) == 0) cycle
-            ijmap(off(iblk) + map(ij,iblk)) = ij
+            ijmap (off(iblk) + map(ij,iblk)) = ij
+            blkmap(off(iblk) + map(ij,iblk)) = iblk
          enddo
          enddo
       enddo
@@ -7582,9 +7586,9 @@
       NbrSE_Task(:) = Nbr_Task(:,nbr_SE)
       deallocate(Nbr_Task)
 
-      allocate(dynIJ(dynTot), stat=ierr)
+      allocate(dynIJ(dynTot), dynBlk(dynTot), stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
-      call set_slot_cells(dynMap, dynOff, dynCnt, dynIJ)
+      call set_slot_cells(dynMap, dynOff, dynCnt, dynIJ, dynBlk)
 
       ! ------------------------------------------------------------------
       ! Grid metrics, compressed once.  Everything here is set well before
