@@ -924,15 +924,11 @@
          if (grid_ice == "B") then
 
             if ( seabed_stress_method == 'LKD' ) then
-               !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
-               do iblk = 1, nblocks
-                  call seabed_stress_factor_LKD (nx_block        , ny_block      , &
-                                                 dynOff(iblk)+1  , dynOff(iblk)+dynCnt(iblk), &
-                                                 skipU           , dynIJ         , &
-                                                 vice  (:,:,iblk), aice(:,:,iblk), &
-                                                 hwater(:,iblk)  , TbU_slot)
-               enddo
-               !$OMP END PARALLEL DO
+               call seabed_stress_factor_LKD (1               , dynTot, skipU        , &
+                                              NbrE_Task       , NbrNE_Task    , &
+                                              NbrN_Task       ,                 &
+                                              vice_slot       , aice_slot     , &
+                                              hwater_slot     , TbU_slot)
 
             elseif ( seabed_stress_method == 'probabilistic' ) then
                !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
@@ -952,22 +948,18 @@
          elseif (grid_ice == "C" .or. grid_ice == "CD") then
 
             if ( seabed_stress_method == 'LKD' ) then
-               !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
-               do iblk = 1, nblocks
-                  call seabed_stress_factor_LKD (nx_block        , ny_block      , &
-                                                 dynOff(iblk)+1  , dynOff(iblk)+dynCnt(iblk), &
-                                                 skipE           , dynIJ         , &
-                                                 vice  (:,:,iblk), aice(:,:,iblk), &
-                                                 hwater(:,iblk)  , TbE_slot, &
-                                                 'E')
-                  call seabed_stress_factor_LKD (nx_block        , ny_block      , &
-                                                 dynOff(iblk)+1  , dynOff(iblk)+dynCnt(iblk), &
-                                                 skipN           , dynIJ         , &
-                                                 vice  (:,:,iblk), aice(:,:,iblk), &
-                                                 hwater(:,iblk)  , TbN_slot, &
-                                                 'N')
-               enddo
-               !$OMP END PARALLEL DO
+               call seabed_stress_factor_LKD (1               , dynTot, skipE        , &
+                                              NbrE_Task       , NbrNE_Task    , &
+                                              NbrN_Task       ,                 &
+                                              vice_slot       , aice_slot     , &
+                                              hwater_slot     , TbE_slot, &
+                                              'E')
+               call seabed_stress_factor_LKD (1               , dynTot, skipN        , &
+                                              NbrE_Task       , NbrNE_Task    , &
+                                              NbrN_Task       ,                 &
+                                              vice_slot       , aice_slot     , &
+                                              hwater_slot     , TbN_slot, &
+                                              'N')
 
             elseif ( seabed_stress_method == 'probabilistic' ) then
                !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)

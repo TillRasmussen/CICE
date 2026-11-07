@@ -2823,34 +2823,37 @@
 ! note1: TbU is a part of the Cb as defined in Lemieux et al. 2015 and 2016.
 ! note2: Seabed stress (better name) was called basal stress in Lemieux et al. 2015
 
-      subroutine seabed_stress_factor_LKD (nx_block, ny_block,         &
-                                           lo,       hi,     skipme,   &
-                                           ijslot,                     &
-                                           vice,     aice,             &
-                                           hwater,           TbU,      &
+      subroutine seabed_stress_factor_LKD (lo,       hi,     skipme,   &
+                                           nbrE,     nbrNE,  nbrN,     &
+                                           vice_s,   aice_s,           &
+                                           hwater_s,         TbU,      &
                                            grid_location)
 
-      use ice_grid, only: grid_neighbor_min, grid_neighbor_max
 
       integer (kind=int_kind), intent(in) :: &
-         nx_block, ny_block, &  ! block dimensions
          lo, hi                 ! slot range to process
 
       ! .true. where the slot carries no ice this step
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
          skipme
 
-      ! ijslot(is) is the cell (i,j) owning slot is, flattened as
-      ! (j-1)*nx_block+i.  The loop walks slots but grid_neighbor_min/max
-      ! still reduce over BLOCK neighbours of hwater/aice/vice, which have
-      ! no slot form, so (i,j) has to be recovered here.
+      ! One vector per direction.  ⚠ A missing neighbour resolves to the
+      ! block's dead slot.  That is safe for the MAXIMA over aice_s/vice_s,
+      ! which are non-negative, but NOT for the minimum over hwater_s: c0
+      ! there would win every min, pass hwu < threshold_hw and manufacture
+      ! a seabed stress.  hwater_s therefore holds hwater_dead at dead
+      ! slots, not c0 -- see ice_flux.
       integer (kind=int_kind), dimension (:), intent(in), contiguous :: &
-         ijslot
+         nbrE    , & ! neighbour slot one step E
+         nbrNE   , & ! neighbour slot one step NE
+         nbrN        ! neighbour slot one step N
 
-      real (kind=dbl_kind), dimension (nx_block,ny_block), intent(in) :: &
-         aice      , & ! concentration of ice at tracer location
-         vice      , & ! volume per unit area of ice at tracer location (m)
-         hwater        ! water depth at tracer location (m)
+      real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
+         vice_s  , & ! volume per unit area of ice (m), compressed
+         aice_s      ! concentration of ice, compressed
+
+      real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
+         hwater_s    ! water depth at tracer location (m), compressed
 
 
       real (kind=dbl_kind), dimension (:), intent(inout), contiguous :: &
@@ -2867,13 +2870,11 @@
          hcu           ! critical thickness at u location (m)
 
       integer (kind=int_kind) :: &
-         i, j, ij       , & ! ij is the compressed cell counter
-         ijb                ! 1D index of (i,j) in the block
+         m                  ! slot being processed
 
       character(len=char_len) :: &
          l_grid_location ! local version of 'grid_location'
 
-      integer (kind=int_kind) :: m   ! this cell's slot
 
       character(len=*), parameter :: subname = '(seabed_stress_factor_LKD)'
 
@@ -2884,29 +2885,51 @@
          l_grid_location = grid_location
       endif
 
-      do m = lo, hi
-         if (skipme(m)) cycle
-         ij = ijslot(m)
-         j  = (ij-1)/nx_block + 1
-         i  = ij - (j-1)*nx_block
+      ! The grid_location test is hoisted out of the loop: three short
+      ! branch-free bodies rather than a select case per slot.  Same shape
+      ! as stressC_U, and for the same reason.
+      select case (trim(l_grid_location))
 
-         ! convert quantities to grid_location
+      case ('U')   ! own, E, NE, N
+         do m = lo, hi
+            if (skipme(m)) cycle
+            hwu = min(hwater_s(m), hwater_s(nbrE(m)), &
+                      hwater_s(nbrNE(m)), hwater_s(nbrN(m)))
+            au  = max(aice_s(m)  , aice_s(nbrE(m))  , &
+                      aice_s(nbrNE(m))  , aice_s(nbrN(m)))
+            hu  = max(vice_s(m)  , vice_s(nbrE(m))  , &
+                      vice_s(nbrNE(m))  , vice_s(nbrN(m)))
+            docalc_tbu = merge(c1,c0,hwu < threshold_hw)
+            hcu = au * hwu / k1
+            TbU(m) = docalc_tbu*k2 * max(c0,(hu - hcu)) * exp(-alphab * (c1 - au))
+         enddo
 
-         hwu = grid_neighbor_min(hwater, i, j, l_grid_location)
+      case ('E')   ! own, E
+         do m = lo, hi
+            if (skipme(m)) cycle
+            hwu = min(hwater_s(m), hwater_s(nbrE(m)))
+            au  = max(aice_s(m)  , aice_s(nbrE(m)))
+            hu  = max(vice_s(m)  , vice_s(nbrE(m)))
+            docalc_tbu = merge(c1,c0,hwu < threshold_hw)
+            hcu = au * hwu / k1
+            TbU(m) = docalc_tbu*k2 * max(c0,(hu - hcu)) * exp(-alphab * (c1 - au))
+         enddo
 
-         docalc_tbu = merge(c1,c0,hwu < threshold_hw)
+      case ('N')   ! own, N
+         do m = lo, hi
+            if (skipme(m)) cycle
+            hwu = min(hwater_s(m), hwater_s(nbrN(m)))
+            au  = max(aice_s(m)  , aice_s(nbrN(m)))
+            hu  = max(vice_s(m)  , vice_s(nbrN(m)))
+            docalc_tbu = merge(c1,c0,hwu < threshold_hw)
+            hcu = au * hwu / k1
+            TbU(m) = docalc_tbu*k2 * max(c0,(hu - hcu)) * exp(-alphab * (c1 - au))
+         enddo
 
-
-         au  = grid_neighbor_max(aice, i, j, l_grid_location)
-         hu  = grid_neighbor_max(vice, i, j, l_grid_location)
-
-         ! 1- calculate critical thickness
-         hcu = au * hwu / k1
-
-         ! 2- calculate seabed stress factor
-         TbU(m) = docalc_tbu*k2 * max(c0,(hu - hcu)) * exp(-alphab * (c1 - au))
-
-      enddo                     ! slot
+      case default
+         call abort_ice(subname // ' unknown grid_location: ' // &
+                        trim(l_grid_location), file=__FILE__, line=__LINE__)
+      end select
 
       end subroutine seabed_stress_factor_LKD
 

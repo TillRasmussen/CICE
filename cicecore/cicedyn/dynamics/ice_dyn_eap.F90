@@ -497,15 +497,11 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
       if (seabed_stress) then
          if ( seabed_stress_method == 'LKD' ) then
-            !$OMP PARALLEL DO PRIVATE(iblk)  SCHEDULE(runtime)
-            do iblk = 1, nblocks
-               call seabed_stress_factor_LKD (nx_block        , ny_block      , &
-                                              dynOff(iblk)+1  , dynOff(iblk)+dynCnt(iblk), &
-                                              skipU           , dynIJ         , &
-                                              vice  (:,:,iblk), aice(:,:,iblk), &
-                                              hwater(:,iblk)  , TbU_slot)
-            enddo
-            !$OMP END PARALLEL DO
+            call seabed_stress_factor_LKD (1               , dynTot, skipU        , &
+                                           NbrE_Task       , NbrNE_Task    , &
+                                           NbrN_Task       ,                 &
+                                           vice_slot       , aice_slot     , &
+                                           hwater_slot     , TbU_slot)
 
          elseif ( seabed_stress_method == 'probabilistic' ) then
             !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
