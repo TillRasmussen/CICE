@@ -194,15 +194,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          ilo,ihi,jlo,jhi, & ! beginning and end of physical domain
          i, j, ij
 
-      integer (kind=int_kind), dimension(max_blocks) :: &
-         icellT     , & ! no. of cells where iceTmask = .true.
-         icellU         ! no. of cells where iceUmask = .true.
 
-      integer (kind=int_kind), dimension (nx_block*ny_block, max_blocks) :: &
-         indxTi     , & ! compressed index in i-direction
-         indxTj     , & ! compressed index in j-direction
-         indxUi     , & ! compressed index in i-direction
-         indxUj         ! compressed index in j-direction
 
       real (kind=dbl_kind), dimension (nx_block,ny_block,max_blocks) :: &
          cdn_ocnU       ! ocn drag coefficient
@@ -360,9 +352,6 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
          call dyn_prep2 (nx_block,             ny_block,             &
                          ilo, ihi,             jlo, jhi,             &
-                         icellT        (iblk), icellU        (iblk), &
-                         indxTi      (:,iblk), indxTj      (:,iblk), &
-                         indxUi      (:,iblk), indxUj      (:,iblk), &
                          aiU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   umass_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
                          umassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                          fcor_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &

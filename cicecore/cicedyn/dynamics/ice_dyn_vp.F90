@@ -156,15 +156,7 @@
 
       ! module variables
 
-      integer (kind=int_kind), allocatable :: &
-         icellT(:)    , & ! no. of cells where iceTmask = .true.
-         icellU(:)        ! no. of cells where iceUmask = .true.
 
-      integer (kind=int_kind), allocatable :: &
-         indxTi(:,:)  , & ! compressed index in i-direction
-         indxTj(:,:)  , & ! compressed index in j-direction
-         indxUi(:,:)  , & ! compressed index in i-direction
-         indxUj(:,:)      ! compressed index in j-direction
 
 !=======================================================================
 
@@ -185,11 +177,6 @@
       call init_dyn_shared(dt_dyn)
 
       ! Initialize module variables
-      allocate(icellT(max_blocks), icellU(max_blocks))
-      allocate(indxTi(nx_block*ny_block, max_blocks), &
-               indxTj(nx_block*ny_block, max_blocks), &
-               indxUi(nx_block*ny_block, max_blocks), &
-               indxUj(nx_block*ny_block, max_blocks))
 
       ! init_dyn_shared above has built the compressed layout, so dynTot is set
       allocate(Cw_s  (dynTot), TbU_s (dynTot), &
@@ -461,9 +448,6 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
          call dyn_prep2 (nx_block,             ny_block,                                                                               &
                          ilo, ihi,             jlo, jhi,                                                                               &
-                         icellT(iblk),         icellU(iblk),                                                                           &
-                         indxTi      (:,iblk), indxTj      (:,iblk),                                                                   &
-                         indxUi      (:,iblk), indxUj      (:,iblk),                                                                   &
                          aiU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   umass_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),                                                                     &
                          umassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                          fcor_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -495,17 +479,12 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                         skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),                                                               &
                          TbU_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
 
-         call calc_bfix (nx_block            , ny_block            ,           &
-                         icellU(iblk)        ,                                 &
-                         indxUi      (:,iblk), indxUj      (:,iblk),           &
-                         umassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                         forcexU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                         forceyU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                         uvel_init (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                         vvel_init (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                         dynMap      (:,iblk),                                 &
-                         bxfix_s (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                        byfix_s (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         call calc_bfix (dynOff(iblk)+1      , dynOff(iblk)+dynCnt(iblk), &
+                         skipU               ,                           &
+                         umassdti_slot       ,                           &
+                         forcexU_slot        , forceyU_slot        ,     &
+                         uvel_init           , vvel_init           ,     &
+                         bxfix_s             , byfix_s)
 
       !-----------------------------------------------------------------
       ! ice strength
@@ -600,10 +579,9 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       ! calc size of problem (ntot) and allocate solution vector
       !-----------------------------------------------------------------
 
-      ntot = 0
-      do iblk = 1, nblocks
-         ntot = ntot + icellU(iblk)
-      enddo
+      ! skipU is cleared exactly where dyn_prep2 counts a cell into icellU,
+      ! so counting active slots gives the same total the block loop did.
+      ntot = count(.not. skipU(1:dynTot))
       ntot = 2 * ntot ! times 2 because of u and v
 
       allocate(sol(ntot))
@@ -611,9 +589,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       !-----------------------------------------------------------------
       ! Start of nonlinear iteration
       !-----------------------------------------------------------------
-      call anderson_solver (icellU , &
-                            indxUi  , indxUj , &
-                            aiU     , ntot   , &
+      call anderson_solver (aiU     , ntot   , &
                             waterxU , wateryU, &
                             umassdti, sol    , &
                             cdn_ocnU,          &
@@ -843,9 +819,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 ! H. F. Walker, “Anderson Acceleration: Algorithms and Implementations”
 !   [Online]. Available: https://users.wpi.edu/~walker/Papers/anderson_accn_algs_imps.pdf
 
-      subroutine anderson_solver (icellU , &
-                                  indxUi  , indxUj , &
-                                  aiU     , ntot   , &
+      subroutine anderson_solver (aiU     , ntot   , &
                                   waterxU , wateryU, &
                                   umassdti, sol    , &
                                   cdn_ocn ,          &
@@ -866,12 +840,6 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       integer (kind=int_kind), intent(in) :: &
          ntot         ! size of problem for Anderson
 
-      integer (kind=int_kind), dimension(max_blocks), intent(in) :: &
-         icellU       ! no. of cells where iceUmask = .true.
-
-      integer (kind=int_kind), dimension (nx_block*ny_block, max_blocks), intent(in) :: &
-         indxUi   , & ! compressed index in i-direction
-         indxUj       ! compressed index in j-direction
 
       ! aiU and umassdti are assumed shape, with the i and j dimensions
       ! flattened, i.e. element (i,j,iblk) lives at ((j-1)*nx_block + i, iblk)
@@ -1294,7 +1262,8 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          !-----------------------------------------------------------------------
          !     Put vector sol in the compressed velocity arrays
          !-----------------------------------------------------------------------
-         ! vec_to_slots is the compressed counterpart of vec_to_arrays: both
+         ! vec_to_slots scatters the Anderson vector back; it is what the old
+         ! block-layout vec_to_arrays used to do, and both
          ! zero their destination and then write the active U cells, which are
          ! the same set.  The block forms are not needed inside the iteration
          ! at all -- they are rebuilt once when the solver exits.
@@ -2078,55 +2047,43 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 ! Compute the constant component of b(u,v) i.e. the part of b(u,v) that
 ! does not depend on (u,v) and thus do not change during the nonlinear iteration
 
-     subroutine calc_bfix  (nx_block , ny_block , &
-                            icellU   ,            &
-                            indxUi   , indxUj   , &
+     subroutine calc_bfix  (lo       , hi       , &
+                            skipme   ,            &
                             umassdti ,            &
                             forcexU  , forceyU  , &
                             uvel_init, vvel_init, &
-                            Xmap,                 &
                             bxfix    , byfix)
 
       integer (kind=int_kind), intent(in) :: &
-         nx_block, ny_block, & ! block dimensions
-         icellU                ! no. of cells where iceUmask = .true.
+         lo, hi                ! slot range to process
 
-      integer (kind=int_kind), dimension (nx_block*ny_block), intent(in) :: &
-         indxUi   , & ! compressed index in i-direction
-         indxUj       ! compressed index in j-direction
+      ! .true. where the slot carries no ice this step
+      logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
+         skipme
 
-      ! ⚠ umassdti, forcexU and forceyU are COMPRESSED -- dyn_prep2 fills
-      ! only the slot form since group a.  Indexed by is = Xmap(ijb).
+      ! All compressed; dyn_prep2 fills only the slot form.
       real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
          umassdti, & ! mass of U-cell/dt (kg/m^2 s)
-         uvel_init,& ! x-component of velocity (m/s), start of step, COMPRESSED
-         vvel_init,& ! y-component of velocity (m/s), start of step, COMPRESSED
+         uvel_init,& ! x-component of velocity (m/s), start of step
+         vvel_init,& ! y-component of velocity (m/s), start of step
          forcexU , & ! work array: combined atm stress and ocn tilt, x
          forceyU     ! work array: combined atm stress and ocn tilt, y
 
-      ! Xmap holds each cell's static compressed slot, see ice_dyn_shared
-      integer (kind=int_kind), dimension (:), intent(in), contiguous :: &
-         Xmap
-
-      real (kind=dbl_kind), dimension (nx_block*ny_block), intent(out) :: &
+      ! Compressed too.  The declaration used to say nx_block*ny_block
+      ! while the body already indexed it by slot.
+      real (kind=dbl_kind), dimension (:), intent(out), contiguous :: &
          bxfix   , & ! bx = taux + bxfix
          byfix       ! by = tauy + byfix
 
       ! local variables
 
       integer (kind=int_kind) :: &
-         i, j, ij       , & ! ij is the compressed cell counter
-         ijb              , & ! 1D index of((j-1)*nx_block+i) in the block
-         is                   ! compressed slot of((j-1)*nx_block+i)
+         is                 ! slot being processed
 
       character(len=*), parameter :: subname = '(calc_bfix)'
 
-      do ij = 1, icellU
-         i = indxUi(ij)
-         j = indxUj(ij)
-         ijb = (j-1)*nx_block + i
-         is  = Xmap(ijb)
-
+      do is = lo, hi
+         if (skipme(is)) cycle
          bxfix(is) = umassdti(is)*uvel_init(is) + forcexU(is)
          byfix(is) = umassdti(is)*vvel_init(is) + forceyU(is)
       enddo
@@ -2882,73 +2839,15 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
       end subroutine arrays_to_vec
 
-!=======================================================================
-
-! Convert one dimensional vector to a grid function (tpu,tpv)
-
-      subroutine vec_to_arrays (nx_block, ny_block  , &
-                                nblocks , max_blocks, &
-                                icellU  , ntot      , &
-                                indxUi  , indxUj    , &
-                                invec   ,             &
-                                tpu     , tpv)
-
-      integer (kind=int_kind), intent(in) :: &
-         nx_block, ny_block, & ! block dimensions
-         nblocks,            & ! nb of blocks
-         max_blocks,         & ! max nb of blocks
-         ntot                  ! size of problem for Anderson
-
-      integer (kind=int_kind), dimension (max_blocks), intent(in) :: &
-         icellU
-
-      integer (kind=int_kind), dimension (nx_block*ny_block, max_blocks), intent(in) :: &
-         indxUi  , & ! compressed index in i-direction
-         indxUj      ! compressed index in j-direction
-
-      real (kind=dbl_kind), dimension (ntot), intent(in) :: &
-         invec       ! input 1D vector
-
-      real (kind=dbl_kind), dimension (nx_block*ny_block,max_blocks), intent(out) :: &
-         tpu     , & ! x-component of vector
-         tpv         ! y-component of vector
-
-
-      ! local variables
-
-      integer (kind=int_kind) :: &
-         i, j, iblk, tot, ij
-
-      character(len=*), parameter :: subname = '(vec_to_arrays)'
-
-      !-----------------------------------------------------------------
-      ! form arrays (converts from vector to the max_blocks arrays)
-      !-----------------------------------------------------------------
-
-      tpu(:,:) = c0
-      tpv(:,:) = c0
-      tot = 0
-
-      do iblk = 1, nblocks
-         do ij = 1, icellU(iblk)
-            i = indxUi(ij, iblk)
-            j = indxUj(ij, iblk)
-            tot = tot + 1
-            tpu((j-1)*nx_block+i,iblk) = invec(tot)
-            tot = tot + 1
-            tpv((j-1)*nx_block+i,iblk) = invec(tot)
-         enddo
-      enddo! ij
-
-      end subroutine vec_to_arrays
 
 !=======================================================================
 
-! Compressed counterpart of vec_to_arrays: scatters the Anderson vector
-! straight into slot vectors.  The traversal is identical, so invec is
-! consumed in the same order and only the destination layout differs.
-! vec_to_arrays itself stays, because uvel/vvel are read by the halo,
-! advection, history and restart in the block layout.
+! Scatters the Anderson vector back into the compressed layout.  Walks the
+! slots in exactly the order arrays_to_vec packed them, so invec is consumed
+! in the same sequence and only the destination layout differs.
+!
+! The block-layout vec_to_arrays this replaced has been deleted: it had no
+! callers left once the solver moved onto slots.
 
       subroutine vec_to_slots (ntot, invec, tpu, tpv)
 

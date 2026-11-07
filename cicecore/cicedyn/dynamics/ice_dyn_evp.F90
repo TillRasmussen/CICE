@@ -366,21 +366,7 @@
          ilo,ihi,jlo,jhi, & ! beginning and end of physical domain
          i, j, ij           ! local indices
 
-      integer (kind=int_kind), dimension(max_blocks) :: &
-         icellT   , & ! no. of cells where iceTmask = .true.
-         icellN   , & ! no. of cells where iceNmask = .true.
-         icellE   , & ! no. of cells where iceEmask = .true.
-         icellU       ! no. of cells where iceUmask = .true.
 
-      integer (kind=int_kind), dimension (nx_block*ny_block, max_blocks) :: &
-         indxTi   , & ! compressed index in i-direction
-         indxTj   , & ! compressed index in j-direction
-         indxEi   , & ! compressed index in i-direction
-         indxEj   , & ! compressed index in j-direction
-         indxNi   , & ! compressed index in i-direction
-         indxNj   , & ! compressed index in j-direction
-         indxUi   , & ! compressed index in i-direction
-         indxUj       ! compressed index in j-direction
 
       logical (kind=log_kind) :: &
          calc_strair  ! calculate air/ice stress
@@ -585,9 +571,6 @@
 
             call dyn_prep2 (nx_block,             ny_block,             &
                             ilo, ihi,             jlo, jhi,             &
-                            icellT        (iblk), icellU        (iblk), &
-                            indxTi      (:,iblk), indxTj      (:,iblk), &
-                            indxUi      (:,iblk), indxUj      (:,iblk), &
                             aiU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   umass_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
                             umassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             fcor_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -659,9 +642,6 @@
 
             call dyn_prep2 (nx_block,             ny_block,             &
                             ilo, ihi,             jlo, jhi,             &
-                            icellT        (iblk), icellU        (iblk), &
-                            indxTi      (:,iblk), indxTj      (:,iblk), &
-                            indxUi      (:,iblk), indxUj      (:,iblk), &
                             aiU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   umass_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
                             umassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             fcor_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -725,9 +705,6 @@
 
             call dyn_prep2 (nx_block,             ny_block,             &
                             ilo, ihi,             jlo, jhi,             &
-                            icellT        (iblk), icellN        (iblk), &
-                            indxTi      (:,iblk), indxTj      (:,iblk), &
-                            indxNi      (:,iblk), indxNj      (:,iblk), &
                             aiN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   nmass_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
                             nmassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             fcorN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -766,9 +743,6 @@
 
             call dyn_prep2 (nx_block,             ny_block,             &
                             ilo, ihi,             jlo, jhi,             &
-                            icellT        (iblk), icellE        (iblk), &
-                            indxTi      (:,iblk), indxTj      (:,iblk), &
-                            indxEi      (:,iblk), indxEj      (:,iblk), &
                             aiE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   emass_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
                             emassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                             fcorE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &

@@ -1428,9 +1428,6 @@
 
       subroutine dyn_prep2 (nx_block,   ny_block,   &
                             ilo, ihi,   jlo, jhi,   &
-                            icellT,     icellX,     &
-                            indxTi,     indxTj,     &
-                            indxXi,     indxXj,     &
                             aiX,        Xmass,      &
                             Xmassdti,   fcor,       &
                             Xmask,                  &
@@ -1463,15 +1460,7 @@
          nx_block, ny_block, & ! block dimensions
          ilo,ihi,jlo,jhi       ! beginning and end of physical domain
 
-      integer (kind=int_kind), intent(out) :: &
-         icellT  , & ! no. of cells where iceTmask = .true.
-         icellX      ! no. of cells where iceXmask = .true.
 
-      integer (kind=int_kind), dimension (nx_block*ny_block), intent(out) :: &
-         indxTi  , & ! compressed index in i-direction on T grid
-         indxTj  , & ! compressed index in j-direction
-         indxXi  , & ! compressed index in i-direction on X grid, grid depends on call
-         indxXj      ! compressed index in j-direction
 
       ! Xmask is assumed shape, 1D over the block in Fortran storage order,
       ! i.e. element (i,j) is stored at (j-1)*nx_block+i
@@ -1778,17 +1767,14 @@
       !       where stresses are needed.
       !-----------------------------------------------------------------
 
-      icellT = 0
+      ! The icellT/indxTi/indxTj list is gone: nothing consumes it any more,
+      ! so only the membership it encoded is still needed, and skipTc carries
+      ! that directly.
       skipTc(:) = .true.
       do j = jlo, jhi+1
       do i = ilo, ihi+1
          ijb = (j-1)*nx_block + i
-         if (iceTmask(ijb)) then
-            icellT = icellT + 1
-            indxTi(icellT) = i
-            indxTj(icellT) = j
-            skipTc(Xmap(ijb)) = .false.
-         endif
+         if (iceTmask(ijb)) skipTc(Xmap(ijb)) = .false.
       enddo
       enddo
 
@@ -1798,8 +1784,7 @@
       ! Initialize velocity where needed
       !-----------------------------------------------------------------
 
-      icellX = 0
-
+      ! icellX/indxXi/indxXj likewise: skipX carries the membership.
       do j = jlo, jhi
       do i = ilo, ihi
          ijb = (j-1)*nx_block + i
@@ -1818,9 +1803,6 @@
          endif
 
          if (iceXmask(ijb)) then
-            icellX = icellX + 1
-            indxXi(icellX) = i
-            indxXj(icellX) = j
 
             ! initialize velocity for new ice points to ocean sfc current
             if (.not. iceXmask_old(i,j)) then
