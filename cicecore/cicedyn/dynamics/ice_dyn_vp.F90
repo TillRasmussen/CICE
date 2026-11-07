@@ -845,6 +845,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          res_num    , & ! current number of stored residuals
          j          , & ! iteration index for QR update
          iblk       , & ! block index
+         is         , & ! slot index
          nbiter         ! number of FGMRES iterations performed
 
       integer (kind=int_kind), parameter :: &
@@ -942,12 +943,6 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       ! umassdti and fmU do not change during the solve, so they are compressed
       ! once here rather than at each of the five matvec call sites -- matvec
       ! is called from fgmres and pgmres as well as from the loop below.
-      !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
-      do iblk = 1, nblocks
-         if (dynCnt(iblk) == 0) cycle
-      enddo
-      !$OMP END PARALLEL DO
-
       do it_nl = 0, maxits_nonlin        ! nonlinear iteration loop
          ! Compute quantities needed for computing PDE residual and g(x) (fixed point map)
          !-----------------------------------------------------------------
@@ -1069,12 +1064,12 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          ! Put initial guess for FGMRES in solx_s,soly_s and sol (needed for
          ! anderson).  The guess is uprev_k, so it is packed once here and
          ! then stays compressed through fgmres and arrays_to_vec alike.
-         !$OMP PARALLEL DO PRIVATE(iblk)
-         do iblk = 1, nblocks
-            solx_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = uprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
-            soly_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = vprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
+         !$omp parallel do schedule(static) private(is)
+         do is = 1, dynTot
+            solx_s(is) = uprev_k(is)
+            soly_s(is) = vprev_k(is)
          enddo
-         !$OMP END PARALLEL DO
+         !$omp end parallel do
          call arrays_to_vec (ntot, solx_s, soly_s, sol(:))
 
          ! Compute fixed point map g(x)
@@ -1283,14 +1278,14 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          endif
 
          ! Compute "progress" residual norm
-         !$OMP PARALLEL DO PRIVATE(iblk)
-         do iblk = 1, nblocks
-            fpresx(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) - uprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
-            fpresy(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) - vprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
-            fpx_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = fpresx(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
-            fpy_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = fpresy(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
+         !$omp parallel do schedule(static) private(is)
+         do is = 1, dynTot
+            fpresx(is) = uvel_slot(is) - uprev_k(is)
+            fpresy(is) = vvel_slot(is) - vprev_k(is)
+            fpx_s(is)  = fpresx(is)
+            fpy_s(is)  = fpresy(is)
          enddo
-         !$OMP END PARALLEL DO
+         !$omp end parallel do
          prog_norm = global_norm(fpx_s, fpy_s)
          if (my_task == master_task .and. monitor_nonlin) then
             write(nu_diag, '(a,i4,a,d26.16)') "monitor_nonlin: iter_nonlin= ", it_nl, &
@@ -3534,14 +3529,12 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
       ! Slot order is icellU order, so tot advances in exactly the sequence
       ! the block-layout loop used and outvec comes out byte-identical.
-      do iblk = 1, nblocks
-         do is = dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk)
-            if (skipU(is)) cycle
-            tot = tot + 1
-            outvec(tot) = tpu(is)
-            tot = tot + 1
-            outvec(tot) = tpv(is)
-         enddo
+      do is = 1, dynTot
+         if (skipU(is)) cycle
+         tot = tot + 1
+         outvec(tot) = tpu(is)
+         tot = tot + 1
+         outvec(tot) = tpv(is)
       enddo ! is
 
       end subroutine arrays_to_vec
@@ -3580,14 +3573,12 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       tpv(:) = c0
 
       tot = 0
-      do iblk = 1, nblocks
-         do is = dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk)
-            if (skipU(is)) cycle
-            tot = tot + 1
-            tpu(is) = invec(tot)
-            tot = tot + 1
-            tpv(is) = invec(tot)
-         enddo
+      do is = 1, dynTot
+         if (skipU(is)) cycle
+         tot = tot + 1
+         tpu(is) = invec(tot)
+         tot = tot + 1
+         tpv(is) = invec(tot)
       enddo ! is
 
       end subroutine vec_to_slots
