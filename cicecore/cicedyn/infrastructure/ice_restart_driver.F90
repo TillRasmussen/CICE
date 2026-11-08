@@ -1629,13 +1629,16 @@
       use ice_flux, only: &
           stressp_1, stressp_2, stressp_3, stressp_4, &
           stressm_1, stressm_2, stressm_3, stressm_4, &
-          stress12_1, stress12_2, stress12_3, stress12_4
+          stress12_1, stress12_2, stress12_3, stress12_4, &
+          stresspT, stressmT, stress12T, stresspU, stressmU, stress12U
       use ice_dyn_shared, only: &
           stressp_1_slot, stressp_2_slot, stressp_3_slot, stressp_4_slot, &
           stressm_1_slot, stressm_2_slot, stressm_3_slot, stressm_4_slot, &
-          stress12_1_slot, stress12_2_slot, stress12_3_slot, stress12_4_slot
+          stress12_1_slot, stress12_2_slot, stress12_3_slot, stress12_4_slot, &
+          stresspT_slot, stressmT_slot, stress12T_slot, &
+          stresspU_slot, stressmU_slot, stress12U_slot
       use ice_domain, only: nblocks
-      use ice_grid, only: dynMap, dynOff, dynCnt, pack_to_slots
+      use ice_grid, only: dynMap, dynOff, dynCnt, pack_to_slots, grid_ice
 
       integer (kind=int_kind) :: iblk
 
@@ -1675,6 +1678,29 @@
                             stress12_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
       enddo
       !$OMP END PARALLEL DO
+
+      ! The C and CD stresses, the same way.  EVP used to seed these from
+      ! the block arrays on EVERY step and write them back again, a round
+      ! trip whose only reader was its own next entry pack.  Seeding them
+      ! here once, as the B-grid twelve already were, is what let that go.
+      if (grid_ice == 'C' .or. grid_ice == 'CD') then
+         !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
+         do iblk = 1, nblocks
+            call pack_to_slots(stresspT (:,iblk), dynMap(:,iblk), &
+                               stresspT_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            call pack_to_slots(stressmT (:,iblk), dynMap(:,iblk), &
+                               stressmT_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            call pack_to_slots(stress12T(:,iblk), dynMap(:,iblk), &
+                               stress12T_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            call pack_to_slots(stresspU (:,iblk), dynMap(:,iblk), &
+                               stresspU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            call pack_to_slots(stressmU (:,iblk), dynMap(:,iblk), &
+                               stressmU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            call pack_to_slots(stress12U(:,iblk), dynMap(:,iblk), &
+                               stress12U_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         enddo
+         !$OMP END PARALLEL DO
+      endif
 
       end subroutine stresses_to_slots
 

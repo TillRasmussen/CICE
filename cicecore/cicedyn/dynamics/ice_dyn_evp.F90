@@ -1174,10 +1174,6 @@
             ! after a restart: the restart test could not reproduce.
             call pack_to_slots(uvel(:,iblk), dynMap(:,iblk), uvel_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call pack_to_slots(vvel(:,iblk), dynMap(:,iblk), vvel_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(stresspT (:,iblk), dynMap(:,iblk), stresspT_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(stressmT (:,iblk), dynMap(:,iblk), stressmT_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(stress12T(:,iblk), dynMap(:,iblk), stress12T_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(stress12U(:,iblk), dynMap(:,iblk), stress12U_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             ! constant through the subcycling, so packed once
             ! The step kernels read these every pass but nothing changes
             ! them during the subcycle, so one pack each is enough.
@@ -1394,10 +1390,6 @@
          ! reads the block arrays, so this has to come first.
          !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
          do iblk = 1, nblocks
-            call unpack_from_slots(stresspT_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), stresspT (:,iblk))
-            call unpack_from_slots(stressmT_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), stressmT (:,iblk))
-            call unpack_from_slots(stress12T_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), stress12T(:,iblk))
-            call unpack_from_slots(stress12U_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), stress12U(:,iblk))
             call unpack_from_slots(shearU_slot   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), shearU   (:,iblk))
             call unpack_from_slots(uvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), uvelE(:,:,iblk))
             call unpack_from_slots(vvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), vvelE(:,:,iblk))
@@ -1459,12 +1451,6 @@
             ! after a restart: the restart test could not reproduce.
             call pack_to_slots(uvel(:,iblk), dynMap(:,iblk), uvel_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             call pack_to_slots(vvel(:,iblk), dynMap(:,iblk), vvel_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(stresspT (:,iblk), dynMap(:,iblk), stresspT_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(stressmT (:,iblk), dynMap(:,iblk), stressmT_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(stress12T(:,iblk), dynMap(:,iblk), stress12T_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(stresspU (:,iblk), dynMap(:,iblk), stresspU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(stressmU (:,iblk), dynMap(:,iblk), stressmU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(stress12U(:,iblk), dynMap(:,iblk), stress12U_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
             ! constant through the subcycling, so packed once
             ! The step kernels read these every pass but nothing changes
             ! them during the subcycle, so one pack each is enough.
@@ -1697,12 +1683,6 @@
          ! reads the block arrays.
          !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
          do iblk = 1, nblocks
-            call unpack_from_slots(stresspT_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), stresspT (:,iblk))
-            call unpack_from_slots(stressmT_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), stressmT (:,iblk))
-            call unpack_from_slots(stress12T_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), stress12T(:,iblk))
-            call unpack_from_slots(stresspU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), stresspU (:,iblk))
-            call unpack_from_slots(stressmU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), stressmU (:,iblk))
-            call unpack_from_slots(stress12U_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), stress12U(:,iblk))
             call unpack_from_slots(shearU_slot   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), shearU   (:,iblk))
             call unpack_from_slots(uvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), uvelE(:,:,iblk))
             call unpack_from_slots(vvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), vvelE(:,:,iblk))
