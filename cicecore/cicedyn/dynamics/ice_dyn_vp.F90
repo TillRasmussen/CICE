@@ -49,6 +49,7 @@
           cosw, sinw, uvel_init, vvel_init, dynOff, dynCnt, dynMap, dynIJ, dynMaxCnt, skipT, skipU, &
           dynTot, pack_to_slots, unpack_from_slots, calc_seabed_stress_slot, &
           Nbr_Local, nbr_W, nbr_S, nbr_SW, nbr_E, nbr_N, nbr_NE, uarear_slot, &
+          NbrW_Task, NbrSW_Task, NbrS_Task, &
           NbrE_Task, NbrN_Task, NbrNE_Task, &
           dxT_slot, dyT_slot, dxhy_slot, dyhx_slot, cxp_slot, cyp_slot, &
           uvel_slot, vvel_slot, tarear_slot, dxU_slot, dyU_slot, &
@@ -102,6 +103,10 @@
          Cb_s     , & ! seabed stress coefficient, compressed
          taubx_s  , & ! seabed stress, x-direction (N/m^2), compressed
          tauby_s      ! seabed stress, y-direction (N/m^2), compressed
+
+      ! matvec's eight stress components, one vector each (see matvec).
+      real (kind=dbl_kind), dimension(:), allocatable :: &
+         str1, str2, str3, str4, str5, str6, str7, str8
 
       ! The four-corner and eight-component T-cell fields.  Kept as (slot,n)
       ! rather than split into separate vectors the way EVP's str1..str8 are:
@@ -197,6 +202,8 @@
       bx_s     = c0
       by_s    = c0
       allocate(mvu_s(dynTot), mvv_s(dynTot), mvAu_s(dynTot), mvAv_s(dynTot))
+      allocate(str1(dynTot), str2(dynTot), str3(dynTot), str4(dynTot), &
+               str5(dynTot), str6(dynTot), str7(dynTot), str8(dynTot))
       mvu_s = c0
       mvv_s = c0
       mvAu_s = c0
@@ -1027,19 +1034,19 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
             ! Compute nonlinear residual norm (PDE residual)
             mvu_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = uprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
             mvv_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = vprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
-            call matvec (dynCnt(iblk), skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),                                                &
-                         skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_W), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_SW), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_S), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_E), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_NE), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_N),          &
-                         dxT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
-                         dxhy_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyhx_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                         cxp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), cyp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
-                         cxm_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), cym_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
-                         mvu_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), mvv_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),         &
-                         vrel_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), Cb_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),         &
-                         zetax2_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),                                                       &
-                         etax2_s (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),                                                       &
-                         umassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), fmU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),    &
-                         uarear_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),                                                      &
-                         mvAu_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), mvAv_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            call matvec (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipT,                                                &
+                         skipU, NbrW_Task, NbrSW_Task, NbrS_Task, NbrE_Task, NbrNE_Task, NbrN_Task,          &
+                         dxT_slot, dyT_slot,   &
+                         dxhy_slot, dyhx_slot, &
+                         cxp_slot, cyp_slot,   &
+                         cxm_slot, cym_slot,   &
+                         mvu_s, mvv_s,         &
+                         vrel_s, Cb_s,         &
+                         zetax2_s,                                                       &
+                         etax2_s,                                                       &
+                         umassdti_slot, fmU_slot,    &
+                         uarear_slot,                                                      &
+                         mvAu_s, mvAv_s)
             call residual_vec (dynCnt(iblk), skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),                                          &
                                bx_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), by_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),     &
                                mvAu_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), mvAv_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -1723,7 +1730,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 ! Au = A(u,v)_[x] * uvel (x components of  A(u,v) * (u,v))
 ! Av = A(u,v)_[y] * vvel (y components of  A(u,v) * (u,v))
 
-      subroutine matvec (ncells  , skipT   , &
+      subroutine matvec (lo      , hi      , skipT   , &
                          skipU   , nbrW, nbrSW, nbrS, nbrE, nbrNE, nbrN     , &
                          dxT     , dyT     , &
                          dxhy    , dyhx    , &
@@ -1739,7 +1746,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       use ice_dyn_shared, only: strain_rates
 
       integer (kind=int_kind), intent(in) :: &
-         ncells                ! slots held by this block
+         lo, hi                ! first and last slot of this block
 
       ! two flags, because this kernel has a T-cell pass and a U-cell pass
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
@@ -1792,11 +1799,13 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       ! str1_slot..str8_slot.  The U pass below reads a DIFFERENT component at
       ! each neighbour -- str1 at this slot, str2 at E, str3 at N, str4 at NE
       ! -- so one array per component gives each its own stream, where a
-      ! (slot,8) array would stride across both dimensions at once.  ncells+1:
-      ! the last entry is the block's dead slot, which every missing neighbour
-      ! points at and which stays zero.
-      real (kind=dbl_kind), dimension(ncells+1):: &
-         str1, str2, str3, str4, str5, str6, str7, str8
+      ! (slot,8) array would stride across both dimensions at once.
+      !
+      ! These live at module scope now: the kernel indexes globally, and as
+      ! automatic arrays they were allocated and freed on each of the five
+      ! calls per nonlinear iteration.  Only this block's range is zeroed --
+      ! zeroing all of dynTot per block would be nblocks times the work.
+      ! hi+1 is the block's dead slot, which missing neighbours point at.
 
       real (kind=dbl_kind) :: &
          ccaimp,ccb        , & ! intermediate variables
@@ -1830,16 +1839,16 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       ! Initialize
       !-----------------------------------------------------------------
 
-      str1(:) = c0
-      str2(:) = c0
-      str3(:) = c0
-      str4(:) = c0
-      str5(:) = c0
-      str6(:) = c0
-      str7(:) = c0
-      str8(:) = c0
+      str1(lo:hi+1) = c0
+      str2(lo:hi+1) = c0
+      str3(lo:hi+1) = c0
+      str4(lo:hi+1) = c0
+      str5(lo:hi+1) = c0
+      str6(lo:hi+1) = c0
+      str7(lo:hi+1) = c0
+      str8(lo:hi+1) = c0
 
-      do is = 1, ncells
+      do is = lo, hi
          if (skipT(is)) cycle
 
          isW  = nbrW(is)
@@ -1992,7 +2001,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       ! Form Au and Av
       !-----------------------------------------------------------------
 
-      do is = 1, ncells
+      do is = lo, hi
          if (skipU(is)) cycle
 
          isE  = nbrE(is)
@@ -3782,19 +3791,19 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
       !$OMP PARALLEL DO PRIVATE(iblk)
       do iblk = 1, nblocks
-         call matvec (dynCnt(iblk), skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),                                                &
-                      skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_W), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_SW), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_S), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_E), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_NE), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_N),          &
-                      dxT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
-                      dxhy_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyhx_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                      cxp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), cyp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
-                      cxm_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), cym_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
-                      solx(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), soly(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),           &
-                      vrel_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), Cb_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),         &
-                      zetax2_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),                                                       &
-                      etax2_s (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),                                                       &
-                      umassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), fmU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),    &
-                      uarear_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),                                                      &
-                      workspace_x(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), workspace_y(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         call matvec (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipT,                                                &
+                      skipU, NbrW_Task, NbrSW_Task, NbrS_Task, NbrE_Task, NbrNE_Task, NbrN_Task,          &
+                      dxT_slot, dyT_slot,   &
+                      dxhy_slot, dyhx_slot, &
+                      cxp_slot, cyp_slot,   &
+                      cxm_slot, cym_slot,   &
+                      solx, soly,           &
+                      vrel_s, Cb_s,         &
+                      zetax2_s,                                                       &
+                      etax2_s,                                                       &
+                      umassdti_slot, fmU_slot,    &
+                      uarear_slot,                                                      &
+                      workspace_x, workspace_y)
          call residual_vec (dynCnt(iblk), skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),                                                    &
                             bx(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), by(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),                   &
                             workspace_x(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), workspace_y(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -3873,20 +3882,20 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
             !$OMP PARALLEL DO PRIVATE(iblk)
             do iblk = 1, nblocks
-               call matvec (dynCnt(iblk), skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),                                                    &
-                            skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_W), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_SW), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_S), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_E), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_NE), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_N),              &
-                            dxT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),       &
-                            dxhy_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyhx_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),     &
-                            cxp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), cyp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),       &
-                            cxm_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), cym_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),       &
-                            workspace_x(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), workspace_y(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            vrel_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), Cb_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),             &
-                            zetax2_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),                                                           &
-                            etax2_s (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),                                                           &
-                            umassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), fmU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),        &
-                            uarear_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),                                                          &
-                            arnoldi_basis_x(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,nextit),                                               &
-                            arnoldi_basis_y(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,nextit))
+               call matvec (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipT,                                                    &
+                            skipU, NbrW_Task, NbrSW_Task, NbrS_Task, NbrE_Task, NbrNE_Task, NbrN_Task,              &
+                            dxT_slot, dyT_slot,       &
+                            dxhy_slot, dyhx_slot,     &
+                            cxp_slot, cyp_slot,       &
+                            cxm_slot, cym_slot,       &
+                            workspace_x, workspace_y, &
+                            vrel_s, Cb_s,             &
+                            zetax2_s,                                                           &
+                            etax2_s,                                                           &
+                            umassdti_slot, fmU_slot,        &
+                            uarear_slot,                                                          &
+                            arnoldi_basis_x(:,nextit),                                               &
+                            arnoldi_basis_y(:,nextit))
             enddo
             !$OMP END PARALLEL DO
 
@@ -4157,19 +4166,19 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
       !$OMP PARALLEL DO PRIVATE(iblk)
       do iblk = 1, nblocks
-         call matvec (dynCnt(iblk), skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),                                                &
-                      skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_W), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_SW), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_S), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_E), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_NE), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_N),          &
-                      dxT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
-                      dxhy_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyhx_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                      cxp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), cyp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
-                      cxm_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), cym_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
-                      solx(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), soly(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),           &
-                      vrel_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), Cb_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),         &
-                      zetax2_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),                                                       &
-                      etax2_s (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),                                                       &
-                      umassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), fmU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),    &
-                      uarear_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),                                                      &
-                      workspace_x(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), workspace_y(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         call matvec (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipT,                                                &
+                      skipU, NbrW_Task, NbrSW_Task, NbrS_Task, NbrE_Task, NbrNE_Task, NbrN_Task,          &
+                      dxT_slot, dyT_slot,   &
+                      dxhy_slot, dyhx_slot, &
+                      cxp_slot, cyp_slot,   &
+                      cxm_slot, cym_slot,   &
+                      solx, soly,           &
+                      vrel_s, Cb_s,         &
+                      zetax2_s,                                                       &
+                      etax2_s,                                                       &
+                      umassdti_slot, fmU_slot,    &
+                      uarear_slot,                                                      &
+                      workspace_x, workspace_y)
          call residual_vec (dynCnt(iblk), skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),                                                    &
                             bx(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), by(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),                   &
                             workspace_x(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), workspace_y(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
@@ -4247,20 +4256,20 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
             !$OMP PARALLEL DO PRIVATE(iblk)
             do iblk = 1, nblocks
-               call matvec (dynCnt(iblk), skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),                                                    &
-                            skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_W), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_SW), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_S), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_E), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_NE), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_N),              &
-                            dxT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyT_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),       &
-                            dxhy_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dyhx_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),     &
-                            cxp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), cyp_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),       &
-                            cxm_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), cym_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),       &
-                            workspace_x(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), workspace_y(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            vrel_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), Cb_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),             &
-                            zetax2_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),                                                           &
-                            etax2_s (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),                                                           &
-                            umassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), fmU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),        &
-                            uarear_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),                                                          &
-                            arnoldi_basis_x(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,nextit),                                               &
-                            arnoldi_basis_y(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,nextit))
+               call matvec (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipT,                                                    &
+                            skipU, NbrW_Task, NbrSW_Task, NbrS_Task, NbrE_Task, NbrNE_Task, NbrN_Task,              &
+                            dxT_slot, dyT_slot,       &
+                            dxhy_slot, dyhx_slot,     &
+                            cxp_slot, cyp_slot,       &
+                            cxm_slot, cym_slot,       &
+                            workspace_x, workspace_y, &
+                            vrel_s, Cb_s,             &
+                            zetax2_s,                                                           &
+                            etax2_s,                                                           &
+                            umassdti_slot, fmU_slot,        &
+                            uarear_slot,                                                          &
+                            arnoldi_basis_x(:,nextit),                                               &
+                            arnoldi_basis_y(:,nextit))
             enddo
             !$OMP END PARALLEL DO
 
