@@ -1456,7 +1456,7 @@
                             stress12_3, stress12_4, &
                             uvel_init,  vvel_init,  &
                             uvel,       vvel,       &
-                            Xmap,       Xoff,       &
+                            Xmap,       Xoff,       ncnt,       &
                             skipX,      &
                             skipTc,                 &
                             TbU,        &
@@ -1526,7 +1526,8 @@
       ! Xoff is this block's dynOff: the slot arrays below are module state,
       ! so the zeroing needs the offset to address this block's slice.
       integer (kind=int_kind), intent(in) :: &
-         Xoff        ! dynOff(iblk)
+         Xoff      , & ! dynOff(iblk): this block's slots start at Xoff+1
+         ncnt          ! dynCnt(iblk): its count, dead slot at Xoff+ncnt+1
 
       ! skipTc is skipX's counterpart for the T cells: .true. where the slot
       ! carries no ice this step.  It is set over the SAME range as icellT,
@@ -1663,41 +1664,44 @@
       !-----------------------------------------------------------------
 
       nflat = nx_block*ny_block
-      nslot = size(TbU)        ! a dummy that is already compressed
-      nact  = nslot - 1
+      ! ⚠ From the block, not size(TbU).  The compressed dummies are whole
+      ! arrays now, so their size is dynTot and says nothing about how many
+      ! slots THIS block owns.
+      nslot = ncnt + 1
+      nact  = ncnt
 
       ! cross-check the reference itself before trusting it
-      call chk_len(size(strtltx), nslot, 'strtltx', subname)
+      call chk_len(size(strtltx), size(TbU), 'strtltx', subname)
 
       call chk_len(size(Xmask)   , nflat, 'Xmask'   , subname)
       call chk_len(size(iceTmask), nflat, 'iceTmask', subname)
       call chk_len(size(iceXmask), nflat, 'iceXmask', subname)
-      call chk_len(size(aiX)     , nslot, 'aiX'     , subname)
-      call chk_len(size(Xmass)   , nslot, 'Xmass'   , subname)
-      call chk_len(size(fcor)    , nslot, 'fcor'    , subname)
+      call chk_len(size(aiX)     , size(TbU), 'aiX'     , subname)
+      call chk_len(size(Xmass)   , size(TbU), 'Xmass'   , subname)
+      call chk_len(size(fcor)    , size(TbU), 'fcor'    , subname)
       call chk_len(size(Xmap)    , nflat, 'Xmap'    , subname)
-      call chk_len(size(Xmassdti), nslot, 'Xmassdti', subname)
-      call chk_len(size(waterx)  , nslot, 'waterx'  , subname)
-      call chk_len(size(watery)  , nslot, 'watery'  , subname)
-      call chk_len(size(forcex)  , nslot, 'forcex'  , subname)
-      call chk_len(size(forcey)  , nslot, 'forcey'  , subname)
-      call chk_len(size(taubx)   , nslot, 'taubx'   , subname)
-      call chk_len(size(tauby)   , nslot, 'tauby'   , subname)
+      call chk_len(size(Xmassdti), size(TbU), 'Xmassdti', subname)
+      call chk_len(size(waterx)  , size(TbU), 'waterx'  , subname)
+      call chk_len(size(watery)  , size(TbU), 'watery'  , subname)
+      call chk_len(size(forcex)  , size(TbU), 'forcex'  , subname)
+      call chk_len(size(forcey)  , size(TbU), 'forcey'  , subname)
+      call chk_len(size(taubx)   , size(TbU), 'taubx'   , subname)
+      call chk_len(size(tauby)   , size(TbU), 'tauby'   , subname)
 
-      call chk_len(size(strtlty) , nslot, 'strtlty' , subname)
-      call chk_len(size(uocn)    , nslot, 'uocn'    , subname)
-      call chk_len(size(vocn)    , nslot, 'vocn'    , subname)
-      call chk_len(size(ss_tltx) , nslot, 'ss_tltx' , subname)
-      call chk_len(size(ss_tlty) , nslot, 'ss_tlty' , subname)
-      call chk_len(size(strairx) , nslot, 'strairx' , subname)
-      call chk_len(size(strairy) , nslot, 'strairy' , subname)
+      call chk_len(size(strtlty) , size(TbU), 'strtlty' , subname)
+      call chk_len(size(uocn)    , size(TbU), 'uocn'    , subname)
+      call chk_len(size(vocn)    , size(TbU), 'vocn'    , subname)
+      call chk_len(size(ss_tltx) , size(TbU), 'ss_tltx' , subname)
+      call chk_len(size(ss_tlty) , size(TbU), 'ss_tlty' , subname)
+      call chk_len(size(strairx) , size(TbU), 'strairx' , subname)
+      call chk_len(size(strairy) , size(TbU), 'strairy' , subname)
 
-      call chk_len(size(skipTc)   , nact, 'skipTc'   , subname)
-      call chk_len(size(skipX)    , nact, 'skipX'    , subname)
-      call chk_len(size(uvel_init), nact, 'uvel_init', subname)
-      call chk_len(size(vvel_init), nact, 'vvel_init', subname)
+      call chk_len(size(skipTc)   , size(TbU), 'skipTc'   , subname)
+      call chk_len(size(skipX)    , size(TbU), 'skipX'    , subname)
+      call chk_len(size(uvel_init), size(TbU), 'uvel_init', subname)
+      call chk_len(size(vvel_init), size(TbU), 'vvel_init', subname)
 
-      if (present(rheofactX_s  )) call chk_len(size(rheofactX_s  ), nslot, 'rheofactX_s'  , subname)
+      if (present(rheofactX_s  )) call chk_len(size(rheofactX_s  ), size(TbU), 'rheofactX_s'  , subname)
 
       !-----------------------------------------------------------------
       ! Initialize
@@ -1705,14 +1709,14 @@
 
       ! compressed arrays are cleared over their own extent; every slot starts
       ! inactive and is switched on below only where there is ice
-      taubx    (:) = c0
-      tauby    (:) = c0
-      waterx   (:) = c0
-      watery   (:) = c0
-      forcex   (:) = c0
-      forcey   (:) = c0
-      Xmassdti (:) = c0
-      skipX    (:) = .true.
+      taubx    (Xoff+1:Xoff+nslot) = c0
+      tauby    (Xoff+1:Xoff+nslot) = c0
+      waterx   (Xoff+1:Xoff+nslot) = c0
+      watery   (Xoff+1:Xoff+nslot) = c0
+      forcex   (Xoff+1:Xoff+nslot) = c0
+      forcey   (Xoff+1:Xoff+nslot) = c0
+      Xmassdti (Xoff+1:Xoff+nslot) = c0
+      skipX    (Xoff+1:Xoff+nact) = .true.
 
       ! The compressed copies are cleared over their own extent, dead slot
       ! included.  That reproduces pack_to_slots exactly: it sets the dead slot
@@ -1720,7 +1724,7 @@
       ! arrays it copies from have just been zeroed here, so the slots of cells
       ! without ice this step end up at zero either way.
 
-      TbU(:) = c0   ! whole slice, the block loop below zeroed every cell
+      TbU(Xoff+1:Xoff+nslot) = c0   ! this block's slots, as the block loop did
 
       do j = 1, ny_block
       do i = 1, nx_block
@@ -1777,11 +1781,11 @@
       ! The icellT/indxTi/indxTj list is gone: nothing consumes it any more,
       ! so only the membership it encoded is still needed, and skipTc carries
       ! that directly.
-      skipTc(:) = .true.
+      skipTc(Xoff+1:Xoff+nact) = .true.
       do j = jlo, jhi+1
       do i = ilo, ihi+1
          ijb = (j-1)*nx_block + i
-         if (iceTmask(ijb)) skipTc(Xmap(ijb)) = .false.
+         if (iceTmask(ijb)) skipTc(Xoff+Xmap(ijb)) = .false.
       enddo
       enddo
 
@@ -1805,22 +1809,22 @@
             ! at a cell that has no entry.
             iceXmask(ijb) = .false.
          else
-            iceXmask(ijb) = (Xmask(ijb)) .and. (aiX  (msx) > dyn_area_min) &
-                                         .and. (Xmass(msx) > dyn_mass_min)
+            iceXmask(ijb) = (Xmask(ijb)) .and. (aiX  (Xoff+msx) > dyn_area_min) &
+                                         .and. (Xmass(Xoff+msx) > dyn_mass_min)
          endif
 
          if (iceXmask(ijb)) then
 
             ! initialize velocity for new ice points to ocean sfc current
             if (.not. iceXmask_old(i,j)) then
-               uvel(i,j) = uocn(Xmap(ijb))
-               vvel(i,j) = vocn(Xmap(ijb))
+               uvel(i,j) = uocn(Xoff+Xmap(ijb))
+               vvel(i,j) = vocn(Xoff+Xmap(ijb))
             endif
 
             ! compressed: this cell owns slot Xmap(ijb) for the whole run
-            uvel_init(Xmap(ijb)) = uvel(i,j)
-            vvel_init(Xmap(ijb)) = vvel(i,j)
-            skipX    (Xmap(ijb)) = .false.
+            uvel_init(Xoff+Xmap(ijb)) = uvel(i,j)
+            vvel_init(Xoff+Xmap(ijb)) = vvel(i,j)
+            skipX    (Xoff+Xmap(ijb)) = .false.
          else
             ! set velocity and stresses to zero for masked-out points
             uvel(i,j)    = c0
@@ -1858,7 +1862,7 @@
       ! per cell.  skipX carries exactly the membership the list encodes -- it
       ! is set .false. at Xmap(ijb) for the same cells, in the loop that builds
       ! the list -- so the two visit the same slots.
-      do is = 1, nact
+      do is = Xoff+1, Xoff+nact
          if (skipX(is)) cycle
 
          if (free_drift_approx .and. present(rheofactX_s)) then

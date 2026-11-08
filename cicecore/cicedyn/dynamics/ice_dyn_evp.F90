@@ -552,37 +552,37 @@
 
             call dyn_prep2 (nx_block,             ny_block,             &
                             ilo, ihi,             jlo, jhi,             &
-                            aiU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   umass_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
-                            umassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            fcor_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            aiU_slot,   umass_slot,   &
+                            umassdti_slot, &
+                            fcor_slot, &
                             umask     (:,iblk)  ,                       &
-                            uocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), vocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            strairxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            strairyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            ss_tltxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            ss_tltyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            uocnU_slot, vocnU_slot, &
+                            strairxU, &
+                            strairyU, &
+                            ss_tltxU_slot, &
+                            ss_tltyU_slot, &
                             iceTmask  (:,iblk),   iceUmask  (:,iblk),   &
-                            fmU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dt                  , &
-                            strtltxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            strtltyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            fmU_slot, dt                  , &
+                            strtltxU, &
+                            strtltyU, &
                             strintxU  (:,iblk), strintyU  (:,iblk), &
-                            taubxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)  , taubyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)  , &
-                            waterxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            wateryU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            forcexU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            forceyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            taubxU_slot  , taubyU_slot  , &
+                            waterxU_slot, &
+                            wateryU_slot, &
+                            forcexU_slot, &
+                            forceyU_slot, &
                             stressp_1 (:,iblk), stressp_2 (:,iblk), &
                             stressp_3 (:,iblk), stressp_4 (:,iblk), &
                             stressm_1 (:,iblk), stressm_2 (:,iblk), &
                             stressm_3 (:,iblk), stressm_4 (:,iblk), &
                             stress12_1(:,iblk), stress12_2(:,iblk), &
                             stress12_3(:,iblk), stress12_4(:,iblk), &
-                            uvel_init (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),   vvel_init (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),   &
+                            uvel_init,   vvel_init,   &
                             uvel(:,iblk), vvel(:,iblk), &
-                           dynMap(:,iblk), dynOff(iblk), skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                           skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                            TbU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            rheofactU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                           dynMap(:,iblk), dynOff(iblk), dynCnt(iblk), skipU, &
+                           skipT, &
+                            TbU_slot, &
+                            rheofactU_slot)
 
             !-----------------------------------------------------------------
             ! ice strength
@@ -623,36 +623,36 @@
 
             call dyn_prep2 (nx_block,             ny_block,             &
                             ilo, ihi,             jlo, jhi,             &
-                            aiU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   umass_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
-                            umassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            fcor_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            aiU_slot,   umass_slot,   &
+                            umassdti_slot, &
+                            fcor_slot, &
                             umaskCD   (:,iblk)  ,                       &
-                            uocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), vocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            strairxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            strairyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            ss_tltxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            ss_tltyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            uocnU_slot, vocnU_slot, &
+                            strairxU, &
+                            strairyU, &
+                            ss_tltxU_slot, &
+                            ss_tltyU_slot, &
                             iceTmask  (:,iblk),   iceUmask  (:,iblk),   &
-                            fmU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dt,                   &
-                            strtltxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            strtltyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            fmU_slot, dt,                   &
+                            strtltxU, &
+                            strtltyU, &
                             strintxU  (:,iblk), strintyU  (:,iblk), &
-                            taubxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)  , taubyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)  , &
-                            waterxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            wateryU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            forcexU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            forceyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            taubxU_slot  , taubyU_slot  , &
+                            waterxU_slot, &
+                            wateryU_slot, &
+                            forcexU_slot, &
+                            forceyU_slot, &
                             stressp_1 (:,iblk), stressp_2 (:,iblk), &
                             stressp_3 (:,iblk), stressp_4 (:,iblk), &
                             stressm_1 (:,iblk), stressm_2 (:,iblk), &
                             stressm_3 (:,iblk), stressm_4 (:,iblk), &
                             stress12_1(:,iblk), stress12_2(:,iblk), &
                             stress12_3(:,iblk), stress12_4(:,iblk), &
-                            uvel_init (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),   vvel_init (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),   &
+                            uvel_init,   vvel_init,   &
                             uvel(:,iblk), vvel(:,iblk), &
-                           dynMap(:,iblk), dynOff(iblk), skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                           skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                            TbU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                           dynMap(:,iblk), dynOff(iblk), dynCnt(iblk), skipU, &
+                           skipT, &
+                            TbU_slot)
 
             !-----------------------------------------------------------------
             ! ice strength
@@ -686,37 +686,37 @@
 
             call dyn_prep2 (nx_block,             ny_block,             &
                             ilo, ihi,             jlo, jhi,             &
-                            aiN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   nmass_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
-                            nmassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            fcorN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            aiN_slot,   nmass_slot,   &
+                            nmassdti_slot, &
+                            fcorN_slot, &
                             nmask     (:,iblk)  ,                       &
-                            uocnN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), vocnN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            strairxN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            strairyN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            ss_tltxN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            ss_tltyN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            uocnN_slot, vocnN_slot, &
+                            strairxN, &
+                            strairyN, &
+                            ss_tltxN_slot, &
+                            ss_tltyN_slot, &
                             iceTmask  (:,iblk),   iceNmask  (:,iblk),   &
-                            fmN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dt                  , &
-                            strtltxN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            strtltyN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            fmN_slot, dt                  , &
+                            strtltxN, &
+                            strtltyN, &
                             strintxN  (:,:,iblk), strintyN  (:,:,iblk), &
-                            taubxN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)  , taubyN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)  , &
-                            waterxN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            wateryN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            forcexN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            forceyN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            taubxN_slot  , taubyN_slot  , &
+                            waterxN_slot, &
+                            wateryN_slot, &
+                            forcexN_slot, &
+                            forceyN_slot, &
                             stressp_1 (:,iblk), stressp_2 (:,iblk), &
                             stressp_3 (:,iblk), stressp_4 (:,iblk), &
                             stressm_1 (:,iblk), stressm_2 (:,iblk), &
                             stressm_3 (:,iblk), stressm_4 (:,iblk), &
                             stress12_1(:,iblk), stress12_2(:,iblk), &
                             stress12_3(:,iblk), stress12_4(:,iblk), &
-                            uvelN_init(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),   vvelN_init(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),   &
+                            uvelN_init,   vvelN_init,   &
                             uvelN     (:,:,iblk), vvelN     (:,:,iblk), &
-                           dynMap(:,iblk), dynOff(iblk), skipN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                           skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                            TbN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            rheofactN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                           dynMap(:,iblk), dynOff(iblk), dynCnt(iblk), skipN, &
+                           skipT, &
+                            TbN_slot, &
+                            rheofactN_slot)
 
             !-----------------------------------------------------------------
             ! more preparation for dynamics on E grid
@@ -724,37 +724,37 @@
 
             call dyn_prep2 (nx_block,             ny_block,             &
                             ilo, ihi,             jlo, jhi,             &
-                            aiE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   emass_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
-                            emassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            fcorE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            aiE_slot,   emass_slot,   &
+                            emassdti_slot, &
+                            fcorE_slot, &
                             emask     (:,iblk)  ,                       &
-                            uocnE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), vocnE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            strairxE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            strairyE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            ss_tltxE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            ss_tltyE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            uocnE_slot, vocnE_slot, &
+                            strairxE, &
+                            strairyE, &
+                            ss_tltxE_slot, &
+                            ss_tltyE_slot, &
                             iceTmask  (:,iblk),   iceEmask  (:,iblk),   &
-                            fmE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dt                  , &
-                            strtltxE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            strtltyE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            fmE_slot, dt                  , &
+                            strtltxE, &
+                            strtltyE, &
                             strintxE  (:,:,iblk), strintyE  (:,:,iblk), &
-                            taubxE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)  , taubyE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)  , &
-                            waterxE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            wateryE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            forcexE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            forceyE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                            taubxE_slot  , taubyE_slot  , &
+                            waterxE_slot, &
+                            wateryE_slot, &
+                            forcexE_slot, &
+                            forceyE_slot, &
                             stressp_1 (:,iblk), stressp_2 (:,iblk), &
                             stressp_3 (:,iblk), stressp_4 (:,iblk), &
                             stressm_1 (:,iblk), stressm_2 (:,iblk), &
                             stressm_3 (:,iblk), stressm_4 (:,iblk), &
                             stress12_1(:,iblk), stress12_2(:,iblk), &
                             stress12_3(:,iblk), stress12_4(:,iblk), &
-                            uvelE_init(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),   vvelE_init(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),   &
+                            uvelE_init,   vvelE_init,   &
                             uvelE     (:,:,iblk), vvelE     (:,:,iblk), &
-                           dynMap(:,iblk), dynOff(iblk), skipE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                           skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                            TbE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            rheofactE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                           dynMap(:,iblk), dynOff(iblk), dynCnt(iblk), skipE, &
+                           skipT, &
+                            TbE_slot, &
+                            rheofactE_slot)
 
             do i=1,nx_block
             do j=1,ny_block

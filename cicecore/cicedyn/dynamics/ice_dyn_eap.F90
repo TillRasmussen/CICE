@@ -352,36 +352,36 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
          call dyn_prep2 (nx_block,             ny_block,             &
                          ilo, ihi,             jlo, jhi,             &
-                         aiU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   umass_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),   &
-                         umassdti_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                         fcor_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                         aiU_slot,   umass_slot,   &
+                         umassdti_slot, &
+                         fcor_slot, &
                          umask     (:,iblk)  ,                       &
-                         uocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), vocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                         strairxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                         strairyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                         ss_tltxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                         ss_tltyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                         uocnU_slot, vocnU_slot, &
+                         strairxU, &
+                         strairyU, &
+                         ss_tltxU_slot, &
+                         ss_tltyU_slot, &
                          iceTmask  (:,iblk),   iceUmask  (:,iblk),   &
-                         fmU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dt,                   &
-                         strtltxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                         strtltyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                         fmU_slot, dt,                   &
+                         strtltxU, &
+                         strtltyU, &
                          strintxU  (:,iblk), strintyU  (:,iblk), &
-                         taubxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)  , taubyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)  , &
-                         waterxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                         wateryU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                         forcexU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                         forceyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                         taubxU_slot  , taubyU_slot  , &
+                         waterxU_slot, &
+                         wateryU_slot, &
+                         forcexU_slot, &
+                         forceyU_slot, &
                          stressp_1 (:,iblk), stressp_2 (:,iblk), &
                          stressp_3 (:,iblk), stressp_4 (:,iblk), &
                          stressm_1 (:,iblk), stressm_2 (:,iblk), &
                          stressm_3 (:,iblk), stressm_4 (:,iblk), &
                          stress12_1(:,iblk), stress12_2(:,iblk), &
                          stress12_3(:,iblk), stress12_4(:,iblk), &
-                         uvel_init (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),   vvel_init (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),   &
+                         uvel_init,   vvel_init,   &
                          uvel(:,iblk), vvel(:,iblk), &
-                        dynMap(:,iblk), dynOff(iblk), skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                        skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                         TbU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                        dynMap(:,iblk), dynOff(iblk), dynCnt(iblk), skipU, &
+                        skipT, &
+                         TbU_slot)
 
          !-----------------------------------------------------------------
          ! Initialize structure tensor
