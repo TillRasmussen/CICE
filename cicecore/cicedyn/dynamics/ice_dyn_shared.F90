@@ -1294,11 +1294,14 @@
                             ilo, ihi,  jlo, jhi, &
                             aice,      vice,     &
                             vsno,      map,      Tmask,    &
+                            Xoff,      ncnt,     &
                             Tmass,     iceTmask)
 
       integer (kind=int_kind), intent(in) :: &
          nx_block, ny_block, & ! block dimensions
-         ilo,ihi,jlo,jhi       ! beginning and end of physical domain
+         ilo,ihi,jlo,jhi   , & ! beginning and end of physical domain
+         Xoff              , & ! dynOff(iblk): this block's slots start at Xoff+1
+         ncnt                  ! dynCnt(iblk): its count, dead slot at ncnt+1
 
       ! all array arguments are assumed shape, so the actual arguments must be
       ! array sections of the right rank: (nx_block,ny_block) for the rank-2
@@ -1365,8 +1368,12 @@
          ! is false there and both results below are forced regardless.  But
          ! Fortran does not guarantee short-circuit evaluation, so aice(ms)
          ! may be read even when Tmask(ij) is false, and ms must be in range.
+         ! ⚠ ms stays BLOCK-LOCAL so "< 1" still means "no slot", and the
+         ! fallback is THIS block's dead slot at ncnt+1.  The arrays are whole
+         ! now, so every read adds Xoff; size(aice) would be dynTot, which is
+         ! the LAST block's dead slot rather than this one's.
          ms = map(ij)
-         if (ms < 1) ms = size(aice)
+         if (ms < 1) ms = ncnt + 1
 
          !-----------------------------------------------------------------
          ! total mass of ice and snow, centered in T-cell
@@ -1374,7 +1381,7 @@
          !       including ghost cells
          !-----------------------------------------------------------------
          if (Tmask(ij)) then
-            Tmass(ij) = (rhoi*vice(ms) + rhos*vsno(ms)) ! kg/m^2
+            Tmass(ij) = (rhoi*vice(Xoff+ms) + rhos*vsno(Xoff+ms)) ! kg/m^2
          else
             Tmass(ij) = c0
          endif
@@ -1382,7 +1389,7 @@
          !-----------------------------------------------------------------
          ! ice extent mask (T-cells)
          !-----------------------------------------------------------------
-           tmphm(ij) = Tmask(ij) .and. (aice (ms) > dyn_area_min) &
+           tmphm(ij) = Tmask(ij) .and. (aice (Xoff+ms) > dyn_area_min) &
                                 .and. (Tmass(ij)  > dyn_mass_min)
 
          !-----------------------------------------------------------------

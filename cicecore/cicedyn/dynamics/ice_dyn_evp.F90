@@ -432,10 +432,10 @@
 
          call dyn_prep1 (nx_block,           ny_block,           &
                          ilo, ihi,           jlo, jhi,           &
-                           aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                           vice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                           vsno_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                           aice_slot,          vice_slot,          &
+                           vsno_slot,                              &
                            dynMap  (:,iblk),   tmask   (:,  iblk), &
+                         dynOff(iblk),       dynCnt(iblk),       &
                          tmass   (:,iblk),   iceTmask(:,iblk))
 
       enddo                     ! iblk
