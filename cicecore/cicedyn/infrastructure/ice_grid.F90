@@ -235,6 +235,9 @@
 !   dynCnt(iblk)    number of slots that block holds
 !   dynTot          total slots over all local blocks
 !   dynMap(ij,iblk) block-local slot of a cell, 0 if not stored
+!   dynCntA(iblk)   of dynCnt, how many are potentially active; those are
+!                   numbered FIRST, so a block reads [ active | ring | dead ]
+!                   and an active-only loop runs off+1 .. off+cntA
 !   dynIJ(slot)     reverse of dynMap, 0 at a dead slot
 !   dynBlk(slot)    block owning each slot, 0 at a dead slot
 !   Nbr_Local(slot,d)  block-local slot one step in direction d
@@ -271,7 +274,7 @@
          dynMaxCnt     ! largest dynCnt over the local blocks
 
       integer (kind=int_kind), dimension(:), allocatable, public :: &
-         dynOff, dynCnt, dynIJ, dynBlk
+         dynOff, dynCnt, dynCntA, dynIJ, dynBlk
 
       integer (kind=int_kind), dimension(:,:), allocatable, public :: &
          dynMap, Nbr_Local
@@ -7015,17 +7018,19 @@
 ! neighbour index arrays to be precomputed later, the way ice_dyn_evp1d
 ! precomputes ee/ne/se/nw/sw/sse against its own static list.
 
-      subroutine set_ragged_layout(mask, off, cnt, total, map)
+      subroutine set_ragged_layout(mask, act, off, cnt, cntA, total, map)
 
       use ice_domain, only: nblocks
 
       ! flattened: element (i,j,iblk) lives at ((j-1)*nx_block + i, iblk)
       logical (kind=log_kind), dimension(:,:), intent(in) :: &
-         mask               ! static mask selecting the cells to store
+         mask           , & ! static mask selecting the cells to store
+         act                ! those of them a kernel can ever visit
 
       integer (kind=int_kind), dimension(:), intent(out) :: &
          off            , & ! first slot of each block, minus one
-         cnt                ! number of slots held by each block
+         cnt            , & ! number of slots held by each block
+         cntA               ! of which potentially active, numbered first
 
       integer (kind=int_kind), intent(out) :: &
          total              ! total number of slots
@@ -7043,13 +7048,32 @@
 
       off(:)   = 0
       cnt(:)   = 0
+      cntA(:)  = 0
       map(:,:) = 0
 
+      ! Two passes, so each block reads [ active | neighbour ring | dead ].
+      ! A loop that only has business at cells which can carry ice runs
+      ! off(iblk)+1 .. off(iblk)+cntA(iblk) and never walks the ring.
+      !
+      ! ⚠ "active" here is STATIC -- it is the set a kernel can EVER visit.
+      ! skipT/skipU remain necessary inside that range: they come from
+      ! iceTmask/iceUmask, which dyn_prep2 rebuilds every timestep as the
+      ! ice edge moves.
       do iblk = 1, nblocks
          do j = 1, ny_block
          do i = 1, nx_block
             ij = (j-1)*nx_block + i
-            if (mask(ij,iblk)) then
+            if (mask(ij,iblk) .and. act(ij,iblk)) then
+               cnt(iblk)    = cnt(iblk) + 1
+               map(ij,iblk) = cnt(iblk)
+            endif
+         enddo
+         enddo
+         cntA(iblk) = cnt(iblk)
+         do j = 1, ny_block
+         do i = 1, nx_block
+            ij = (j-1)*nx_block + i
+            if (mask(ij,iblk) .and. .not. act(ij,iblk)) then
                cnt(iblk)    = cnt(iblk) + 1
                map(ij,iblk) = cnt(iblk)
             endif
@@ -7452,7 +7476,7 @@
       ! kernel to read a T-point array such as str.
       ! ------------------------------------------------------------------
       allocate(mask_any(nx_block*ny_block,max_blocks), &
-               dynOff(max_blocks), dynCnt(max_blocks), &
+               dynOff(max_blocks), dynCnt(max_blocks), dynCntA(max_blocks), &
                dynMap(nx_block*ny_block,max_blocks), stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
 
@@ -7461,41 +7485,6 @@
       else
          mask_any = tmask .or. umaskCD .or. nmask .or. emask
       endif
-
-      ! ------------------------------------------------------------------
-      ! Every cell an active cell READS also joins the map -- the full 3x3
-      ! ring, matching the eight directions set_neighbours builds.
-      !
-      ! Without this a land cell beside an active cell owns no slot, yet it
-      ! carries a real grid metric in the block layout.  Every neighbour
-      ! lookup to it then resolves to the block's dead slot and reads the
-      ! dead-slot convention instead of the cell's value: c1 for dxN_slot
-      ! and dyE_slot because they are divided by, c0 elsewhere.  That is why
-      ! ratiod* has to read its neighbour metric from the block array, why
-      ! hwater_slot needs a large sentinel for grid_neighbor_min, and why
-      ! area must never be summed over neighbour slots.
-      !
-      ! Marked from a SNAPSHOT of the active set, not in place: growing the
-      ! ring from cells the ring itself added would widen it without bound.
-      ! ------------------------------------------------------------------
-      allocate(mask_act(nx_block*ny_block,max_blocks), stat=ierr)
-      if (ierr/=0) call abort_ice(subname//': Out of memory')
-      mask_act = mask_any
-
-      do iblk = 1, nblocks
-         do j = 1, ny_block
-         do i = 1, nx_block
-            if (.not. mask_act((j-1)*nx_block+i,iblk)) cycle
-            do jj = max(j-1,1), min(j+1,ny_block)
-            do ii = max(i-1,1), min(i+1,nx_block)
-               mask_any((jj-1)*nx_block+ii,iblk) = .true.
-            enddo
-            enddo
-         enddo
-         enddo
-      enddo
-
-      deallocate(mask_act)
 
       ! ------------------------------------------------------------------
       ! The whole ghost region joins the map, whatever the masks say.
@@ -7597,8 +7586,45 @@
          enddo
       endif
 
-      call set_ragged_layout(mask_any, dynOff, dynCnt, dynTot, dynMap)
-      deallocate(mask_any)
+      ! ------------------------------------------------------------------
+      ! Every cell an active cell READS also joins the map -- the full 3x3
+      ! ring, matching the eight directions set_neighbours builds.
+      !
+      ! Without this a land cell beside an active cell owns no slot, yet it
+      ! carries a real grid metric in the block layout.  Every neighbour
+      ! lookup to it then resolves to the block's dead slot and reads the
+      ! dead-slot convention instead of the cell's value: c1 for dxN_slot
+      ! and dyE_slot because they are divided by, c0 elsewhere.
+      !
+      ! ⚠ This runs LAST, after every other addition above, so mask_act is
+      ! the complete set a kernel can ever visit -- the masks, the forced
+      ! ghost rim and the extrapolation cells alike.  Marked from that
+      ! SNAPSHOT and not in place: growing the ring from cells the ring
+      ! itself added would widen it without bound.
+      !
+      ! mask_act is then what set_ragged_layout numbers FIRST, so each
+      ! block reads [ active | ring | dead ].
+      ! ------------------------------------------------------------------
+      allocate(mask_act(nx_block*ny_block,max_blocks), stat=ierr)
+      if (ierr/=0) call abort_ice(subname//': Out of memory')
+      mask_act = mask_any
+
+      do iblk = 1, nblocks
+         do j = 1, ny_block
+         do i = 1, nx_block
+            if (.not. mask_act((j-1)*nx_block+i,iblk)) cycle
+            do jj = max(j-1,1), min(j+1,ny_block)
+            do ii = max(i-1,1), min(i+1,nx_block)
+               mask_any((jj-1)*nx_block+ii,iblk) = .true.
+            enddo
+            enddo
+         enddo
+         enddo
+      enddo
+
+      call set_ragged_layout(mask_any, mask_act, dynOff, dynCnt, dynCntA, &
+                             dynTot, dynMap)
+      deallocate(mask_any, mask_act)
       dynMaxCnt = max(maxval(dynCnt), 1)
 
       allocate(Nbr_Local(dynTot,nbr_num), Nbr_Task(dynTot,nbr_num), stat=ierr)
