@@ -251,6 +251,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
 
       use ice_arrays_column, only: Cdn_ocn
       use ice_boundary, only: ice_HaloMask, ice_HaloUpdate, &
+          ice_HaloUpdate2DR8_compressed, &
           ice_HaloUpdate_stress_compressed, &
           ice_HaloDestroy, ice_HaloUpdate_stress
       use ice_blocks, only: block, get_block, nx_block, ny_block, &
@@ -275,7 +276,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
       use ice_grid, only: tmask, umask, dxT, dyT, dxU, dyU, &
           tarear, grid_average_X2Y,                         &
           grid_atm_dynu, grid_atm_dynv, grid_ocn_dynu, grid_ocn_dynv
-      use ice_state, only: aice_slot, vice_slot, vsno_slot, aice, aiU, vice, vsno, uvel, vvel, divu, shear, vort, &
+      use ice_state, only: aice_slot, aice0_slot, vice_slot, vsno_slot, aice, aiU, vice, vsno, uvel, vvel, divu, shear, vort, &
           aice_init, aice0, aicen, vicen, strength, &
           aicen_slot, vicen_slot
       use ice_timers, only: timer_dynamics, timer_bound, &
@@ -499,6 +500,9 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
       !-----------------------------------------------------------------
 
          strength(:,:,iblk) = c0  ! initialize
+         ! and the slots: the pack this replaces cleared the inactive
+         ! ones and the dead slot as a side effect of copying the block
+         strength_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = c0
          ! ⚠ iceTmask_slot, not skipPhys.  icellT is built over jlo..jhi+1 x
          ! ilo..ihi+1 -- the physical domain PLUS one north and east ghost
          ! row, where stresses are needed -- and selects on iceTmask alone.
@@ -512,12 +516,16 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
             ij = dynIJ(ms)
             j  = (ij-1)/nx_block + 1
             i  = ij - (j-1)*nx_block
-            call icepack_ice_strength (aice  = aice       (i,j,  iblk), &
-                                       vice  = vice       (i,j,  iblk), &
-                                       aice0 = aice0      (i,j,  iblk), &
+            call icepack_ice_strength (aice  = aice_slot (ms), &
+                                       vice  = vice_slot (ms), &
+                                       aice0 = aice0_slot(ms), &
                                        aicen = aicen_slot      (ms,:), &
                                        vicen = vicen_slot      (ms,:), &
-                                       strength = strength(i,j,  iblk))
+                                       strength = strength_slot(ms))
+
+                                       ! block form too: ice_diagnostics takes a global_maxval of it
+
+                                       strength(i,j,iblk) = strength_slot(ms)
          enddo  ! is
 
       enddo  ! iblk
@@ -528,8 +536,14 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
          file=__FILE__, line=__LINE__)
 
       call ice_timer_start(timer_bound)
-      call ice_HaloUpdate (strength,           halo_info, &
-                           field_loc_center,   field_type_scalar)
+      ! ⚠ On the SLOTS, as evp and eap already do.  The strength loop writes
+      ! strength_slot directly now; this used to halo the block form and a
+      ! pack further down carried the exchanged ghosts into the slots, so
+      ! dropping that pack without moving the exchange left ghost slots
+      ! holding pre-exchange values.  vprepro caught it.
+      call ice_HaloUpdate2DR8_compressed (strength_slot,    halo_info,         &
+                                          field_loc_center, field_type_scalar, &
+                                          dynMap,           dynOff)
       ! velocities may have changed in dyn_prep2
       call stack_fields(uvel, vvel, fld2)
       call ice_HaloUpdate (fld2,               halo_info, &
@@ -972,7 +986,6 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
             ! and ice_grid, so only what changes per iteration is packed here.
             ulin_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = uprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
             vlin_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = vprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
-            call pack_to_slots(strength(:,:,iblk), dynMap(:,iblk), strength_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
 
             call calc_zeta_dPr (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceTmask_slot, &
                                 ulin_s,    &
