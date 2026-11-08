@@ -60,7 +60,7 @@
           uocnU_slot, vocnU_slot, cdn_ocnU_slot, uarear_slot, tarear_slot, dynIJ, &
           pack_to_slots, unpack_from_slots, &
           nbr_W, nbr_S, nbr_SW, nbr_E, nbr_N, nbr_NE, &
-          skipT, skipU, skipN, skipE, &
+          iceTmask_slot, iceUmask_slot, iceNmask_slot, iceEmask_slot, &
           stressp_1_slot , stressp_2_slot , stressp_3_slot , stressp_4_slot , &
           stressm_1_slot , stressm_2_slot , stressm_3_slot , stressm_4_slot , &
           stress12_1_slot, stress12_2_slot, stress12_3_slot, stress12_4_slot, &
@@ -579,8 +579,8 @@
                             stress12_3(:,iblk), stress12_4(:,iblk), &
                             uvel_init,   vvel_init,   &
                             uvel(:,iblk), vvel(:,iblk), &
-                           dynMap(:,iblk), dynOff(iblk), dynCnt(iblk), skipU, &
-                           skipT, &
+                           dynMap(:,iblk), dynOff(iblk), dynCnt(iblk), iceUmask_slot, &
+                           iceTmask_slot, &
                             TbU_slot, &
                             rheofactU_slot)
 
@@ -589,14 +589,14 @@
             !-----------------------------------------------------------------
 
             strength(:,:,iblk) = c0  ! initialize
-            ! ⚠ skipT, not skipPhys.  icellT is built over jlo..jhi+1 x
+            ! ⚠ iceTmask_slot, not skipPhys.  icellT is built over jlo..jhi+1 x
             ! ilo..ihi+1 -- the physical domain PLUS one north and east ghost
             ! row, deliberately, because stresses are needed there -- and it
             ! selects on iceTmask.  dyn_prep1 records exactly that set in
-            ! skipT, the same mask the stress kernel walks, so the slot loop
+            ! iceTmask_slot, the same mask the stress kernel walks, so the slot loop
             ! reproduces icellT cell for cell with no dynMap lookup.
             do is = 1, dynCnt(iblk)
-               if (skipT(dynOff(iblk)+is)) cycle
+               if (.not. iceTmask_slot(dynOff(iblk)+is)) cycle
                ms = dynOff(iblk) + is
                ij = dynIJ(ms)
                j  = (ij-1)/nx_block + 1
@@ -650,8 +650,8 @@
                             stress12_3(:,iblk), stress12_4(:,iblk), &
                             uvel_init,   vvel_init,   &
                             uvel(:,iblk), vvel(:,iblk), &
-                           dynMap(:,iblk), dynOff(iblk), dynCnt(iblk), skipU, &
-                           skipT, &
+                           dynMap(:,iblk), dynOff(iblk), dynCnt(iblk), iceUmask_slot, &
+                           iceTmask_slot, &
                             TbU_slot)
 
             !-----------------------------------------------------------------
@@ -659,14 +659,14 @@
             !-----------------------------------------------------------------
 
             strength(:,:,iblk) = c0  ! initialize
-            ! ⚠ skipT, not skipPhys.  icellT is built over jlo..jhi+1 x
+            ! ⚠ iceTmask_slot, not skipPhys.  icellT is built over jlo..jhi+1 x
             ! ilo..ihi+1 -- the physical domain PLUS one north and east ghost
             ! row, deliberately, because stresses are needed there -- and it
             ! selects on iceTmask.  dyn_prep1 records exactly that set in
-            ! skipT, the same mask the stress kernel walks, so the slot loop
+            ! iceTmask_slot, the same mask the stress kernel walks, so the slot loop
             ! reproduces icellT cell for cell with no dynMap lookup.
             do is = 1, dynCnt(iblk)
-               if (skipT(dynOff(iblk)+is)) cycle
+               if (.not. iceTmask_slot(dynOff(iblk)+is)) cycle
                ms = dynOff(iblk) + is
                ij = dynIJ(ms)
                j  = (ij-1)/nx_block + 1
@@ -713,8 +713,8 @@
                             stress12_3(:,iblk), stress12_4(:,iblk), &
                             uvelN_init,   vvelN_init,   &
                             uvelN     (:,:,iblk), vvelN     (:,:,iblk), &
-                           dynMap(:,iblk), dynOff(iblk), dynCnt(iblk), skipN, &
-                           skipT, &
+                           dynMap(:,iblk), dynOff(iblk), dynCnt(iblk), iceNmask_slot, &
+                           iceTmask_slot, &
                             TbN_slot, &
                             rheofactN_slot)
 
@@ -751,8 +751,8 @@
                             stress12_3(:,iblk), stress12_4(:,iblk), &
                             uvelE_init,   vvelE_init,   &
                             uvelE     (:,:,iblk), vvelE     (:,:,iblk), &
-                           dynMap(:,iblk), dynOff(iblk), dynCnt(iblk), skipE, &
-                           skipT, &
+                           dynMap(:,iblk), dynOff(iblk), dynCnt(iblk), iceEmask_slot, &
+                           iceTmask_slot, &
                             TbE_slot, &
                             rheofactE_slot)
 
@@ -879,7 +879,7 @@
          if (grid_ice == "B") then
 
             if ( seabed_stress_method == 'LKD' ) then
-               call seabed_stress_factor_LKD (1               , dynTot, skipU        , &
+               call seabed_stress_factor_LKD (1               , dynTot, iceUmask_slot        , &
                                               NbrE_Task       , NbrNE_Task    , &
                                               NbrN_Task       ,                 &
                                               vice_slot       , aice_slot     , &
@@ -887,7 +887,7 @@
 
             elseif ( seabed_stress_method == 'probabilistic' ) then
                call seabed_stress_factor_prob (1               , dynTot        , &
-                                               skipT           , skipU         , &
+                                               iceTmask_slot           , iceUmask_slot         , &
                                                NbrE_Task       , NbrNE_Task    , &
                                                NbrN_Task       ,                 &
                                                aicen_slot      , vicen_slot    , &
@@ -897,13 +897,13 @@
          elseif (grid_ice == "C" .or. grid_ice == "CD") then
 
             if ( seabed_stress_method == 'LKD' ) then
-               call seabed_stress_factor_LKD (1               , dynTot, skipE        , &
+               call seabed_stress_factor_LKD (1               , dynTot, iceEmask_slot        , &
                                               NbrE_Task       , NbrNE_Task    , &
                                               NbrN_Task       ,                 &
                                               vice_slot       , aice_slot     , &
                                               hwater_slot     , TbE_slot, &
                                               'E')
-               call seabed_stress_factor_LKD (1               , dynTot, skipN        , &
+               call seabed_stress_factor_LKD (1               , dynTot, iceNmask_slot        , &
                                               NbrE_Task       , NbrNE_Task    , &
                                               NbrN_Task       ,                 &
                                               vice_slot       , aice_slot     , &
@@ -912,13 +912,13 @@
 
             elseif ( seabed_stress_method == 'probabilistic' ) then
                call seabed_stress_factor_prob (1               , dynTot        , &
-                                               skipT           , skipU         , &
+                                               iceTmask_slot           , iceUmask_slot         , &
                                                NbrE_Task       , NbrNE_Task    , &
                                                NbrN_Task       ,                 &
                                                aicen_slot      , vicen_slot    , &
                                                hwater_slot     , TbU_slot      , &
                                                TbE_slot        , TbN_slot      , &
-                                               skipE           , skipN)
+                                               iceEmask_slot           , iceNmask_slot)
             endif
 
          endif
@@ -1005,9 +1005,9 @@
 
             ! Dead slots too: stepu reads them for absent neighbours.
             ! Once per timestep, not per subcycle -- stress writes all eight
-            ! unconditionally at every non-skipT slot, and skipT is fixed for
+            ! unconditionally at every non-iceTmask_slot slot, and iceTmask_slot is fixed for
             ! the whole timestep, so passes 2..ndte only rewrote zeros over
-            ! zeros.  It cannot move out of the timestep: skipT changes as the
+            ! zeros.  It cannot move out of the timestep: iceTmask_slot changes as the
             ! ice edge moves, and a slot that was active last step would hand
             ! stepu a stale value.
             str1_slot(:) = c0
@@ -1027,9 +1027,9 @@
                ! One task-wide call: every argument is already a whole array, so
                ! the block loop only supplied (lo,hi).  Collapsing it is exact --
                ! the slots the per-block ranges omit are the blocks' dead slots,
-               ! and those are permanently skipT.  Threading moved inside.
+               ! and those are permanently iceTmask_slot.  Threading moved inside.
                !-----------------------------------------------------------------
-                  call stress (1, dynTot, skipT, &
+                  call stress (1, dynTot, iceTmask_slot, &
                                uvel_slot, vvel_slot, &
                                dxT_slot, dyT_slot, &
                                dxhy_slot, dyhx_slot, &
@@ -1056,7 +1056,7 @@
                   call stepu (&
                               1, dynTot,                     &
                               cdn_ocnU_slot,  &
-                              skipU, &
+                              iceUmask_slot, &
                               aiU_slot , &
                               str1_slot, str2_slot, &
                               str3_slot, str4_slot, &
@@ -1108,7 +1108,7 @@
                ! arrays history reads get their one and only write -- and only
                ! when a stream is going to read them.
                if (lstrint) then
-                  call calc_strint_slot(dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipU, &
+                  call calc_strint_slot(dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceUmask_slot, &
                        uarear_slot, &
                        rheofactU_slot, &
                        str1_slot, str2_slot, &
@@ -1122,7 +1122,7 @@
                   call unpack_from_slots(strintyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), strintyU(:,iblk))
                endif
                if (ltaub) then
-                  call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipU, &
+                  call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceUmask_slot, &
                        uvel_slot, &
                        taubxU_slot, &
                        vvel_slot, &
@@ -1139,7 +1139,7 @@
          !-----------------------------------------------------------------
 
             call deformations (                                                                                                              &
-                               1, dynTot, skipT,                                                &
+                               1, dynTot, iceTmask_slot,                                                &
                                NbrW_Task, NbrSW_Task, NbrS_Task, dynIJ,          &
                                uvel_slot, vvel_slot, &
                                dxT_slot, dyT_slot,   &
@@ -1187,7 +1187,7 @@
             ! NOTE these are actually strain rates * area  (m^2/s)
             !-----------------------------------------------------------------
             call strain_rates_U (1             , dynTot        , &
-                                 skipU         ,                 &
+                                 iceUmask_slot         ,                 &
                                  NbrE_Task, NbrN_Task      ,                 &
                                  uvelE_slot    , vvelE_slot    , &
                                  uvelN_slot    , vvelN_slot    , &
@@ -1210,7 +1210,7 @@
             endif
             call ice_timer_stop(timer_bound)
 
-               call stressC_T (1, dynTot       , skipT, &
+               call stressC_T (1, dynTot       , iceTmask_slot, &
                                NbrW_Task, NbrSW_Task, NbrS_Task, &
                                uvelE_slot, &
                                vvelN_slot, &
@@ -1258,7 +1258,7 @@
             endif
 
             call stressC_U (1             , dynTot        , &
-                            skipU         ,                 &
+                            iceUmask_slot         ,                 &
                             uarea_slot    , etax2U_slot   , &
                             deltaU        , strengthU_slot, &
                             shearU_slot   , stress12U_slot)
@@ -1274,7 +1274,7 @@
             call ice_timer_stop(timer_bound)
 
 
-               call div_stress_Ex (1, dynTot, skipE, &
+               call div_stress_Ex (1, dynTot, iceEmask_slot, &
                                    NbrS_Task, NbrE_Task, &
                                    dxE_slot, dyE_slot, &
                                    dxU_slot  , &
@@ -1285,7 +1285,7 @@
                                    stress12U_slot, &
                                    strintxE_slot )
 
-               call div_stress_Ny (1, dynTot, skipN, &
+               call div_stress_Ny (1, dynTot, iceNmask_slot, &
                                    NbrW_Task, NbrN_Task, &
                                    dxN_slot, dyN_slot, &
                                    dxT_slot  , &
@@ -1298,7 +1298,7 @@
 
 
                 call stepu_C (1            , dynTot       , & ! u, E point
-                              skipE        , cdn_ocnE_slot, &
+                              iceEmask_slot        , cdn_ocnE_slot, &
                               aiE_slot     , uocnE_slot   , &
                               vocnE_slot   , waterxE_slot , &
                               forcexE_slot , emassdti_slot, &
@@ -1308,7 +1308,7 @@
                               TbE_slot)
 
                 call stepv_C (1            , dynTot       , & ! v, N point
-                              skipN        , cdn_ocnN_slot, &
+                              iceNmask_slot        , cdn_ocnN_slot, &
                               aiN_slot     , uocnN_slot   , &
                               vocnN_slot   , wateryN_slot , &
                               forceyN_slot , nmassdti_slot, &
@@ -1406,10 +1406,10 @@
                call unpack_from_slots(strintyN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), strintyN(:,:,iblk))
             endif
             if (ltaub) then
-               call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipE, &
+               call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceEmask_slot, &
                     uvelE_slot, &
                     taubxE_slot)
-               call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipN, &
+               call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceNmask_slot, &
                     vvelN_slot, &
                     taubyN_slot)
                call unpack_from_slots(taubxE_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), taubxE  (:,iblk))
@@ -1422,7 +1422,7 @@
          ! save quantities for mechanical redistribution
          !-----------------------------------------------------------------
 
-            call deformationsC_T (1, dynTot, skipT,               &
+            call deformationsC_T (1, dynTot, iceTmask_slot,               &
                                   NbrW_Task, NbrSW_Task, NbrS_Task, dynIJ,           &
                                   uvelE_slot, vvelE_slot,  &
                                   uvelN_slot, vvelN_slot,  &
@@ -1459,7 +1459,7 @@
 
          do ksub = 1,ndte        ! subcycling
 
-               call stressCD_T (1, dynTot       , skipT, &
+               call stressCD_T (1, dynTot       , iceTmask_slot, &
                                 NbrW_Task, NbrS_Task, &
                                 uvelE_slot, &
                                 vvelE_slot, &
@@ -1507,7 +1507,7 @@
             ! NOTE these are actually strain rates * area  (m^2/s)
             !-----------------------------------------------------------------
             call strain_rates_U (1             , dynTot        , &
-                                 skipU         ,                 &
+                                 iceUmask_slot         ,                 &
                                  NbrE_Task, NbrN_Task      ,                 &
                                  uvelE_slot    , vvelE_slot    , &
                                  uvelN_slot    , vvelN_slot    , &
@@ -1521,7 +1521,7 @@
                                  shearU_slot   , DeltaU          )
 
             call stressCD_U     (1             , dynTot        , &
-                                 skipU         ,                 &
+                                 iceUmask_slot         ,                 &
                                  uarea_slot    ,                 &
                                  zetax2U_slot  , etax2U_slot   , &
                                  strengthU_slot,                 &
@@ -1560,7 +1560,7 @@
             call ice_timer_stop(timer_bound)
 
 
-               call div_stress_Ex (1, dynTot, skipE, &
+               call div_stress_Ex (1, dynTot, iceEmask_slot, &
                                    NbrS_Task, NbrE_Task, &
                                    dxE_slot, dyE_slot, &
                                    dxU_slot  , &
@@ -1571,7 +1571,7 @@
                                    stress12U_slot, &
                                    strintxE_slot )
 
-               call div_stress_Ey (1, dynTot, skipE, &
+               call div_stress_Ey (1, dynTot, iceEmask_slot, &
                                    NbrS_Task, NbrE_Task, &
                                    dxE_slot, dyE_slot, &
                                    dxU_slot  , &
@@ -1582,7 +1582,7 @@
                                    stress12T_slot, &
                                    strintyE_slot )
 
-               call div_stress_Nx (1, dynTot, skipN, &
+               call div_stress_Nx (1, dynTot, iceNmask_slot, &
                                    NbrW_Task, NbrN_Task, &
                                    dxN_slot, dyN_slot, &
                                    dxT_slot  , &
@@ -1593,7 +1593,7 @@
                                    stress12T_slot, &
                                    strintxN_slot )
 
-               call div_stress_Ny (1, dynTot, skipN, &
+               call div_stress_Ny (1, dynTot, iceNmask_slot, &
                                    NbrW_Task, NbrN_Task, &
                                    dxN_slot, dyN_slot, &
                                    dxT_slot  , &
@@ -1606,7 +1606,7 @@
 
 
                call stepuv_CD (1            , dynTot       , & ! E point
-                               skipE        , cdn_ocnE_slot, &
+                               iceEmask_slot        , cdn_ocnE_slot, &
                                aiE_slot     , uocnE_slot   , &
                                vocnE_slot   , waterxE_slot , &
                                wateryE_slot , forcexE_slot , &
@@ -1618,7 +1618,7 @@
                                TbE_slot)
 
                call stepuv_CD (1            , dynTot       , & ! N point
-                               skipN        , cdn_ocnN_slot, &
+                               iceNmask_slot        , cdn_ocnN_slot, &
                                aiN_slot     , uocnN_slot   , &
                                vocnN_slot   , waterxN_slot , &
                                wateryN_slot , forcexN_slot , &
@@ -1701,12 +1701,12 @@
                call unpack_from_slots(strintyN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), strintyN(:,:,iblk))
             endif
             if (ltaub) then
-               call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipE, &
+               call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceEmask_slot, &
                     uvelE_slot, &
                     taubxE_slot, &
                     vvelE_slot, &
                     taubyE_slot)
-               call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipN, &
+               call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceNmask_slot, &
                     uvelN_slot, &
                     taubxN_slot, &
                     vvelN_slot, &
@@ -1723,7 +1723,7 @@
          ! save quantities for mechanical redistribution
          !-----------------------------------------------------------------
 
-            call deformationsCD_T (1, dynTot, skipT,              &
+            call deformationsCD_T (1, dynTot, iceTmask_slot,              &
                                    NbrW_Task, NbrS_Task, dynIJ,          &
                                    uvelE_slot, vvelE_slot, &
                                    uvelN_slot, vvelN_slot, &
@@ -1843,7 +1843,7 @@
       !-----------------------------------------------------------------
 
       call dyn_finish (1             , dynTot        , &
-                       skipU         , cdn_ocnU_slot , &
+                       iceUmask_slot         , cdn_ocnU_slot , &
                        uvel_slot     , vvel_slot     , &
                        uocnU_slot    , vocnU_slot    , &
                        aiU_slot      , fmU_slot      , &
@@ -1852,14 +1852,14 @@
       if (grid_ice == 'CD' .or. grid_ice == 'C') then
 
          call dyn_finish (1             , dynTot        , &
-                          skipN         , cdn_ocnn_slot , &
+                          iceNmask_slot         , cdn_ocnn_slot , &
                           uvelN_slot    , vvelN_slot    , &
                           uocnN_slot    , vocnN_slot    , &
                           aiN_slot      , fmN_slot      , &
                           strocnxN      , strocnyN)
 
          call dyn_finish (1             , dynTot        , &
-                          skipE         , cdn_ocne_slot , &
+                          iceEmask_slot         , cdn_ocne_slot , &
                           uvelE_slot    , vvelE_slot    , &
                           uocnE_slot    , vocnE_slot    , &
                           aiE_slot      , fmE_slot      , &
@@ -1892,7 +1892,7 @@
 !
 ! author: Elizabeth C. Hunke, LANL
 
-      subroutine stress (lo, hi,     skipme,     &
+      subroutine stress (lo, hi,     icemask_s,     &
                          uvel,       vvel,       &
                          dxT,        dyT,        &
                          dxhy,       dyhx,       &
@@ -1951,11 +1951,11 @@
       real (kind=dbl_kind), dimension(:), intent(out), contiguous :: &
          str1, str2, str3, str4, str5, str6, str7, str8
 
-      ! skipme(is) is .true. where the slot carries no ice this step; it
+      ! icemask_s(is) is .true. where the slot carries no ice this step; it
       ! replaces the icellT / indxTi / indxTj chain, and dyn_prep2 fills it
       ! over exactly that chain's range.
       logical (kind=log_kind), dimension(:), intent(in), contiguous :: &
-         skipme
+         icemask_s
 
       ! local variables
 
@@ -2017,7 +2017,7 @@
       !$omp         csig12ne, csig12nw, csig12se, csig12sw       , &
       !$omp         str12ew, str12we, str12ns, str12sn           , &
       !$omp         strp_tmp, strm_tmp)                            &
-      !$omp  shared(lo, hi, skipme, uvel, vvel, dxT, dyT         , &
+      !$omp  shared(lo, hi, icemask_s, uvel, vvel, dxT, dyT         , &
       !$omp         dxhy, dyhx, cxp, cyp, cxm, cym, DminTarea    , &
       !$omp         strength, nbrW, nbrSW, nbrS                                , &
       !$omp         stressp_1, stressp_2, stressp_3, stressp_4   , &
@@ -2026,7 +2026,7 @@
       !$omp         str1, str2, str3, str4, str5, str6, str7, str8, &
       !$omp         arlx1i, denom1, revp)
       do is = lo, hi
-         if (skipme(is)) cycle
+         if (.not. icemask_s(is)) cycle
 
           ! each neighbour slot was fetched twice, once for uvel and once for
           ! vvel; read them once instead
@@ -2251,7 +2251,7 @@
 ! Kimmritz, M., S. Danilov and M. Losch (2016). The adaptive EVP method
 ! for solving the sea ice momentum equation. Ocean Model., 101, 59-67.
 
-      subroutine stressC_T  (lo, hi  ,   skipme   , &
+      subroutine stressC_T  (lo, hi  ,   icemask_s   , &
                              nbrW, nbrSW, nbrS,              &
                              uvelE_s    , vvelN_s   , &
                              dxN_s      , dyE_s     , &
@@ -2271,7 +2271,7 @@
 
       ! .true. where the slot carries no ice this step
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
-         skipme
+         icemask_s
 
       ! nbr(is,d) is the block-local slot one step in direction d from slot is
       integer (kind=int_kind), dimension (:), intent(in), contiguous :: &
@@ -2342,13 +2342,13 @@
       ! schedule(static), not runtime -- see the note in stress.
       !$omp parallel do schedule(static) default(none)              &
       !$omp private(is, isW, isS, isSW, divT, tensionT, shearT, shearTsqr, DeltaT, uareaavgr, rep_prsT) &
-      !$omp  shared(lo, hi, skipme, nbrW, nbrSW, nbrS, uvelE_s, vvelN_s, dxN_s, &
+      !$omp  shared(lo, hi, icemask_s, nbrW, nbrSW, nbrS, uvelE_s, vvelN_s, dxN_s, &
       !$omp         dyE_s, dxT_s, dyT_s, uarea_s, uareaavg_s, &
       !$omp         DminTarea_s, strength_s, shearU_s, zetax2T_s, &
       !$omp         etax2T_s, stresspT_s, stressmT_s, stress12T_s, &
       !$omp         e_factor, arlx1i, revp, denom1)
       do is = lo, hi
-         if (skipme(is)) cycle
+         if (.not. icemask_s(is)) cycle
 
          !-----------------------------------------------------------------
          ! Square of shear strain rate at T obtained from interpolation of
@@ -2429,7 +2429,7 @@
 ! for solving the sea ice momentum equation. Ocean Model., 101, 59-67.
 
       subroutine stressC_U  (lo       , hi        ,&
-                             skipme    ,           &
+                             icemask_s    ,           &
                              uarea_s  ,            &
                              etax2U_s , deltaU    ,&
                              strengthU_s, shearU_s,&
@@ -2443,7 +2443,7 @@
 
       ! .true. where the slot carries no ice this step
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
-         skipme
+         icemask_s
 
       ! Everything here is POINTWISE.  The compressed arrays appear only
       ! because other kernels read them at a neighbour -- shearU by stressC_T
@@ -2484,10 +2484,10 @@
       if (visc_method == 'avg_zeta') then
          !$omp parallel do schedule(static) default(none) &
          !$omp private(is)                                &
-         !$omp  shared(lo, hi, skipme, etax2U_s, shearU_s, &
+         !$omp  shared(lo, hi, icemask_s, etax2U_s, shearU_s, &
          !$omp         stress12U_s, arlx1i, revp, denom1)
          do is = lo, hi
-         if (skipme(is)) cycle
+         if (.not. icemask_s(is)) cycle
             stress12U_s(is) = (stress12U_s(is)*(c1-arlx1i*revp) &
                              + arlx1i*p5*etax2U_s(is)*shearU_s(is)) * denom1
          enddo
@@ -2495,11 +2495,11 @@
       elseif (visc_method == 'avg_strength') then
          !$omp parallel do schedule(static) default(none)              &
          !$omp private(is, DminUarea, lzetax2U, letax2U, lrep_prsU)    &
-         !$omp  shared(lo, hi, skipme, uarea_s, strengthU_s, deltaU,   &
+         !$omp  shared(lo, hi, icemask_s, uarea_s, strengthU_s, deltaU,   &
          !$omp         shearU_s, stress12U_s, arlx1i, revp, denom1,    &
          !$omp         deltaminEVP)
          do is = lo, hi
-         if (skipme(is)) cycle
+         if (.not. icemask_s(is)) cycle
             DminUarea = deltaminEVP*uarea_s(is)
             ! only need etax2U here, but other terms are calculated with etax2U
             ! minimal extra calculations here even though it seems like there is
@@ -2519,7 +2519,7 @@
 ! author: JF Lemieux, ECCC
 ! Nov 2021
 
-      subroutine stressCD_T (lo, hi  ,   skipme   , &
+      subroutine stressCD_T (lo, hi  ,   icemask_s   , &
                              nbrW, nbrS,              &
                              uvelE_s ,   vvelE_s  , &
                              uvelN_s ,   vvelN_s  , &
@@ -2539,7 +2539,7 @@
 
       ! .true. where the slot carries no ice this step
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
-         skipme
+         icemask_s
 
       ! nbr(is,d) is the block-local slot one step in direction d from slot is
       integer (kind=int_kind), dimension (:), intent(in), contiguous :: &
@@ -2605,13 +2605,13 @@
       ! schedule(static), not runtime -- see the note in stress.
       !$omp parallel do schedule(static) default(none)              &
       !$omp private(is, isW, isS, divT, tensionT, shearT, DeltaT, rep_prsT) &
-      !$omp  shared(lo, hi, skipme, nbrW, nbrS, uvelE_s, vvelE_s, uvelN_s, &
+      !$omp  shared(lo, hi, icemask_s, nbrW, nbrS, uvelE_s, vvelE_s, uvelN_s, &
       !$omp         vvelN_s, dxN_s, dyE_s, dxT_s, dyT_s, DminTarea_s, &
       !$omp         strength_s, zetax2T_s, etax2T_s, stresspT_s, &
       !$omp         stressmT_s, stress12T_s, e_factor, arlx1i, revp, &
       !$omp         denom1)
       do is = lo, hi
-         if (skipme(is)) cycle
+         if (.not. icemask_s(is)) cycle
 
          ! strain rates at T, formerly two passes over every slot writing
          ! divT/tensionT/shearT/DeltaT.  All four are read only at this slot,
@@ -2665,7 +2665,7 @@
 ! Nov 2021
 
       subroutine stressCD_U (lo       , hi        ,&
-                             skipme    ,           &
+                             icemask_s    ,           &
                              uarea_s   ,           &
                              zetax2U_s , etax2U_s, &
                              strengthU_s,          &
@@ -2682,7 +2682,7 @@
 
       ! .true. where the slot carries no ice this step
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
-         skipme
+         icemask_s
 
       real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
          zetax2U_s  , & ! 2*zeta at U point, compressed
@@ -2719,12 +2719,12 @@
 
       !$omp parallel do schedule(static) default(none)                 &
       !$omp private(is, DminUarea, lzetax2U, letax2U, lrep_prsU)       &
-      !$omp  shared(lo, hi, skipme, uarea_s, zetax2U_s, etax2U_s,      &
+      !$omp  shared(lo, hi, icemask_s, uarea_s, zetax2U_s, etax2U_s,      &
       !$omp         strengthU_s, divergU, tensionU, shearU_s, deltaU,  &
       !$omp         stresspU_s, stressmU_s, stress12U_s,               &
       !$omp         arlx1i, revp, denom1, deltaminEVP, visc_method, ktens)
       do is = lo, hi
-         if (skipme(is)) cycle
+         if (.not. icemask_s(is)) cycle
 
          !-----------------------------------------------------------------
          ! viscosities and replacement pressure at U point
@@ -2779,7 +2779,7 @@
 ! elastic-viscous-plastic sea ice model formulated on Arakawa B and C grids.
 ! Ocean Model., 27, 174-184.
 
-      subroutine div_stress_Ex(lo, hi  , skipme   , &
+      subroutine div_stress_Ex(lo, hi  , icemask_s   , &
                                nbrS, nbrE,            &
                                dxE_s     , dyE_s      , &
                                dxU_s   , dyT_s    , &
@@ -2795,7 +2795,7 @@
 
       ! .true. where the slot carries no ice this step
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
-         skipme
+         icemask_s
 
       ! nbr(is,d) is the block-local slot one step in direction d from slot is
       integer (kind=int_kind), dimension (:), intent(in), contiguous :: &
@@ -2836,11 +2836,11 @@
       ! schedule(static), not runtime -- see the note in stress.
       !$omp parallel do schedule(static) default(none)              &
       !$omp private(is, isA, isB)                                   &
-      !$omp  shared(lo, hi, skipme, nbrS, nbrE, dxE_s, dyE_s, dxU_s, dyT_s, &
+      !$omp  shared(lo, hi, icemask_s, nbrS, nbrE, dxE_s, dyE_s, dxU_s, dyT_s, &
       !$omp         arear_s, rheofactE_s, stressp_s, stressm_s, &
       !$omp         stress12_s, strintx_s)
       do is = lo, hi
-         if (skipme(is)) cycle
+         if (.not. icemask_s(is)) cycle
          isA = nbrE(is)   ! (i+1,j  )
          isB = nbrS(is)   ! (i  ,j-1)
          strintx_s(is) = rheofactE_s(is) * arear_s(is) * &
@@ -2856,7 +2856,7 @@
 
 !=======================================================================
 
-      subroutine div_stress_Ey(lo, hi  , skipme   , &
+      subroutine div_stress_Ey(lo, hi  , icemask_s   , &
                                nbrS, nbrE,            &
                                dxE_s     , dyE_s      , &
                                dxU_s   , dyT_s    , &
@@ -2872,7 +2872,7 @@
 
       ! .true. where the slot carries no ice this step
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
-         skipme
+         icemask_s
 
       ! nbr(is,d) is the block-local slot one step in direction d from slot is
       integer (kind=int_kind), dimension (:), intent(in), contiguous :: &
@@ -2913,11 +2913,11 @@
       ! schedule(static), not runtime -- see the note in stress.
       !$omp parallel do schedule(static) default(none)              &
       !$omp private(is, isA, isB)                                   &
-      !$omp  shared(lo, hi, skipme, nbrS, nbrE, dxE_s, dyE_s, dxU_s, dyT_s, &
+      !$omp  shared(lo, hi, icemask_s, nbrS, nbrE, dxE_s, dyE_s, dxU_s, dyT_s, &
       !$omp         arear_s, rheofactE_s, stressp_s, stressm_s, &
       !$omp         stress12_s, strinty_s)
       do is = lo, hi
-         if (skipme(is)) cycle
+         if (.not. icemask_s(is)) cycle
          isA = nbrS(is)   ! (i  ,j-1)
          isB = nbrE(is)   ! (i+1,j  )
          strinty_s(is) = rheofactE_s(is) * arear_s(is) * &
@@ -2933,7 +2933,7 @@
 
 !=======================================================================
 
-      subroutine div_stress_Nx(lo, hi  , skipme   , &
+      subroutine div_stress_Nx(lo, hi  , icemask_s   , &
                                nbrW, nbrN,            &
                                dxN_s     , dyN_s      , &
                                dxT_s   , dyU_s    , &
@@ -2949,7 +2949,7 @@
 
       ! .true. where the slot carries no ice this step
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
-         skipme
+         icemask_s
 
       ! nbr(is,d) is the block-local slot one step in direction d from slot is
       integer (kind=int_kind), dimension (:), intent(in), contiguous :: &
@@ -2990,11 +2990,11 @@
       ! schedule(static), not runtime -- see the note in stress.
       !$omp parallel do schedule(static) default(none)              &
       !$omp private(is, isA, isB)                                   &
-      !$omp  shared(lo, hi, skipme, nbrW, nbrN, dxN_s, dyN_s, dxT_s, dyU_s, &
+      !$omp  shared(lo, hi, icemask_s, nbrW, nbrN, dxN_s, dyN_s, dxT_s, dyU_s, &
       !$omp         arear_s, rheofactN_s, stressp_s, stressm_s, &
       !$omp         stress12_s, strintx_s)
       do is = lo, hi
-         if (skipme(is)) cycle
+         if (.not. icemask_s(is)) cycle
          isA = nbrW(is)   ! (i-1,j  )
          isB = nbrN(is)   ! (i  ,j+1)
          strintx_s(is) = rheofactN_s(is) * arear_s(is) * &
@@ -3010,7 +3010,7 @@
 
 !=======================================================================
 
-      subroutine div_stress_Ny(lo, hi  , skipme   , &
+      subroutine div_stress_Ny(lo, hi  , icemask_s   , &
                                nbrW, nbrN,            &
                                dxN_s     , dyN_s      , &
                                dxT_s   , dyU_s    , &
@@ -3026,7 +3026,7 @@
 
       ! .true. where the slot carries no ice this step
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
-         skipme
+         icemask_s
 
       ! nbr(is,d) is the block-local slot one step in direction d from slot is
       integer (kind=int_kind), dimension (:), intent(in), contiguous :: &
@@ -3067,11 +3067,11 @@
       ! schedule(static), not runtime -- see the note in stress.
       !$omp parallel do schedule(static) default(none)              &
       !$omp private(is, isA, isB)                                   &
-      !$omp  shared(lo, hi, skipme, nbrW, nbrN, dxN_s, dyN_s, dxT_s, dyU_s, &
+      !$omp  shared(lo, hi, icemask_s, nbrW, nbrN, dxN_s, dyN_s, dxT_s, dyU_s, &
       !$omp         arear_s, rheofactN_s, stressp_s, stressm_s, &
       !$omp         stress12_s, strinty_s)
       do is = lo, hi
-         if (skipme(is)) cycle
+         if (.not. icemask_s(is)) cycle
          isA = nbrN(is)   ! (i  ,j+1)
          isB = nbrW(is)   ! (i-1,j  )
          strinty_s(is) = rheofactN_s(is) * arear_s(is) * &

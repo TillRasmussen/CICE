@@ -105,7 +105,7 @@
 ! based on subroutine evp
 
       subroutine eap (dt)
-use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
+use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
 
 #ifdef CICE_IN_NEMO
 ! Wind stress is set during this routine from the values supplied
@@ -139,7 +139,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
           NbrE_Task, NbrNE_Task, NbrN_Task, &
         NbrNE_Task, NbrN_Task , NbrNW_Task, NbrSE_Task, &
           nbr_W, nbr_S, nbr_SW, &
-          skipT, skipU, arlx1i, &
+          iceTmask_slot, iceUmask_slot, arlx1i, &
           stressp_1_slot , stressp_2_slot , stressp_3_slot , stressp_4_slot , &
           stressm_1_slot , stressm_2_slot , stressm_3_slot , stressm_4_slot , &
           stress12_1_slot, stress12_2_slot, stress12_3_slot, stress12_4_slot, &
@@ -379,8 +379,8 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                          stress12_3(:,iblk), stress12_4(:,iblk), &
                          uvel_init,   vvel_init,   &
                          uvel(:,iblk), vvel(:,iblk), &
-                        dynMap(:,iblk), dynOff(iblk), dynCnt(iblk), skipU, &
-                        skipT, &
+                        dynMap(:,iblk), dynOff(iblk), dynCnt(iblk), iceUmask_slot, &
+                        iceTmask_slot, &
                          TbU_slot)
 
          !-----------------------------------------------------------------
@@ -437,15 +437,15 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          !-----------------------------------------------------------------
 
          strength(:,:,iblk) = c0  ! initialize
-         ! ⚠ skipT, not skipPhys.  icellT is built over jlo..jhi+1 x
+         ! ⚠ iceTmask_slot, not skipPhys.  icellT is built over jlo..jhi+1 x
          ! ilo..ihi+1 -- the physical domain PLUS one north and east ghost
          ! row, where stresses are needed -- and selects on iceTmask alone.
-         ! dyn_prep1 records that set slot-wise in skipT, so this
+         ! dyn_prep1 records that set slot-wise in iceTmask_slot, so this
          ! reproduces icellT cell for cell.  ms is assigned BEFORE the
          ! call: in update_state it was the ordering, not the index, that
          ! was wrong, and the symptom appeared two routines downstream.
          do is = 1, dynCnt(iblk)
-            if (skipT(dynOff(iblk)+is)) cycle
+            if (.not. iceTmask_slot(dynOff(iblk)+is)) cycle
             ms = dynOff(iblk) + is
             ij = dynIJ(ms)
             j  = (ij-1)/nx_block + 1
@@ -507,7 +507,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
       if (seabed_stress) then
          if ( seabed_stress_method == 'LKD' ) then
-            call seabed_stress_factor_LKD (1               , dynTot, skipU        , &
+            call seabed_stress_factor_LKD (1               , dynTot, iceUmask_slot        , &
                                            NbrE_Task       , NbrNE_Task    , &
                                            NbrN_Task       ,                 &
                                            vice_slot       , aice_slot     , &
@@ -515,7 +515,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
          elseif ( seabed_stress_method == 'probabilistic' ) then
             call seabed_stress_factor_prob (1               , dynTot        , &
-                                            skipT           , skipU         , &
+                                            iceTmask_slot           , iceUmask_slot         , &
                                             NbrE_Task       , NbrNE_Task    , &
                                             NbrN_Task       ,                 &
                                             aicen_slot      , vicen_slot    , &
@@ -547,10 +547,10 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       ! code zeroed strtmp at the top of stress_eap, so a slot that stopped
       ! carrying ice could never hand stepu a stale force; the conversion
       ! dropped that and left only the one-shot zero in alloc_dyn_shared.
-      ! skipT is rebuilt from the ice distribution by dyn_prep2 every step,
+      ! iceTmask_slot is rebuilt from the ice distribution by dyn_prep2 every step,
       ! so a slot going active -> inactive kept its previous force until now.
       ! Once per timestep is enough and matches the block code exactly:
-      ! stress_eap writes all eight at every non-skipT slot, and skipT does
+      ! stress_eap writes all eight at every non-iceTmask_slot slot, and iceTmask_slot does
       ! not move inside the subcycle.
       str1_slot(:) = c0
       str2_slot(:) = c0
@@ -569,7 +569,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
 
 !            call ice_timer_start(timer_tmp1,iblk)
-            call stress_eap  (1, dynTot,         skipT, &
+            call stress_eap  (1, dynTot,         iceTmask_slot, &
                               ksub,                 ndte,                 &
                               ldiag,                                      &
                               arlx1i,               denom1,               &
@@ -628,7 +628,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
             call stepu (&
                         1, dynTot,                      &
                         cdn_ocnU_slot,  &
-                        skipU, &
+                        iceUmask_slot, &
                         aiU_slot , &
                         str1_slot, str2_slot, &
                         str3_slot, str4_slot, &
@@ -655,7 +655,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
             !-----------------------------------------------------------------
 
             if (mod(ksub,10) == 1) then ! only called every 10th timestep
-            call stepa (1, dynTot, skipT, &
+            call stepa (1, dynTot, iceTmask_slot, &
                         dtei                , a11_slot, a12_slot, &
                         a11_1_slot, &
                         a11_2_slot, &
@@ -710,7 +710,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          ! one write
          if (lstrint) then
             call calc_strint_slot(dynOff(iblk)+1  , dynOff(iblk)+dynCnt(iblk), &
-                                  skipU          , uarear_slot    , &
+                                  iceUmask_slot          , uarear_slot    , &
                                   rheofactU_slot , str1_slot      , &
                                   str2_slot      , str3_slot      , &
                                   str4_slot      , str5_slot      , &
@@ -721,7 +721,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
             call unpack_from_slots(strintyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), strintyU(:,iblk))
          endif
          if (ltaub) then
-            call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipU, &
+            call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceUmask_slot, &
                  uvel_slot, &
                  taubxU_slot, &
                  vvel_slot, &
@@ -753,7 +753,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       !-----------------------------------------------------------------
 
       call dyn_finish (1             , dynTot        , &
-                       skipU         , cdn_ocnU_slot , &
+                       iceUmask_slot         , cdn_ocnU_slot , &
                        uvel_slot     , vvel_slot     , &
                        uocnU_slot    , vocnU_slot    , &
                        aiU_slot      , fmU_slot      , &
@@ -1394,7 +1394,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 ! Computes stress terms for the momentum equation
 ! (based on subroutine stress)
 
-      subroutine stress_eap  (lo, hi,     skipme,         &
+      subroutine stress_eap  (lo, hi,     icemask_s,         &
                               ksub,       ndte,           &
                               ldiag,                      &
                               arlx1i,     denom1,         &
@@ -1438,7 +1438,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          ldiag                 ! compute the write-only diagnostics
 
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
-         skipme       ! inactive-slot flag, T cells
+         icemask_s       ! inactive-slot flag, T cells
 
       real (kind=dbl_kind), intent(in) :: &
          arlx1i   , & ! dte/2T (original) or 1/alpha1 (revised)
@@ -1584,7 +1584,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       !$omp         strp_tmp, strm_tmp                             , &
       !$omp         alpharne, alpharnw, alpharsw, alpharse         , &
       !$omp         alphasne, alphasnw, alphassw, alphasse)          &
-      !$omp  shared(lo, hi, skipme, ksub, ndte, ldiag              , &
+      !$omp  shared(lo, hi, icemask_s, ksub, ndte, ldiag              , &
       !$omp         arlx1i, denom1, uvel, vvel, nbrW, nbrSW, nbrS                , &
       !$omp         dxT, dyT, dxU, dyU, dxhy, dyhx                 , &
       !$omp         cxp, cyp, cxm, cym, tarear, strength           , &
@@ -1600,7 +1600,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       !$omp         strtmp1, strtmp2, strtmp3, strtmp4             , &
       !$omp         strtmp5, strtmp6, strtmp7, strtmp8)
       do is = lo, hi
-         if (skipme(is)) cycle
+         if (.not. icemask_s(is)) cycle
 
          ! the velocity stencil, read from the compressed slots.  A missing
          ! neighbour is the block's dead slot, the last one, held at zero --
@@ -2200,7 +2200,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 !=======================================================================
 ! Solves evolution equation for structure tensor (A19, A20)
 
-      subroutine stepa  (lo, hi,     skipme,         &
+      subroutine stepa  (lo, hi,     icemask_s,         &
                          dtei,         &
                          a11, a12,                   &
                          a11_1, a11_2, a11_3, a11_4, &
@@ -2219,7 +2219,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          lo, hi                ! slot range to process
 
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
-         skipme       ! inactive-slot flag, T cells
+         icemask_s       ! inactive-slot flag, T cells
 
       real (kind=dbl_kind), intent(in) :: &
          dtei        ! 1/dte, where dte is subcycling timestep (1/s)
@@ -2268,14 +2268,14 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       !$omp parallel do schedule(static)                             &
       !$omp default(none)                                            &
       !$omp private(is, mresult11, mresult12)                        &
-      !$omp  shared(lo, hi, skipme, dtei, dteikth, p5kth, a11, a12 , &
+      !$omp  shared(lo, hi, icemask_s, dtei, dteikth, p5kth, a11, a12 , &
       !$omp         a11_1, a11_2, a11_3, a11_4                     , &
       !$omp         a12_1, a12_2, a12_3, a12_4                     , &
       !$omp         stressp_1, stressp_2, stressp_3, stressp_4     , &
       !$omp         stressm_1, stressm_2, stressm_3, stressm_4     , &
       !$omp         stress12_1, stress12_2, stress12_3, stress12_4)
       do is = lo, hi
-         if (skipme(is)) cycle
+         if (.not. icemask_s(is)) cycle
 
          ! ne
          call calc_ffrac(stressp_1(is), stressm_1(is),  &
@@ -2483,6 +2483,8 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       use ice_constants, only:  &
           field_loc_center, field_type_scalar
       use ice_domain, only: nblocks, halo_info
+      use ice_grid, only: dynMap, pack_to_slots
+      use ice_dyn_shared, only: dynOff, dynCnt
       use ice_restart, only: read_restart_field
 
       ! local variables
@@ -2574,6 +2576,26 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
             a12_4 (i,j,iblk) = c0
          enddo
          enddo
+      enddo
+      !$OMP END PARALLEL DO
+
+      ! ⚠ Seed the slots from what was just read.  The per-step pack used
+      ! to do this as a side effect; with that gone this is the only thing
+      ! that carries the file values into the compressed arrays, and
+      ! without it a restarted run starts from init_eap's p5 instead.
+      ! After the tripole fold above, so the ghost values are the folded
+      ! ones.
+      !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
+      do iblk = 1, nblocks
+         if (dynCnt(iblk) == 0) cycle
+         call pack_to_slots(a11_1(:,:,iblk), dynMap(:,iblk), a11_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         call pack_to_slots(a11_2(:,:,iblk), dynMap(:,iblk), a11_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         call pack_to_slots(a11_3(:,:,iblk), dynMap(:,iblk), a11_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         call pack_to_slots(a11_4(:,:,iblk), dynMap(:,iblk), a11_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         call pack_to_slots(a12_1(:,:,iblk), dynMap(:,iblk), a12_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         call pack_to_slots(a12_2(:,:,iblk), dynMap(:,iblk), a12_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         call pack_to_slots(a12_3(:,:,iblk), dynMap(:,iblk), a12_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         call pack_to_slots(a12_4(:,:,iblk), dynMap(:,iblk), a12_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
       enddo
       !$OMP END PARALLEL DO
 

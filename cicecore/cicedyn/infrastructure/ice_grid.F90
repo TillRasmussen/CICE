@@ -303,7 +303,7 @@
       ! cover the ghost rim, so a slot loop would compute where the block
       ! loop deliberately leaves c0.
       !
-      ! ⚠ Unlike skipT and skipU this is STATIC -- pure block geometry, built
+      ! ⚠ Unlike iceTmask_slot and iceUmask_slot this is STATIC -- pure block geometry, built
       ! once here.  It says nothing about where the ice is; a kernel that
       ! needs both tests both.
       logical (kind=log_kind), dimension(:), allocatable, public :: &
@@ -7056,7 +7056,7 @@
       ! off(iblk)+1 .. off(iblk)+cntA(iblk) and never walks the ring.
       !
       ! ⚠ "active" here is STATIC -- it is the set a kernel can EVER visit.
-      ! skipT/skipU remain necessary inside that range: they come from
+      ! iceTmask_slot/iceUmask_slot remain necessary inside that range: they come from
       ! iceTmask/iceUmask, which dyn_prep2 rebuilds every timestep as the
       ! ice edge moves.
       do iblk = 1, nblocks

@@ -3015,7 +3015,7 @@
 !  ⚠ Safe only because gather_slots_r8 pre-zeroes 1:nActive and the 1-D
 !  kernels read these fields at their OWN cell exclusively -- every use in
 !  ice_dyn_core1d is indexed (iw), none through nbrW/nbrS/... -- while
-!  cycling on skipme at exactly the cells dropped here.  A field read at a
+!  cycling on icemask_s at exactly the cells dropped here.  A field read at a
 !  neighbour could not be filtered this way: it would read c0 where the
 !  block path supplies a real value, the de0b9c3 fault class.
 

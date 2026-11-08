@@ -1470,7 +1470,7 @@
 ! The loop is slot-driven.  skipPhys is exactly the right mask here: the
 ! block form walked jlo..jhi x ilo..ihi, which is what skipPhys encodes.
 ! (That is NOT true of the icellT loops in the dynamics, which run one
-! ghost row further and need skipT instead.)
+! ghost row further and need iceTmask_slot instead.)
 
       subroutine accum_hist_field_3D_slotin(id, iblk, ndim, field_accum, field)
 

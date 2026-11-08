@@ -181,7 +181,7 @@
       ! set each timestep from the dynamic ice masks: .true. means the slot
       ! carries no ice of that kind this step, so the kernels leave it alone
       logical (kind=log_kind), dimension (:), allocatable, public :: &
-         skipT, skipU, skipN, skipE
+         iceTmask_slot, iceUmask_slot, iceNmask_slot, iceEmask_slot
 
       ! ---------------------------------------------------------------------
       ! Neighbour slots.
@@ -274,7 +274,7 @@
          vocnU_slot      , & ! ocean current, y, compressed
          cdn_ocnU_slot       ! ocean-ice neutral drag coefficient, compressed
 
-      ! C and CD grids.  Allocated only for those grids, beside skipN/skipE.
+      ! C and CD grids.  Allocated only for those grids, beside iceNmask_slot/iceEmask_slot.
       !
       ! Which of these are compressed follows the same rule as the B grid:
       ! compress what the subcycling changes AND a stencil reads at a
@@ -530,10 +530,10 @@
       ! at the end of init_grid2, because it is derived from the grid masks and
       ! because the grid metrics compressed once per run are packed there too.
       ! By the time any solver calls this, dynTot and dynMap are set.
-      allocate(skipT(dynTot), skipU(dynTot), stat=ierr)
+      allocate(iceTmask_slot(dynTot), iceUmask_slot(dynTot), stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
-      skipT = .true.
-      skipU = .true.
+      iceTmask_slot = .false.
+      iceUmask_slot = .false.
 
       allocate(uvel_slot(dynTot), vvel_slot(dynTot), stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
@@ -696,10 +696,10 @@
 
       if (grid_ice == 'CD' .or. grid_ice == 'C') then
          ! N and E share the one list; only their activity flags differ
-         allocate(skipN(dynTot), skipE(dynTot), stat=ierr)
+         allocate(iceNmask_slot(dynTot), iceEmask_slot(dynTot), stat=ierr)
          if (ierr/=0) call abort_ice(subname//': Out of memory')
-         skipN = .true.
-         skipE = .true.
+         iceNmask_slot = .false.
+         iceEmask_slot = .false.
 
          allocate(uvelE_slot(dynTot), vvelE_slot(dynTot), &
                   uvelN_slot(dynTot), vvelN_slot(dynTot), &
@@ -1457,8 +1457,8 @@
                             uvel_init,  vvel_init,  &
                             uvel,       vvel,       &
                             Xmap,       Xoff,       ncnt,       &
-                            skipX,      &
-                            skipTc,                 &
+                            iceXmask_s,      &
+                            iceTmask_s,                 &
                             TbU,        &
                             rheofactX_s)
 
@@ -1529,18 +1529,18 @@
          Xoff      , & ! dynOff(iblk): this block's slots start at Xoff+1
          ncnt          ! dynCnt(iblk): its count, dead slot at Xoff+ncnt+1
 
-      ! skipTc is skipX's counterpart for the T cells: .true. where the slot
+      ! iceTmask_s is iceXmask_s's counterpart for the T cells: .true. where the slot
       ! carries no ice this step.  It is set over the SAME range as icellT,
       ! ilo..ihi+1 and jlo..jhi+1 -- one cell into the ghosts, where the
       ! stresses are needed -- so a slot loop over it covers exactly what the
       ! icellT/indxTi/indxTj chain covered.
       logical (kind=log_kind), dimension(:), intent(out), contiguous :: &
-         skipTc      ! inactive-slot flag, T cells
+         iceTmask_s      ! inactive-slot flag, T cells
 
-      ! skipX runs over this block's compressed slots: .true. where the slot
+      ! iceXmask_s runs over this block's compressed slots: .true. where the slot
       ! carries no ice this step, so the kernels leave it alone
       logical (kind=log_kind), dimension (:), intent(out), contiguous :: &
-         skipX       ! inactive-slot flag
+         iceXmask_s       ! inactive-slot flag
 
       ! COMPRESSED: this block's slice.  seabed_stress_factor_LKD/_prob write
       ! it in the same layout, so it never takes block form at all.
@@ -1696,8 +1696,8 @@
       call chk_len(size(strairx) , size(TbU), 'strairx' , subname)
       call chk_len(size(strairy) , size(TbU), 'strairy' , subname)
 
-      call chk_len(size(skipTc)   , size(TbU), 'skipTc'   , subname)
-      call chk_len(size(skipX)    , size(TbU), 'skipX'    , subname)
+      call chk_len(size(iceTmask_s)   , size(TbU), 'iceTmask_s'   , subname)
+      call chk_len(size(iceXmask_s)    , size(TbU), 'iceXmask_s'    , subname)
       call chk_len(size(uvel_init), size(TbU), 'uvel_init', subname)
       call chk_len(size(vvel_init), size(TbU), 'vvel_init', subname)
 
@@ -1716,7 +1716,7 @@
       forcex   (Xoff+1:Xoff+nslot) = c0
       forcey   (Xoff+1:Xoff+nslot) = c0
       Xmassdti (Xoff+1:Xoff+nslot) = c0
-      skipX    (Xoff+1:Xoff+nact) = .true.
+      iceXmask_s    (Xoff+1:Xoff+nact) = .false.
 
       ! The compressed copies are cleared over their own extent, dead slot
       ! included.  That reproduces pack_to_slots exactly: it sets the dead slot
@@ -1779,13 +1779,13 @@
       !-----------------------------------------------------------------
 
       ! The icellT/indxTi/indxTj list is gone: nothing consumes it any more,
-      ! so only the membership it encoded is still needed, and skipTc carries
+      ! so only the membership it encoded is still needed, and iceTmask_s carries
       ! that directly.
-      skipTc(Xoff+1:Xoff+nact) = .true.
+      iceTmask_s(Xoff+1:Xoff+nact) = .false.
       do j = jlo, jhi+1
       do i = ilo, ihi+1
          ijb = (j-1)*nx_block + i
-         if (iceTmask(ijb)) skipTc(Xoff+Xmap(ijb)) = .false.
+         if (iceTmask(ijb)) iceTmask_s(Xoff+Xmap(ijb)) = .true.
       enddo
       enddo
 
@@ -1795,7 +1795,7 @@
       ! Initialize velocity where needed
       !-----------------------------------------------------------------
 
-      ! icellX/indxXi/indxXj likewise: skipX carries the membership.
+      ! icellX/indxXi/indxXj likewise: iceXmask_s carries the membership.
       do j = jlo, jhi
       do i = ilo, ihi
          ijb = (j-1)*nx_block + i
@@ -1824,7 +1824,7 @@
             ! compressed: this cell owns slot Xmap(ijb) for the whole run
             uvel_init(Xoff+Xmap(ijb)) = uvel(i,j)
             vvel_init(Xoff+Xmap(ijb)) = vvel(i,j)
-            skipX    (Xoff+Xmap(ijb)) = .false.
+            iceXmask_s    (Xoff+Xmap(ijb)) = .true.
          else
             ! set velocity and stresses to zero for masked-out points
             uvel(i,j)    = c0
@@ -1859,11 +1859,11 @@
       ! Every operand below is compressed, so this walks slots directly rather
       ! than the icellX list: the indxXi/indxXj pair and the ijb arithmetic
       ! existed only to reach Xmap(ijb), which the body then used twenty times
-      ! per cell.  skipX carries exactly the membership the list encodes -- it
+      ! per cell.  iceXmask_s carries exactly the membership the list encodes -- it
       ! is set .false. at Xmap(ijb) for the same cells, in the loop that builds
       ! the list -- so the two visit the same slots.
       do is = Xoff+1, Xoff+nact
-         if (skipX(is)) cycle
+         if (.not. iceXmask_s(is)) cycle
 
          if (free_drift_approx .and. present(rheofactX_s)) then
             if ( aiX (is) > rheo_area_min ) then
@@ -1938,7 +1938,7 @@
       subroutine stepu (&
                         lo, hi,               &
                         Cw,                   &
-                        skipme,               &
+                        icemask_s,               &
                         aiX,                  &
                         str1,       str2,     &
                         str3,       str4,     &
@@ -1958,11 +1958,11 @@
       integer (kind=int_kind), intent(in) :: &
          lo, hi                ! slot range to process
 
-      ! skipme(is) is .true. where the slot carries no ice this step.
+      ! icemask_s(is) is .true. where the slot carries no ice this step.
       ! Together they replace the icellU / indxUi / indxUj / Xmap chain: this
       ! kernel iterates over slots, the way ice_dyn_core1d's does.
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
-         skipme      ! inactive-slot flag
+         icemask_s      ! inactive-slot flag
 
       ! Every coefficient this kernel reads is COMPRESSED: this block's slice,
       ! 1-based, cells 1..cnt with the dead slot last, matching the velocities.  All of them are constant
@@ -2057,14 +2057,14 @@
       !$omp         tmp_str2_E, tmp_str3_N, tmp_str4_NE            , &
       !$omp         tmp_str6_N, tmp_str7_E, tmp_str8_NE            , &
       !$omp         vrel, cca, ccb, ab2, cc1, cc2, taux, tauy, Cb)   &
-      !$omp  shared(lo, hi, skipme, Cw, aiX, uocn, vocn            , &
+      !$omp  shared(lo, hi, icemask_s, Cw, aiX, uocn, vocn            , &
       !$omp         waterx, watery, forcex, forcey                 , &
       !$omp         Umassdti, fm, uarear, taubx_s                   , &
       !$omp         uvel_init, vvel_init, uvel, vvel, nbrE, nbrNE, nbrN           , &
       !$omp         str1, str2, str3, str4, str5, str6, str7, str8  , &
       !$omp         TbU, rheofactU, rhow, brlx, revp)
       do is = lo, hi
-         if (skipme(is)) cycle
+         if (.not. icemask_s(is)) cycle
 
          uold = uvel(is)
          vold = vvel(is)
@@ -2153,7 +2153,7 @@
 !=======================================================================
 ! Integration of the momentum equation to find velocity (u,v) at E and N locations
 
-      subroutine stepuv_CD (lo, hi,     skipme,   &
+      subroutine stepuv_CD (lo, hi,     icemask_s,   &
                             Cw,                   &
                                         aiX,      &
                             uocn,       vocn,     &
@@ -2171,9 +2171,9 @@
       integer (kind=int_kind), intent(in) :: &
          lo, hi                ! slot range to process
 
-      ! skipme(is) is .true. where the slot carries no ice this step
+      ! icemask_s(is) is .true. where the slot carries no ice this step
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
-         skipme      ! inactive-slot flag
+         icemask_s      ! inactive-slot flag
 
       ! Every coefficient below is COMPRESSED, this block's slice.  All are
       ! constant through the subcycling, so the caller packs them once; with
@@ -2246,13 +2246,13 @@
       !$omp parallel do schedule(static) default(none)                &
       !$omp private(is, uold, vold, vrel, cca, ccb, ccc, ab2        , &
       !$omp         cc1, cc2, taux, tauy, Cb)                         &
-      !$omp  shared(lo, hi, skipme, Cw, aiX, uocn, vocn             , &
+      !$omp  shared(lo, hi, icemask_s, Cw, aiX, uocn, vocn             , &
       !$omp         waterx, watery, forcex, forcey, massdti, fm     , &
       !$omp         strintx_s, strinty_s, taubx_s                   , &
       !$omp         uvel_init, vvel_init, uvel_s, vvel_s, Tb        , &
       !$omp         rhow, brlx, revp)
       do is = lo, hi
-         if (skipme(is)) cycle
+         if (.not. icemask_s(is)) cycle
 
          uold = uvel_s(is)
          vold = vvel_s(is)
@@ -2310,7 +2310,7 @@
 ! Slots the step kernel skipped are skipped here too, so they keep the value
 ! dyn_prep2 left -- exactly as when the stress was written in the loop.
 
-      subroutine calc_seabed_stress_slot (lo, hi, skipme,  &
+      subroutine calc_seabed_stress_slot (lo, hi, icemask_s,  &
                                           vel_s,  taub_s,  &
                                           vel2_s, taub2_s)
 
@@ -2320,7 +2320,7 @@
          lo, hi      ! slot range to process
 
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
-         skipme      ! inactive-slot flag
+         icemask_s      ! inactive-slot flag
 
       real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
          vel_s       ! velocity component matching taub_s (m/s)
@@ -2351,14 +2351,14 @@
       ! directive when the calling loops collapse, not before.
       if (present(taub2_s)) then
          do is = lo, hi
-            if (skipme(is)) cycle
+            if (.not. icemask_s(is)) cycle
             Cb          = taub_s(is)
             taub_s (is) = -vel_s (is)*Cb
             taub2_s(is) = -vel2_s(is)*Cb
          enddo
       else
          do is = lo, hi
-            if (skipme(is)) cycle
+            if (.not. icemask_s(is)) cycle
             taub_s(is) = -vel_s(is)*taub_s(is)
          enddo
       endif
@@ -2378,7 +2378,7 @@
 !
 ! This is only worth calling when the fields are actually output.
 
-      subroutine calc_strint_slot (lo, hi, skipme, uarear, rheofactU, &
+      subroutine calc_strint_slot (lo, hi, icemask_s, uarear, rheofactU, &
                                    str1, str2, str3, str4, &
                                    str5, str6, str7, str8, &
                                    nbrE, nbrNE, nbrN, strintx_s, strinty_s)
@@ -2392,7 +2392,7 @@
          lo, hi      ! slot range to process
 
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
-         skipme      ! inactive-slot flag
+         icemask_s      ! inactive-slot flag
 
       real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
          uarear  , & ! 1/uarea
@@ -2426,7 +2426,7 @@
       ! !$OMP PARALLEL DO over blocks, so a region here would nest.  Add the
       ! directive when that loop collapses, not before.
       do is = lo, hi
-         if (skipme(is)) cycle
+         if (.not. icemask_s(is)) cycle
 
          isE  = nbrE(is)
          isN  = nbrN(is)
@@ -2445,7 +2445,7 @@
 !=======================================================================
 ! Integration of the momentum equation to find velocity u at E location on C grid
 
-      subroutine stepu_C (lo, hi,     skipme,   &
+      subroutine stepu_C (lo, hi,     icemask_s,   &
                           Cw,                   &
                                       aiE,      &
                           uocn,       vocn,     &
@@ -2461,9 +2461,9 @@
       integer (kind=int_kind), intent(in) :: &
          lo, hi                ! slot range to process
 
-      ! skipme(is) is .true. where the slot carries no ice this step
+      ! icemask_s(is) is .true. where the slot carries no ice this step
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
-         skipme      ! inactive-slot flag
+         icemask_s      ! inactive-slot flag
 
       real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
          aiE     , & ! ice fraction on E-grid
@@ -2532,7 +2532,7 @@
       !$omp private(is           , uold         , vold         ,      &
       !$omp         vrel         , cca          , ccb          ,      &
       !$omp         ccc          , cc1          , taux         , Cb)  &
-      !$omp  shared(lo           , hi           , skipme       ,      &
+      !$omp  shared(lo           , hi           , icemask_s       ,      &
       !$omp         Cw           , aiE          , uocn         ,      &
       !$omp         vocn         , waterx       , forcex       ,      &
       !$omp         massdti      , fm           , strintx_s    ,      &
@@ -2540,7 +2540,7 @@
       !$omp         vvel_s       , Tb           , rhow         ,      &
       !$omp         brlx         , revp)
       do is = lo, hi
-         if (skipme(is)) cycle
+         if (.not. icemask_s(is)) cycle
 
          uold = uvel_s(is)
          vold = vvel_s(is)
@@ -2576,7 +2576,7 @@
 !=======================================================================
 ! Integration of the momentum equation to find velocity v at N location on C grid
 
-      subroutine stepv_C (lo, hi,     skipme,   &
+      subroutine stepv_C (lo, hi,     icemask_s,   &
                           Cw,                   &
                                       aiN,      &
                           uocn,       vocn,     &
@@ -2592,9 +2592,9 @@
       integer (kind=int_kind), intent(in) :: &
          lo, hi                ! slot range to process
 
-      ! skipme(is) is .true. where the slot carries no ice this step
+      ! icemask_s(is) is .true. where the slot carries no ice this step
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
-         skipme      ! inactive-slot flag
+         icemask_s      ! inactive-slot flag
 
       ! Every coefficient below is COMPRESSED, this block's slice.  All are
       ! constant through the subcycling, so the caller packs them once; with
@@ -2663,7 +2663,7 @@
       !$omp private(is           , uold         , vold         ,      &
       !$omp         vrel         , cca          , ccb          ,      &
       !$omp         ccc          , cc2          , tauy         , Cb)  &
-      !$omp  shared(lo           , hi           , skipme       ,      &
+      !$omp  shared(lo           , hi           , icemask_s       ,      &
       !$omp         Cw           , aiN          , uocn         ,      &
       !$omp         vocn         , watery       , forcey       ,      &
       !$omp         massdti      , fm           , strinty_s    ,      &
@@ -2671,7 +2671,7 @@
       !$omp         vvel_s       , Tb           , rhow         ,      &
       !$omp         brlx         , revp)
       do is = lo, hi
-         if (skipme(is)) cycle
+         if (.not. icemask_s(is)) cycle
 
          uold = uvel_s(is)
          vold = vvel_s(is)
@@ -2711,7 +2711,7 @@
 ! author: Elizabeth C. Hunke, LANL
 
       subroutine dyn_finish (lo,       hi,       &
-                             skipme,   Cw,       &
+                             icemask_s,   Cw,       &
                              uvel_s,   vvel_s,   &
                              uocn_s,   vocn_s,   &
                              aiX_s,    fm,       &
@@ -2722,7 +2722,7 @@
 
       ! .true. where the slot carries no ice this step
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
-         skipme
+         icemask_s
 
       ! ⚠ Compressed, indexed by slot exactly as strocnx/strocny are.
       ! Their producer is grid_average_X2Y('S',...) on the X-grid, so the
@@ -2771,7 +2771,7 @@
 
       ! ocean-ice stress for coupling
       do ms = lo, hi
-         if (skipme(ms)) cycle
+         if (.not. icemask_s(ms)) cycle
 
           vrel = rhow*Cw(ms)*sqrt((uocn_s(ms) - uvel_s(ms))**2 + &
                  (vocn_s(ms) - vvel_s(ms))**2)  ! m/s
@@ -2816,7 +2816,7 @@
 ! note1: TbU is a part of the Cb as defined in Lemieux et al. 2015 and 2016.
 ! note2: Seabed stress (better name) was called basal stress in Lemieux et al. 2015
 
-      subroutine seabed_stress_factor_LKD (lo,       hi,     skipme,   &
+      subroutine seabed_stress_factor_LKD (lo,       hi,     icemask_s,   &
                                            nbrE,     nbrNE,  nbrN,     &
                                            vice_s,   aice_s,           &
                                            hwater_s,         TbU,      &
@@ -2828,10 +2828,10 @@
 
       ! .true. where the slot carries no ice this step
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
-         skipme
+         icemask_s
 
       ! One vector per direction.  Every neighbour of an active cell owns a
-      ! slot carrying its real value: these loops gate on skipme, an active
+      ! slot carrying its real value: these loops gate on icemask_s, an active
       ! cell is always inside the static mask, and the neighbour ring is
       ! marked around every cell of that mask.  So the minimum over
       ! hwater_s no longer reaches a dead slot, which is what used to need
@@ -2885,7 +2885,7 @@
 
       case ('U')   ! own, E, NE, N
          do m = lo, hi
-            if (skipme(m)) cycle
+            if (.not. icemask_s(m)) cycle
             hwu = min(hwater_s(m), hwater_s(nbrE(m)), &
                       hwater_s(nbrNE(m)), hwater_s(nbrN(m)))
             au  = max(aice_s(m)  , aice_s(nbrE(m))  , &
@@ -2899,7 +2899,7 @@
 
       case ('E')   ! own, E
          do m = lo, hi
-            if (skipme(m)) cycle
+            if (.not. icemask_s(m)) cycle
             hwu = min(hwater_s(m), hwater_s(nbrE(m)))
             au  = max(aice_s(m)  , aice_s(nbrE(m)))
             hu  = max(vice_s(m)  , vice_s(nbrE(m)))
@@ -2910,7 +2910,7 @@
 
       case ('N')   ! own, N
          do m = lo, hi
-            if (skipme(m)) cycle
+            if (.not. icemask_s(m)) cycle
             hwu = min(hwater_s(m), hwater_s(nbrN(m)))
             au  = max(aice_s(m)  , aice_s(nbrN(m)))
             hu  = max(vice_s(m)  , vice_s(nbrN(m)))
@@ -2942,12 +2942,12 @@
 ! authors: D. Dumont, J.F. Lemieux, E. Dumas-Lefebvre, F. Dupont
 !
       subroutine seabed_stress_factor_prob (lo,     hi,                  &
-                                            skipT,  skipU,               &
+                                            iceTmask_slot,  iceUmask_slot,               &
                                             nbrE,   nbrNE,   nbrN,       &
                                             aicen_s, vicen_s,            &
                                             hwater_s,        TbU,        &
                                             TbE,    TbN,                 &
-                                            skipE,  skipN)
+                                            iceEmask_slot,  iceNmask_slot)
 ! use modules
 
       use ice_arrays_column, only: hin_max
@@ -2958,8 +2958,8 @@
 
       ! .true. where the slot carries no ice this step
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
-         skipT   , & ! T cells
-         skipU       ! U cells
+         iceTmask_slot   , & ! T cells
+         iceUmask_slot       ! U cells
 
 
       ! One vector per direction, as everywhere else in the dynamics.  A
@@ -2990,8 +2990,8 @@
 
 
       logical (kind=log_kind), dimension (:), intent(in), optional, contiguous :: &
-         skipE   , & ! E cells
-         skipN       ! N cells
+         iceEmask_slot   , & ! E cells
+         iceNmask_slot       ! N cells
 
 ! local variables
 
@@ -3057,7 +3057,7 @@
       Tbt(:) = c0
 
       do is = lo, hi
-         if (skipT(is)) cycle
+         if (.not. iceTmask_slot(is)) cycle
          atot = sum(aicen_s(is,1:ncat))
 
          if (atot > 0.05_dbl_kind .and. hwater_s(is) < max_depth) then
@@ -3128,21 +3128,21 @@
 
       if (grid_ice == "B") then
          do is = lo, hi
-            if (skipU(is)) cycle
+            if (.not. iceUmask_slot(is)) cycle
             ! convert quantities to U-location: own, E, NE, N
             TbU(is) = max(Tbt(is), Tbt(nbrE(is)), &
                           Tbt(nbrNE(is)), Tbt(nbrN(is)))
          enddo                     ! slot
       elseif (grid_ice == "C" .or. grid_ice == "CD") then
          if (present(TbE) .and. present(TbN) .and. &
-             present(skipE) .and. present(skipN)) then
+             present(iceEmask_slot) .and. present(iceNmask_slot)) then
 
             do is = lo, hi
-               if (skipE(is)) cycle
+               if (.not. iceEmask_slot(is)) cycle
                TbE(is) = max(Tbt(is), Tbt(nbrE(is)))   ! own, E
             enddo
             do is = lo, hi
-               if (skipN(is)) cycle
+               if (.not. iceNmask_slot(is)) cycle
                TbN(is) = max(Tbt(is), Tbt(nbrN(is)))   ! own, N
             enddo
 
@@ -3240,7 +3240,7 @@
 ! Delta and Deltapp are called Delta_FG and Delta_G 
 ! in Lemieux et al. paper. 
 
-      subroutine deformations (lo, hi,     skipme, &
+      subroutine deformations (lo, hi,     icemask_s, &
                                nbrW, nbrSW, nbrS,        ijslot, &
                                uvel,       vvel,   &
                                dxT,        dyT,    &
@@ -3257,7 +3257,7 @@
          lo, hi                ! slot range to process
 
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
-         skipme       ! inactive-slot flag, T cells
+         icemask_s       ! inactive-slot flag, T cells
 
       ! (slot, direction) -> neighbour slot.  A missing neighbour points at the
       ! block's dead slot, which holds zero, so the corners need no branch.
@@ -3327,12 +3327,12 @@
       !$omp         Deltase, Deltasw, Deltappne, Deltappnw, Deltappse, &
       !$omp         Deltappsw, tmp, numetp, nume, deno, dvdxn, dvdxs, &
       !$omp         dudye, dudyw) &
-      !$omp  shared(lo, hi, skipme, nbrW, nbrSW, nbrS, ijslot, uvel, vvel, dxT, dyT, &
+      !$omp  shared(lo, hi, icemask_s, nbrW, nbrSW, nbrS, ijslot, uvel, vvel, dxT, dyT, &
       !$omp         dxU, dyU, cxp, cyp, cxm, cym, tarear, vort, shear, &
       !$omp         divu, rdg_conv, rdg_shear, e_factor, epp2i, arlx1i, &
       !$omp         denom1, revp, capping)
       do is = lo, hi
-         if (skipme(is)) cycle
+         if (.not. icemask_s(is)) cycle
 
          isW  = nbrW(is)
          isS  = nbrS(is)
@@ -3399,7 +3399,7 @@
 ! author: JF Lemieux, ECCC
 ! Nov 2021
 
-      subroutine deformationsCD_T (lo, hi,     skipme, &
+      subroutine deformationsCD_T (lo, hi,     icemask_s, &
                                    nbrW, nbrS,        ijslot, &
                                    uvelE,      vvelE,  &
                                    uvelN,      vvelN,  &
@@ -3415,7 +3415,7 @@
          lo, hi                ! slot range to process
 
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
-         skipme       ! inactive-slot flag, T cells
+         icemask_s       ! inactive-slot flag, T cells
 
       ! (slot, direction) -> neighbour slot; a missing neighbour points at the
       ! block's dead slot, which holds zero.
@@ -3482,11 +3482,11 @@
       !$omp parallel do schedule(static) default(none)              &
       !$omp private(is, isW, isS, ijb, divT, tensionT, shearT, DeltaT, &
       !$omp         tmp) &
-      !$omp  shared(lo, hi, skipme, nbrW, nbrS, ijslot, uvelE, vvelE, uvelN, &
+      !$omp  shared(lo, hi, icemask_s, nbrW, nbrS, ijslot, uvelE, vvelE, uvelN, &
       !$omp         vvelN, dxN, dyE, dxT, dyT, tarear, vort, shear, divu, &
       !$omp         rdg_conv, rdg_shear, e_factor, epp2i)
       do is = lo, hi
-         if (skipme(is)) cycle
+         if (.not. icemask_s(is)) cycle
 
          isW  = nbrW(is)
          isS  = nbrS(is)
@@ -3541,7 +3541,7 @@
 ! DeltaT and DeltappT are called Delta_FG and Delta_G 
 ! in Lemieux et al. paper. 
 
-    subroutine deformationsC_T (lo, hi,     skipme,    &
+    subroutine deformationsC_T (lo, hi,     icemask_s,    &
                                    nbrW, nbrSW, nbrS,        ijslot, &
                                 uvelE,      vvelE,     &
                                 uvelN,      vvelN,     &
@@ -3559,7 +3559,7 @@
        lo, hi            ! slot range to process
 
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
-         skipme       ! inactive-slot flag, T cells
+         icemask_s       ! inactive-slot flag, T cells
 
       ! (slot, direction) -> neighbour slot; a missing neighbour points at the
       ! block's dead slot, which holds zero.
@@ -3634,12 +3634,12 @@
     !$omp parallel do schedule(static) default(none)              &
     !$omp private(is, isW, isS, isSW, ijb, divT, tensionT, shearT, &
     !$omp         DeltaT, tmp, shearTsqr, DeltappTsqr) &
-    !$omp  shared(lo, hi, skipme, nbrW, nbrSW, nbrS, ijslot, uvelE, vvelE, uvelN, &
+    !$omp  shared(lo, hi, icemask_s, nbrW, nbrSW, nbrS, ijslot, uvelE, vvelE, uvelN, &
     !$omp         vvelN, dxN, dyE, dxT, dyT, tarear, uarea, uareaavg, &
     !$omp         shearU, vort, shear, divu, rdg_conv, rdg_shear, &
     !$omp         e_factor, epp2i)
     do is = lo, hi
-       if (skipme(is)) cycle
+       if (.not. icemask_s(is)) cycle
 
          isW  = nbrW(is)
          isS  = nbrS(is)
@@ -3833,7 +3833,7 @@
 ! converting CD is its own tranche.  ⚠ The two share their arithmetic -- when
 ! CD is converted this one becomes the only version and the block one goes.
       subroutine strain_rates_U (lo,         hi,        &
-                                 skipme,                &
+                                 icemask_s,                &
                                  nbrE, nbrN,                   &
                                  uvelE_s,    vvelE_s,   &
                                  uvelN_s,    vvelN_s,   &
@@ -3851,7 +3851,7 @@
 
       ! .true. where the slot carries no ice this step
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
-         skipme
+         icemask_s
 
       ! nbr(is,d) is the slot one step in direction d from slot is.
       ! ⚠ must be Nbr_Task with a task-wide range, never Nbr_Local: the
@@ -3927,13 +3927,13 @@
       !$omp parallel do schedule(static) default(none)                   &
       !$omp private(is, isE, isN, uNip1j, uNij, vEijp1, vEij,            &
       !$omp         uEijp1, uEij, vNip1j, vNij)                          &
-      !$omp  shared(lo, hi, skipme, nbrE, nbrN, uvelE_s, vvelE_s,        &
+      !$omp  shared(lo, hi, icemask_s, nbrE, nbrN, uvelE_s, vvelE_s,        &
       !$omp         uvelN_s, vvelN_s, uvelU, vvelU, dxE_s, dyN_s,        &
       !$omp         dxU, dyU, ratiodxN, ratiodxNr, ratiodyE, ratiodyEr,  &
       !$omp         epm_s, npm_s, divergU, tensionU, shearU_s, DeltaU,   &
       !$omp         e_factor)
       do is = lo, hi
-         if (skipme(is)) cycle
+         if (.not. icemask_s(is)) cycle
 
          isE = nbrE(is)   ! (i+1,j  )
          isN = nbrN(is)   ! (i  ,j+1)

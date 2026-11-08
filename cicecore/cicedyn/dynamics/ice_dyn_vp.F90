@@ -46,7 +46,7 @@
       use ice_domain, only: nblocks, distrb_info
       use ice_domain_size, only: max_blocks
       use ice_dyn_shared, only: dyn_prep1, dyn_prep2, dyn_finish, &
-          cosw, sinw, uvel_init, vvel_init, dynOff, dynCnt, dynMap, dynIJ, dynMaxCnt, skipT, skipU, &
+          cosw, sinw, uvel_init, vvel_init, dynOff, dynCnt, dynMap, dynIJ, dynMaxCnt, iceTmask_slot, iceUmask_slot, &
           dynTot, pack_to_slots, unpack_from_slots, calc_seabed_stress_slot, &
           Nbr_Local, nbr_W, nbr_S, nbr_SW, nbr_E, nbr_N, nbr_NE, uarear_slot, &
           NbrW_Task, NbrSW_Task, NbrS_Task, &
@@ -247,7 +247,7 @@
 ! author: JF Lemieux, A. Qaddouri and F. Dupont ECCC
 
       subroutine implicit_solver (dt)
-use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
+use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
 
       use ice_arrays_column, only: Cdn_ocn
       use ice_boundary, only: ice_HaloMask, ice_HaloUpdate, &
@@ -483,12 +483,12 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                          stress12_3(:,iblk), stress12_4(:,iblk),                                                                       &
                          uvel_init,   vvel_init, &
                          uvel(:,iblk), vvel(:,iblk),                                                                                   &
-                        dynMap(:,iblk), dynOff(iblk), dynCnt(iblk), skipU,                                               &
-                        skipT,                                                               &
+                        dynMap(:,iblk), dynOff(iblk), dynCnt(iblk), iceUmask_slot,                                               &
+                        iceTmask_slot,                                                               &
                          TbU_s)
 
          call calc_bfix (dynOff(iblk)+1      , dynOff(iblk)+dynCnt(iblk), &
-                         skipU               ,                           &
+                         iceUmask_slot               ,                           &
                          umassdti_slot       ,                           &
                          forcexU_slot        , forceyU_slot        ,     &
                          uvel_init           , vvel_init           ,     &
@@ -499,15 +499,15 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       !-----------------------------------------------------------------
 
          strength(:,:,iblk) = c0  ! initialize
-         ! ⚠ skipT, not skipPhys.  icellT is built over jlo..jhi+1 x
+         ! ⚠ iceTmask_slot, not skipPhys.  icellT is built over jlo..jhi+1 x
          ! ilo..ihi+1 -- the physical domain PLUS one north and east ghost
          ! row, where stresses are needed -- and selects on iceTmask alone.
-         ! dyn_prep1 records that set slot-wise in skipT, so this
+         ! dyn_prep1 records that set slot-wise in iceTmask_slot, so this
          ! reproduces icellT cell for cell.  ms is assigned BEFORE the
          ! call: in update_state it was the ordering, not the index, that
          ! was wrong, and the symptom appeared two routines downstream.
          do is = 1, dynCnt(iblk)
-            if (skipT(dynOff(iblk)+is)) cycle
+            if (.not. iceTmask_slot(dynOff(iblk)+is)) cycle
             ms = dynOff(iblk) + is
             ij = dynIJ(ms)
             j  = (ij-1)/nx_block + 1
@@ -558,7 +558,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       !-----------------------------------------------------------------
       if (seabed_stress) then
          if ( seabed_stress_method == 'LKD' ) then
-            call seabed_stress_factor_LKD (1               , dynTot, skipU        , &
+            call seabed_stress_factor_LKD (1               , dynTot, iceUmask_slot        , &
                                            NbrE_Task       , NbrNE_Task    , &
                                            NbrN_Task       ,                 &
                                            vice_slot       , aice_slot     , &
@@ -567,7 +567,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          elseif ( seabed_stress_method == 'probabilistic' ) then
 
             call seabed_stress_factor_prob (1               , dynTot        , &
-                                            skipT           , skipU         , &
+                                            iceTmask_slot           , iceUmask_slot         , &
                                             NbrE_Task       , NbrNE_Task    , &
                                             NbrN_Task       ,                 &
                                             aicen_slot      , vicen_slot    , &
@@ -581,9 +581,9 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       ! calc size of problem (ntot) and allocate solution vector
       !-----------------------------------------------------------------
 
-      ! skipU is cleared exactly where dyn_prep2 counts a cell into icellU,
+      ! iceUmask_slot is cleared exactly where dyn_prep2 counts a cell into icellU,
       ! so counting active slots gives the same total the block loop did.
-      ntot = count(.not. skipU(1:dynTot))
+      ntot = count(iceUmask_slot(1:dynTot))
       ntot = 2 * ntot ! times 2 because of u and v
 
       allocate(sol(ntot))
@@ -609,7 +609,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       !-----------------------------------------------------------------
       ! uvel_slot/vvel_slot carry the converged velocity already; the pack
       ! from the block form was an identity, dead slots included.
-      call stress_vp (1, dynTot, skipT,                 &
+      call stress_vp (1, dynTot, iceTmask_slot,                 &
                       uvel_slot , vvel_slot ,           &
                       dxT_slot  , dyT_slot  ,           &
                       cxp_slot  , cyp_slot  ,           &
@@ -632,7 +632,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       ! the dead slots zero, so packing them back from the block form was an
       ! identity.
       call deformations (                                                                                                              &
-                         1, dynTot, skipT,                                                &
+                         1, dynTot, iceTmask_slot,                                                &
                          NbrW_Task, NbrSW_Task, NbrS_Task, dynIJ,          &
                          uvel_slot, vvel_slot, &
                          dxT_slot, dyT_slot,   &
@@ -656,7 +656,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                Cb_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
 
             ! uvel_slot/vvel_slot are already the converged velocity
-            call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipU, &
+            call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceUmask_slot, &
                  uvel_slot,                                 &
                  taubx_s,                                   &
                  vvel_slot,                                 &
@@ -771,7 +771,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       !-----------------------------------------------------------------
 
       call dyn_finish (1             , dynTot        , &
-                       skipU         , cdn_ocnU_slot , &
+                       iceUmask_slot         , cdn_ocnU_slot , &
                        uvel_slot     , vvel_slot     , &
                        uocnU_slot    , vocnU_slot    , &
                        aiU_slot      , fmU_slot      , &
@@ -974,7 +974,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
             vlin_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = vprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
             call pack_to_slots(strength(:,:,iblk), dynMap(:,iblk), strength_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
 
-            call calc_zeta_dPr (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipT, &
+            call calc_zeta_dPr (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceTmask_slot, &
                                 ulin_s,    &
                                 vlin_s,    &
                                 dxT_slot,    &
@@ -1001,7 +1001,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
             ulin_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = ulin(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
             vlin_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = vlin(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
 
-            call calc_vrel_Cb (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipU, &
+            call calc_vrel_Cb (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceUmask_slot, &
                                Cw_s,             &
                                aiU_slot,             &
                                TbU_s,             &
@@ -1018,7 +1018,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
             ! stPr and vrel are already compressed; uarear is compressed once
             ! per run.  Only the four still-block-layout inputs are packed.
 
-            call calc_bvec (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipU, &
+            call calc_bvec (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceUmask_slot, &
                             stPr_s,       &
                             uarear_slot,       &
                             waterxU_slot,         &
@@ -1034,8 +1034,8 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
             ! Compute nonlinear residual norm (PDE residual)
             mvu_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = uprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
             mvv_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = vprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
-            call matvec (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipT,                                                &
-                         skipU, NbrW_Task, NbrSW_Task, NbrS_Task, NbrE_Task, NbrNE_Task, NbrN_Task,          &
+            call matvec (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceTmask_slot,                                                &
+                         iceUmask_slot, NbrW_Task, NbrSW_Task, NbrS_Task, NbrE_Task, NbrNE_Task, NbrN_Task,          &
                          dxT_slot, dyT_slot,   &
                          dxhy_slot, dyhx_slot, &
                          cxp_slot, cyp_slot,   &
@@ -1047,7 +1047,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                          umassdti_slot, fmU_slot,    &
                          uarear_slot,                                                      &
                          mvAu_s, mvAv_s)
-            call residual_vec (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipU,                                          &
+            call residual_vec (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceUmask_slot,                                          &
                                bx_s, by_s,     &
                                mvAu_s, mvAv_s, &
                                Fx_s, Fy_s)
@@ -1086,7 +1086,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
             ! Prepare diagonal for preconditioner
             if (precond == 'diag' .or. precond == 'pgmres') then
                ! first compute diagonal contributions due to rheology term
-               call formDiag_step1 (1             , dynTot, skipU, &
+               call formDiag_step1 (1             , dynTot, iceUmask_slot, &
                                     dxT_slot , dyT_slot , &
                                     dxhy_slot, dyhx_slot, &
                                     cxp_slot , cyp_slot , &
@@ -1096,7 +1096,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                                     diag_rheo1, diag_rheo2, diag_rheo3, diag_rheo4, &
                   diag_rheo5, diag_rheo6, diag_rheo7, diag_rheo8)
                ! second compute the full diagonal
-               call formDiag_step2 (1             , dynTot, skipU, &
+               call formDiag_step2 (1             , dynTot, iceUmask_slot, &
                                     diag_rheo1, diag_rheo2, diag_rheo3, diag_rheo4, &
                   diag_rheo5, diag_rheo6, diag_rheo7, diag_rheo8, &
                   vrel_s, &
@@ -1321,7 +1321,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
 ! Computes the viscosities and dPr/dx, dPr/dy
 
-      subroutine calc_zeta_dPr (lo      , hi  , skipme  , &
+      subroutine calc_zeta_dPr (lo      , hi  , icemask_s  , &
                                 uvel    , vvel    , &
                                 dxT     , dyT     , &
                                 dxhy    , dyhx    , &
@@ -1338,7 +1338,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          lo, hi                ! first and last slot of this block
 
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
-         skipme       ! inactive-slot flag, T cells
+         icemask_s       ! inactive-slot flag, T cells
 
       ! compressed: this block's slice, 1-based, cells 1..ncells, dead slot last
       real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
@@ -1401,7 +1401,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       etax2 (lo:hi+1,:) = c0
 
       do is = lo, hi
-         if (skipme(is)) cycle
+         if (.not. icemask_s(is)) cycle
 
          isW  = nbrW(is)
          isS  = nbrS(is)
@@ -1528,7 +1528,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 ! viscous-plastic sea ice stresses, Geosci. Model Dev., 13, 1763–1769,
 
       subroutine stress_vp (lo        , hi        , &
-                            skipme    ,             &
+                            icemask_s    ,             &
                             uvel      , vvel      , &
                             dxT       , dyT       , &
                             cxp       , cyp       , &
@@ -1549,7 +1549,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          lo, hi                ! first and last slot to visit
 
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
-         skipme       ! inactive-slot flag, T cells
+         icemask_s       ! inactive-slot flag, T cells
 
       ! compressed: this block's slice, 1-based, cells 1..ncells, dead slot last
       real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
@@ -1607,14 +1607,14 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       !$omp         tensionne, tensionnw, tensionse, tensionsw,     &
       !$omp         shearne, shearnw, shearse, shearsw,             &
       !$omp         Deltane, Deltanw, Deltase, Deltasw)             &
-      !$omp  shared(lo, hi, skipme, nbrW, nbrSW, nbrS,              &
+      !$omp  shared(lo, hi, icemask_s, nbrW, nbrSW, nbrS,              &
       !$omp         uvel, vvel, dxT, dyT, cxp, cyp, cxm, cym,       &
       !$omp         zetax2, etax2, rep_prs,                         &
       !$omp         stressp_1, stressp_2, stressp_3, stressp_4,     &
       !$omp         stressm_1, stressm_2, stressm_3, stressm_4,     &
       !$omp         stress12_1, stress12_2, stress12_3, stress12_4)
       do is = lo, hi
-         if (skipme(is)) cycle
+         if (.not. icemask_s(is)) cycle
 
          isW  = nbrW(is)
          isS  = nbrS(is)
@@ -1669,7 +1669,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
 ! Compute vrel and seabed stress coefficients
 
-      subroutine calc_vrel_Cb (lo      , hi  , skipme  , &
+      subroutine calc_vrel_Cb (lo      , hi  , icemask_s  , &
                                Cw      ,           &
                                aiU     , TbU     , &
                                uocn    , vocn    , &
@@ -1681,13 +1681,13 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       integer (kind=int_kind), intent(in) :: &
          lo, hi                ! first and last slot of this block
 
-      ! skipme(is) is .true. where the slot carries no ice this step.  Together
+      ! icemask_s(is) is .true. where the slot carries no ice this step.  Together
       ! with ncells this replaces the icellU / indxUi / indxUj chain: the loop
       ! runs over slots, and the non-skipped ones are exactly the icellU cells
       ! in the same order, because dynMap numbers slots row-major over the
       ! block and dyn_prep2 scans the physical domain the same way.
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
-         skipme      ! inactive-slot flag
+         icemask_s      ! inactive-slot flag
 
       ! every field below is COMPRESSED: this block's slice, 1-based, cells
       ! 1..ncells with the dead slot last
@@ -1720,7 +1720,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          file=__FILE__, line=__LINE__)
 
       do is = lo, hi
-         if (skipme(is)) cycle
+         if (.not. icemask_s(is)) cycle
 
          ! (magnitude of relative ocean current)*rhow*drag*aice
          vrel(is) = aiU(is)*rhow*Cw(is)*sqrt((uocn(is) - uvel(is))**2 + &
@@ -1735,8 +1735,8 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 ! Au = A(u,v)_[x] * uvel (x components of  A(u,v) * (u,v))
 ! Av = A(u,v)_[y] * vvel (y components of  A(u,v) * (u,v))
 
-      subroutine matvec (lo      , hi      , skipT   , &
-                         skipU   , nbrW, nbrSW, nbrS, nbrE, nbrNE, nbrN     , &
+      subroutine matvec (lo      , hi      , iceTmask_slot   , &
+                         iceUmask_slot   , nbrW, nbrSW, nbrS, nbrE, nbrNE, nbrN     , &
                          dxT     , dyT     , &
                          dxhy    , dyhx    , &
                          cxp     , cyp     , &
@@ -1755,8 +1755,8 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
       ! two flags, because this kernel has a T-cell pass and a U-cell pass
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
-         skipT   , & ! inactive-slot flag, T cells
-         skipU       ! inactive-slot flag, U cells
+         iceTmask_slot   , & ! inactive-slot flag, T cells
+         iceUmask_slot       ! inactive-slot flag, U cells
 
       ! (slot, direction) -> neighbour slot; a missing one is the dead slot
       integer (kind=int_kind), dimension (:), intent(in), contiguous :: &
@@ -1854,7 +1854,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       str8(lo:hi+1) = c0
 
       do is = lo, hi
-         if (skipT(is)) cycle
+         if (.not. iceTmask_slot(is)) cycle
 
          isW  = nbrW(is)
          isS  = nbrS(is)
@@ -2007,7 +2007,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       !-----------------------------------------------------------------
 
       do is = lo, hi
-         if (skipU(is)) cycle
+         if (.not. iceUmask_slot(is)) cycle
 
          isE  = nbrE(is)
          isN  = nbrN(is)
@@ -2044,7 +2044,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 ! does not depend on (u,v) and thus do not change during the nonlinear iteration
 
      subroutine calc_bfix  (lo       , hi       , &
-                            skipme   ,            &
+                            icemask_s   ,            &
                             umassdti ,            &
                             forcexU  , forceyU  , &
                             uvel_init, vvel_init, &
@@ -2055,7 +2055,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
       ! .true. where the slot carries no ice this step
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
-         skipme
+         icemask_s
 
       ! All compressed; dyn_prep2 fills only the slot form.
       real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
@@ -2079,7 +2079,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       character(len=*), parameter :: subname = '(calc_bfix)'
 
       do is = lo, hi
-         if (skipme(is)) cycle
+         if (.not. icemask_s(is)) cycle
          bxfix(is) = umassdti(is)*uvel_init(is) + forcexU(is)
          byfix(is) = umassdti(is)*vvel_init(is) + forceyU(is)
       enddo
@@ -2092,7 +2092,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 ! that cannot be written as A(u,v)*(u,v), where A(u,v) is a matrix with entries
 ! depending on (u,v)
 
-      subroutine calc_bvec (lo      , hi  , skipme  , &
+      subroutine calc_bvec (lo      , hi  , icemask_s  , &
                             stPr    , uarear  , &
                             waterxU , wateryU , &
                             bxfix   , byfix   , &
@@ -2103,7 +2103,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          lo, hi                ! first and last slot of this block
 
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
-         skipme      ! inactive-slot flag
+         icemask_s      ! inactive-slot flag
 
       real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
          waterxU , & ! for ocean stress calculation, x (m/s)
@@ -2149,7 +2149,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          file=__FILE__, line=__LINE__)
 
       do is = lo, hi
-         if (skipme(is)) cycle
+         if (.not. icemask_s(is)) cycle
 
          ! the three T cells whose Pr stresses reach this U point, as EVP's
          ! stepu reads str: (+1,0), (0,+1) and (+1,+1)
@@ -2180,7 +2180,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 ! Au = A(u,v)_[x] * uvel (x components of  A(u,v) * (u,v))
 ! Av = A(u,v)_[y] * vvel (y components of  A(u,v) * (u,v))
 
-      subroutine residual_vec (lo      , hi     , skipme  , &
+      subroutine residual_vec (lo      , hi     , icemask_s  , &
                                bx         , by      , &
                                Au         , Av      , &
                                Fx         , Fy        )
@@ -2189,7 +2189,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          lo, hi                ! first and last slot of this block
 
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
-         skipme       ! inactive-slot flag, U cells
+         icemask_s       ! inactive-slot flag, U cells
 
       ! compressed: this block's slice, 1-based, cells 1..ncells, dead slot last
       real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
@@ -2214,7 +2214,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       !-----------------------------------------------------------------
 
       do is = lo, hi
-         if (skipme(is)) cycle
+         if (.not. icemask_s(is)) cycle
 
          Fx(is) = bx(is) - Au(is)
          Fy(is) = by(is) - Av(is)
@@ -2227,7 +2227,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 ! Form the diagonal of the matrix A(u,v) (first part of the computation)
 ! Part 1: compute the contributions to the diagonal from the rheology term
 
-      subroutine formDiag_step1  (lo, hi  , skipme  , &
+      subroutine formDiag_step1  (lo, hi  , icemask_s  , &
                                   dxT     , dyT     , &
                                   dxhy    , dyhx    , &
                                   cxp     , cyp     , &
@@ -2241,7 +2241,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          lo, hi             ! slot range to process
 
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
-         skipme       ! inactive-slot flag, U cells
+         icemask_s       ! inactive-slot flag, U cells
 
       ! compressed: the slot range lo..hi, dead slot last
       real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
@@ -2337,7 +2337,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
       ! ---- term 1: uij = c1, T cell own slot ----
       do is = lo, hi
-         if (skipme(is)) cycle
+         if (.not. icemask_s(is)) cycle
          ist = is
 
          !-----------------------------------------------------------------
@@ -2459,7 +2459,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
       ! ---- term 2: ui1j = c1, T cell one step E ----
       do is = lo, hi
-         if (skipme(is)) cycle
+         if (.not. icemask_s(is)) cycle
          ist = nbrE(is)
 
          !-----------------------------------------------------------------
@@ -2581,7 +2581,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
       ! ---- term 3: uij1 = c1, T cell one step N ----
       do is = lo, hi
-         if (skipme(is)) cycle
+         if (.not. icemask_s(is)) cycle
          ist = nbrN(is)
 
          !-----------------------------------------------------------------
@@ -2703,7 +2703,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
       ! ---- term 4: ui1j1 = c1, T cell one step NE ----
       do is = lo, hi
-         if (skipme(is)) cycle
+         if (.not. icemask_s(is)) cycle
          ist = nbrNE(is)
 
          !-----------------------------------------------------------------
@@ -2829,7 +2829,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
       ! ---- term 5: vij = c1, T cell own slot ----
       do is = lo, hi
-         if (skipme(is)) cycle
+         if (.not. icemask_s(is)) cycle
          ist = is
 
          !-----------------------------------------------------------------
@@ -2951,7 +2951,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
       ! ---- term 6: vij1 = c1, T cell one step N ----
       do is = lo, hi
-         if (skipme(is)) cycle
+         if (.not. icemask_s(is)) cycle
          ist = nbrN(is)
 
          !-----------------------------------------------------------------
@@ -3073,7 +3073,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
       ! ---- term 7: vi1j = c1, T cell one step E ----
       do is = lo, hi
-         if (skipme(is)) cycle
+         if (.not. icemask_s(is)) cycle
          ist = nbrE(is)
 
          !-----------------------------------------------------------------
@@ -3195,7 +3195,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
       ! ---- term 8: vi1j1 = c1, T cell one step NE ----
       do is = lo, hi
-         if (skipme(is)) cycle
+         if (.not. icemask_s(is)) cycle
          ist = nbrNE(is)
 
          !-----------------------------------------------------------------
@@ -3323,7 +3323,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 ! Form the diagonal of the matrix A(u,v) (second part of the computation)
 ! Part 2: compute diagonal
 
-      subroutine formDiag_step2 (lo, hi  , skipme  , &
+      subroutine formDiag_step2 (lo, hi  , icemask_s  , &
                                  Drheo1, Drheo2, Drheo3, Drheo4, &
                                  Drheo5, Drheo6, Drheo7, Drheo8, &
                                  vrel    , &
@@ -3335,7 +3335,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          lo, hi             ! slot range to process
 
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
-         skipme       ! inactive-slot flag, U cells
+         icemask_s       ! inactive-slot flag, U cells
 
       ! compressed: the slot range lo..hi, dead slot last
       real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
@@ -3388,7 +3388,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       ! Drheo8 corresponds to str((j+1-1)*nx_block+i+1,8))
 
       do is = lo, hi
-         if (skipme(is)) cycle
+         if (.not. icemask_s(is)) cycle
 
          ccaimp = umassdti(is) + vrel(is) * cosw + Cb(is) ! kg/m^2 s
 
@@ -3480,7 +3480,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       !$OMP PARALLEL DO PRIVATE(is, iblk, p)
       do iblk = 1, nblocks
          do is = dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk)
-            if (skipU(is)) cycle
+            if (.not. iceUmask_slot(is)) cycle
             p = vector1_x(is)*vector2_x(is) + vector1_y(is)*vector2_y(is)
             prod(dynIJ(is),iblk) = p
             dot(iblk) = dot(iblk) + p
@@ -3544,7 +3544,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       ! Slot order is icellU order, so tot advances in exactly the sequence
       ! the block-layout loop used and outvec comes out byte-identical.
       do is = 1, dynTot
-         if (skipU(is)) cycle
+         if (.not. iceUmask_slot(is)) cycle
          tot = tot + 1
          outvec(tot) = tpu(is)
          tot = tot + 1
@@ -3588,7 +3588,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
       tot = 0
       do is = 1, dynTot
-         if (skipU(is)) cycle
+         if (.not. iceUmask_slot(is)) cycle
          tot = tot + 1
          tpu(is) = invec(tot)
          tot = tot + 1
@@ -3796,8 +3796,8 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
       !$OMP PARALLEL DO PRIVATE(iblk)
       do iblk = 1, nblocks
-         call matvec (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipT,                                                &
-                      skipU, NbrW_Task, NbrSW_Task, NbrS_Task, NbrE_Task, NbrNE_Task, NbrN_Task,          &
+         call matvec (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceTmask_slot,                                                &
+                      iceUmask_slot, NbrW_Task, NbrSW_Task, NbrS_Task, NbrE_Task, NbrNE_Task, NbrN_Task,          &
                       dxT_slot, dyT_slot,   &
                       dxhy_slot, dyhx_slot, &
                       cxp_slot, cyp_slot,   &
@@ -3809,7 +3809,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                       umassdti_slot, fmU_slot,    &
                       uarear_slot,                                                      &
                       workspace_x, workspace_y)
-         call residual_vec (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipU,                                                    &
+         call residual_vec (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceUmask_slot,                                                    &
                             bx, by,                   &
                             workspace_x, workspace_y, &
                             arnoldi_basis_x(:,1),                                                    &
@@ -3837,7 +3837,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          inverse_norm = c1 / norm_residual
          !$omp parallel do schedule(static) private(is)
          do is = 1, dynTot
-               if (skipU(is)) cycle
+               if (.not. iceUmask_slot(is)) cycle
 
             arnoldi_basis_x(is,1) = arnoldi_basis_x(is,1) * inverse_norm
             arnoldi_basis_y(is,1) = arnoldi_basis_y(is,1) * inverse_norm
@@ -3887,8 +3887,8 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
             !$OMP PARALLEL DO PRIVATE(iblk)
             do iblk = 1, nblocks
-               call matvec (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipT,                                                    &
-                            skipU, NbrW_Task, NbrSW_Task, NbrS_Task, NbrE_Task, NbrNE_Task, NbrN_Task,              &
+               call matvec (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceTmask_slot,                                                    &
+                            iceUmask_slot, NbrW_Task, NbrSW_Task, NbrS_Task, NbrE_Task, NbrNE_Task, NbrN_Task,              &
                             dxT_slot, dyT_slot,       &
                             dxhy_slot, dyhx_slot,     &
                             cxp_slot, cyp_slot,       &
@@ -3920,7 +3920,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                inverse_norm = c1 / hessenberg(nextit,initer)
                !$omp parallel do schedule(static) private(is)
                do is = 1, dynTot
-               if (skipU(is)) cycle
+               if (.not. iceUmask_slot(is)) cycle
 
                   arnoldi_basis_x(is,nextit) = arnoldi_basis_x(is,nextit)*inverse_norm
                   arnoldi_basis_y(is,nextit) = arnoldi_basis_y(is,nextit)*inverse_norm
@@ -3983,7 +3983,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
             t = rhs_hess(it)
             !$omp parallel do schedule(static) private(is)
             do is = 1, dynTot
-               if (skipU(is)) cycle
+               if (.not. iceUmask_slot(is)) cycle
 
                solx(is) = solx(is) + t * orig_basis_x(is,it)
                soly(is) = soly(is) + t * orig_basis_y(is,it)
@@ -4024,7 +4024,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          do it = 1, nextit
             !$omp parallel do schedule(static) private(is)
             do is = 1, dynTot
-               if (skipU(is)) cycle
+               if (.not. iceUmask_slot(is)) cycle
 
                workspace_x(is) = workspace_x(is) + rhs_hess(it) * arnoldi_basis_x(is,it)
                workspace_y(is) = workspace_y(is) + rhs_hess(it) * arnoldi_basis_y(is,it)
@@ -4171,8 +4171,8 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
       !$OMP PARALLEL DO PRIVATE(iblk)
       do iblk = 1, nblocks
-         call matvec (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipT,                                                &
-                      skipU, NbrW_Task, NbrSW_Task, NbrS_Task, NbrE_Task, NbrNE_Task, NbrN_Task,          &
+         call matvec (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceTmask_slot,                                                &
+                      iceUmask_slot, NbrW_Task, NbrSW_Task, NbrS_Task, NbrE_Task, NbrNE_Task, NbrN_Task,          &
                       dxT_slot, dyT_slot,   &
                       dxhy_slot, dyhx_slot, &
                       cxp_slot, cyp_slot,   &
@@ -4184,7 +4184,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                       umassdti_slot, fmU_slot,    &
                       uarear_slot,                                                      &
                       workspace_x, workspace_y)
-         call residual_vec (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipU,                                                    &
+         call residual_vec (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceUmask_slot,                                                    &
                             bx, by,                   &
                             workspace_x, workspace_y, &
                             arnoldi_basis_x(:,1),                                                    &
@@ -4212,7 +4212,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          inverse_norm = c1 / norm_residual
          !$omp parallel do schedule(static) private(is)
          do is = 1, dynTot
-               if (skipU(is)) cycle
+               if (.not. iceUmask_slot(is)) cycle
 
             arnoldi_basis_x(is,1) = arnoldi_basis_x(is,1) * inverse_norm
             arnoldi_basis_y(is,1) = arnoldi_basis_y(is,1) * inverse_norm
@@ -4261,8 +4261,8 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
             !$OMP PARALLEL DO PRIVATE(iblk)
             do iblk = 1, nblocks
-               call matvec (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipT,                                                    &
-                            skipU, NbrW_Task, NbrSW_Task, NbrS_Task, NbrE_Task, NbrNE_Task, NbrN_Task,              &
+               call matvec (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceTmask_slot,                                                    &
+                            iceUmask_slot, NbrW_Task, NbrSW_Task, NbrS_Task, NbrE_Task, NbrNE_Task, NbrN_Task,              &
                             dxT_slot, dyT_slot,       &
                             dxhy_slot, dyhx_slot,     &
                             cxp_slot, cyp_slot,       &
@@ -4294,7 +4294,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                inverse_norm = c1 / hessenberg(nextit,initer)
                !$omp parallel do schedule(static) private(is)
                do is = 1, dynTot
-               if (skipU(is)) cycle
+               if (.not. iceUmask_slot(is)) cycle
 
                   arnoldi_basis_x(is,nextit) = arnoldi_basis_x(is,nextit)*inverse_norm
                   arnoldi_basis_y(is,nextit) = arnoldi_basis_y(is,nextit)*inverse_norm
@@ -4359,7 +4359,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
             t = rhs_hess(it)
             !$omp parallel do schedule(static) private(is)
             do is = 1, dynTot
-               if (skipU(is)) cycle
+               if (.not. iceUmask_slot(is)) cycle
 
                workspace_x(is) = workspace_x(is) + t * arnoldi_basis_x(is,it)
                workspace_y(is) = workspace_y(is) + t * arnoldi_basis_y(is,it)
@@ -4412,7 +4412,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          do it = 1, nextit
             !$omp parallel do schedule(static) private(is)
             do is = 1, dynTot
-               if (skipU(is)) cycle
+               if (.not. iceUmask_slot(is)) cycle
 
                workspace_x(is) = workspace_x(is) + rhs_hess(it) * arnoldi_basis_x(is,it)
                workspace_y(is) = workspace_y(is) + rhs_hess(it) * arnoldi_basis_y(is,it)
@@ -4492,7 +4492,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       elseif (precond_type == 'diag') then ! Jacobi preconditioner (diagonal)
          !$omp parallel do schedule(static) private(is)
          do is = 1, dynTot
-            if (skipU(is)) cycle
+            if (.not. iceUmask_slot(is)) cycle
 
             wx(is) = vx(is) / diagx(is)
             wy(is) = vy(is) / diagy(is)
@@ -4570,7 +4570,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          do it = 1, initer
             !$omp parallel do schedule(static) private(is)
             do is = 1, dynTot
-               if (skipU(is)) cycle
+               if (.not. iceUmask_slot(is)) cycle
 
                arnoldi_basis_x(is,nextit) = arnoldi_basis_x(is,nextit) &
                                                      - hessenberg(it,initer) * arnoldi_basis_x(is,it)
@@ -4589,7 +4589,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
             !$omp parallel do schedule(static) private(is)
             do is = 1, dynTot
-               if (skipU(is)) cycle
+               if (.not. iceUmask_slot(is)) cycle
 
                arnoldi_basis_x(is,nextit) = arnoldi_basis_x(is,nextit) &
                                                      - hessenberg(it,initer) * arnoldi_basis_x(is,it)
