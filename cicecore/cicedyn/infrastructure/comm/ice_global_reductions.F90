@@ -71,6 +71,7 @@
 
    interface global_maxval
      module procedure global_maxval_dbl,           &
+                      global_maxval_dbl_slot,      &
                       global_maxval_real,          &
                       global_maxval_int,           &
                       global_maxval_dbl_flat,      &
@@ -1698,6 +1699,87 @@
 !-----------------------------------------------------------------------
 
  end function global_maxval_dbl_flat
+
+!***********************************************************************
+
+ function global_maxval_dbl_slot (array, dist, lMask) &
+          result(globalMaxval)
+
+!  As global_maxval_dbl, for a COMPRESSED array: one value per slot,
+!  dimension(dynTot), with no block dimension to walk.
+!
+!  ⚠ The block form reduces over ib..ie, jb..je -- the physical domain,
+!  never the ghosts.  A slot array has no such bounds: it also holds the
+!  forced ghost rim, the extrapolation cells, the neighbour ring and the
+!  dead slots.  lMask is what restricts this to the same set, so it is
+!  REQUIRED here rather than optional in effect: lmask_n_slot and
+!  lmask_s_slot are copied cell by cell from block masks that makemask
+!  built over ilo..ihi x jlo..jhi alone, so they are .false. everywhere
+!  outside the physical domain.
+!
+!  Without a mask every slot contributes.  For a maximum of a
+!  non-negative field the extra slots hold c0 and cannot win, but that is
+!  a property of the field, not of this routine -- a minimum, or a field
+!  that goes negative, would differ from the block answer.
+
+   real (dbl_kind), dimension(:), intent(in) :: &
+      array                ! compressed array, dimension(dynTot)
+
+   type (distrb), intent(in) :: &
+      dist                 ! block distribution the slots belong to
+
+   logical (log_kind), dimension(:), intent(in), optional :: &
+      lMask                ! compressed mask, dimension(dynTot)
+
+   real (dbl_kind) :: &
+      globalMaxval         ! resulting maximum value of array
+
+!-----------------------------------------------------------------------
+
+   real (dbl_kind) :: localMaxval
+   integer (int_kind) :: is, numProcs, communicator, ierr
+
+   character(len=*), parameter :: subname = '(global_maxval_dbl_slot)'
+
+!-----------------------------------------------------------------------
+
+   localMaxval  = -bigdbl
+   globalMaxval = -bigdbl
+
+   call ice_distributionGet(dist, &
+                            nprocs = numProcs,        &
+                            communicator = communicator)
+
+   if (present(lMask)) then
+      do is = 1, size(array)
+         if (lMask(is)) localMaxval = max(localMaxval, array(is))
+      end do
+   else
+      do is = 1, size(array)
+         localMaxval = max(localMaxval, array(is))
+      end do
+   endif
+
+!-----------------------------------------------------------------------
+!
+!  now use MPI global reduction to reduce local maxval to global maxval.
+!  max is associative and commutative, so no ordering question arises --
+!  unlike a sum, this needs no bfbflag path.
+!
+!-----------------------------------------------------------------------
+
+#ifdef NO_MPI
+   globalMaxval = localMaxval
+#else
+   if (my_task < numProcs) then
+      call MPI_ALLREDUCE(localMaxval, globalMaxval, 1, &
+                         mpiR8, MPI_MAX, communicator, ierr)
+   endif
+#endif
+
+!-----------------------------------------------------------------------
+
+ end function global_maxval_dbl_slot
 
 !***********************************************************************
 

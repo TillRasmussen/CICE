@@ -113,6 +113,7 @@
 !          Cecilia M. Bitz, UW
 
       subroutine runtime_diags (dt)
+      use ice_dyn_shared, only: strength_slot
 
       use ice_arrays_column, only: floe_rad_c
       use ice_broadcast, only: broadcast_scalar
@@ -129,7 +130,8 @@
           alvdr_init, alvdf_init, alidr_init, alidf_init
       use ice_flux_bgc, only: faero_atm, faero_ocn, fiso_atm, fiso_ocn
       use ice_global_reductions, only: global_sum, global_sum_prod, global_maxval
-      use ice_grid, only: lmask_n, lmask_s, tarean, tareas, grid_ice, grid_average_X2Y
+      use ice_grid, only: lmask_n, lmask_s, lmask_n_slot, lmask_s_slot, &
+          tarean, tareas, grid_ice, grid_average_X2Y
       use ice_state   ! everything
 ! tcraig, this is likely to cause circular dependency because ice_prescribed_mod is high level routine
 #ifdef CESMCOUPLED
@@ -494,8 +496,11 @@
 
       pmaxn = c0
       pmaxs = c0
-      pmaxn = global_maxval(strength, distrb_info, lmask_n)
-      pmaxs = global_maxval(strength, distrb_info, lmask_s)
+      ! the compressed form: strength is computed into the slots, and the
+      ! masks are copies of lmask_n/lmask_s restricted to the same physical
+      ! domain the block reduction walks
+      pmaxn = global_maxval(strength_slot, distrb_info, lmask_n_slot)
+      pmaxs = global_maxval(strength_slot, distrb_info, lmask_s_slot)
       if (pmaxn < maxval_spval) pmaxn = c0
       if (pmaxs < maxval_spval) pmaxs = c0
 

@@ -182,6 +182,11 @@
          lmask_n, & ! northern hemisphere mask
          lmask_s    ! southern hemisphere mask
 
+      ! the hemisphere masks, compressed: one value per slot
+      logical (kind=log_kind), dimension (:), allocatable, public :: &
+         lmask_n_slot, & ! northern hemisphere mask, compressed
+         lmask_s_slot    ! southern hemisphere mask, compressed
+
       ! the i and j dimensions are flattened: element (i,j,iblk) of the block
       ! layout lives at ((j-1)*nx_block + i, iblk)
       real (kind=dbl_kind), dimension (:,:), allocatable, public :: &
@@ -7652,6 +7657,25 @@
       allocate(dynIJ(dynTot), dynBlk(dynTot), stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
       call set_slot_cells(dynMap, dynOff, dynCnt, dynIJ, dynBlk)
+
+      ! ------------------------------------------------------------------
+      ! The hemisphere masks, compressed.  makemask runs before this, over
+      ! ilo..ihi x jlo..jhi only, so the block forms are .false. everywhere
+      ! outside the physical domain -- ghost rim, extrapolation cells and
+      ! the neighbour ring included.  Copying cell by cell therefore gives
+      ! a slot mask that selects exactly the cells global_maxval's ib..ie,
+      ! jb..je bounds select, which is what lets a slot reduction match the
+      ! block one.  Dead slots own no cell and stay .false.
+      ! ------------------------------------------------------------------
+      allocate(lmask_n_slot(dynTot), lmask_s_slot(dynTot), stat=ierr)
+      if (ierr/=0) call abort_ice(subname//': Out of memory')
+      lmask_n_slot(:) = .false.
+      lmask_s_slot(:) = .false.
+      do m = 1, dynTot
+         if (dynIJ(m) == 0) cycle
+         lmask_n_slot(m) = lmask_n(dynIJ(m), dynBlk(m))
+         lmask_s_slot(m) = lmask_s(dynIJ(m), dynBlk(m))
+      enddo
 
       ! ------------------------------------------------------------------
       ! Grid metrics, compressed once.  Everything here is set well before
