@@ -387,28 +387,49 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          ! Initialize structure tensor
          !-----------------------------------------------------------------
 
-         do j = 1, ny_block
-         do i = 1, nx_block
-            if (.not.iceTmask((j-1)*nx_block+i,iblk)) then
-               if (tmask((j-1)*nx_block+i,iblk)) then
+         ! Reset the structure tensor where the ice has gone, in SLOTS.
+         ! It used to write the block arrays and the pack below carried the
+         ! result across; writing the slots directly is what lets that pack
+         ! go.  A cell with no slot is tmask-false -- dynMap is tmask .or.
+         ! umask -- so the branch below would have written c0 there, which
+         ! is what the block array already holds.
+         do is = dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk)
+            ij = dynIJ(is)
+            if (ij == 0) cycle                  ! dead slot
+            if (.not.iceTmask(ij,iblk)) then
+               if (tmask(ij,iblk)) then
                   ! structure tensor
-                  a11_1(i,j,iblk) = p5
-                  a11_2(i,j,iblk) = p5
-                  a11_3(i,j,iblk) = p5
-                  a11_4(i,j,iblk) = p5
+                  a11_1_slot(is) = p5
+                  a11_2_slot(is) = p5
+                  a11_3_slot(is) = p5
+                  a11_4_slot(is) = p5
                 else
-                  a11_1(i,j,iblk) = c0
-                  a11_2(i,j,iblk) = c0
-                  a11_3(i,j,iblk) = c0
-                  a11_4(i,j,iblk) = c0
+                  a11_1_slot(is) = c0
+                  a11_2_slot(is) = c0
+                  a11_3_slot(is) = c0
+                  a11_4_slot(is) = c0
                endif
-               a12_1(i,j,iblk) = c0
-               a12_2(i,j,iblk) = c0
-               a12_3(i,j,iblk) = c0
-               a12_4(i,j,iblk) = c0
+               a12_1_slot(is) = c0
+               a12_2_slot(is) = c0
+               a12_3_slot(is) = c0
+               a12_4_slot(is) = c0
             endif                  ! iceTmask
-         enddo                     ! i
-         enddo                     ! j
+         enddo                     ! is
+
+         ! ⚠ The dead slot, which the pack used to clear for free:
+         ! pack_to_slots zeroes it on every call so a missing neighbour
+         ! reads zero.  Nothing else writes it, and the kernels below read
+         ! a11/a12 at neighbours, so without this it keeps whatever the
+         ! last subcycle left and a missing neighbour picks that up.
+         ms = dynOff(iblk) + dynCnt(iblk) + 1
+         a11_1_slot(ms) = c0
+         a11_2_slot(ms) = c0
+         a11_3_slot(ms) = c0
+         a11_4_slot(ms) = c0
+         a12_1_slot(ms) = c0
+         a12_2_slot(ms) = c0
+         a12_3_slot(ms) = c0
+         a12_4_slot(ms) = c0
 
          !-----------------------------------------------------------------
          ! ice strength
@@ -519,14 +540,6 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
          ! structure-tensor state with their own block halo, untouched here.
          ! seeded from the block form: these four are not zeroed in init_eap
          ! and other code writes them, so a skipped cell must keep its value
-         call pack_to_slots(a11_1(:,:,iblk), dynMap(:,iblk), a11_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(a11_2(:,:,iblk), dynMap(:,iblk), a11_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(a11_3(:,:,iblk), dynMap(:,iblk), a11_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(a11_4(:,:,iblk), dynMap(:,iblk), a11_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(a12_1(:,:,iblk), dynMap(:,iblk), a12_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(a12_2(:,:,iblk), dynMap(:,iblk), a12_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(a12_3(:,:,iblk), dynMap(:,iblk), a12_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(a12_4(:,:,iblk), dynMap(:,iblk), a12_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
       enddo
       !$OMP END PARALLEL DO
 
@@ -835,10 +848,14 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       yieldstress22_slot = c0
       a11_slot = c0
       a12_slot = c0
-      a11_1_slot = c0
-      a11_2_slot = c0
-      a11_3_slot = c0
-      a11_4_slot = c0
+      ! ⚠ p5, matching the block init below, not c0.  The per-step pack
+      ! used to carry that value across; with the pack gone the slots have
+      ! to start where the block arrays start.  The dead slots take p5 too
+      ! and are reset to c0 each step in eap, as the pack also did.
+      a11_1_slot = p5
+      a11_2_slot = p5
+      a11_3_slot = p5
+      a11_4_slot = p5
       a12_1_slot = c0
       a12_2_slot = c0
       a12_3_slot = c0
@@ -2410,17 +2427,51 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       ! structure tensor
       !-----------------------------------------------------------------
 
-      call write_restart_field(nu_dump_eap,0,a11_1,'ruf8','a11_1',1,diag)
-      call write_restart_field(nu_dump_eap,0,a11_3,'ruf8','a11_3',1,diag)
-      call write_restart_field(nu_dump_eap,0,a11_2,'ruf8','a11_2',1,diag)
-      call write_restart_field(nu_dump_eap,0,a11_4,'ruf8','a11_4',1,diag)
+      ! From the slots, through a buffer zeroed once.  A cell with no slot
+      ! is tmask-false -- dynMap is tmask .or. umask -- and the block reset
+      ! this replaced wrote c0 at exactly those cells every step, so zero is
+      ! the value they carried into the file.
+      call write_eap_slot (a11_1_slot, 'a11_1', diag)
+      call write_eap_slot (a11_3_slot, 'a11_3', diag)
+      call write_eap_slot (a11_2_slot, 'a11_2', diag)
+      call write_eap_slot (a11_4_slot, 'a11_4', diag)
 
-      call write_restart_field(nu_dump_eap,0,a12_1,'ruf8','a12_1',1,diag)
-      call write_restart_field(nu_dump_eap,0,a12_3,'ruf8','a12_3',1,diag)
-      call write_restart_field(nu_dump_eap,0,a12_2,'ruf8','a12_2',1,diag)
-      call write_restart_field(nu_dump_eap,0,a12_4,'ruf8','a12_4',1,diag)
+      call write_eap_slot (a12_1_slot, 'a12_1', diag)
+      call write_eap_slot (a12_3_slot, 'a12_3', diag)
+      call write_eap_slot (a12_2_slot, 'a12_2', diag)
+      call write_eap_slot (a12_4_slot, 'a12_4', diag)
 
       end subroutine write_restart_eap
+
+!=======================================================================
+
+      subroutine write_eap_slot (fld_s, vname, diag)
+
+      use ice_blocks, only: nx_block, ny_block
+      use ice_domain, only: nblocks
+      use ice_domain_size, only: max_blocks
+      use ice_grid, only: dynMap, unpack_from_slots
+      use ice_dyn_shared, only: dynOff, dynCnt
+      use ice_restart, only: write_restart_field
+
+      real (kind=dbl_kind), dimension(:), intent(in) :: fld_s
+      character(len=*), intent(in) :: vname
+      logical (kind=log_kind), intent(in) :: diag
+
+      real (kind=dbl_kind), dimension(nx_block,ny_block,max_blocks) :: wrk
+      integer (kind=int_kind) :: iblk
+
+      character(len=*), parameter :: subname = '(write_eap_slot)'
+
+      wrk(:,:,:) = c0
+      do iblk = 1, nblocks
+         if (dynCnt(iblk) == 0) cycle
+         call unpack_from_slots(fld_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                                dynMap(:,iblk), wrk(:,:,iblk))
+      enddo
+      call write_restart_field(nu_dump_eap,0,wrk,'ruf8',vname,1,diag)
+
+      end subroutine write_eap_slot
 
 !=======================================================================
 ! Reads all values needed for elastic anisotropic plastic dynamics restart
