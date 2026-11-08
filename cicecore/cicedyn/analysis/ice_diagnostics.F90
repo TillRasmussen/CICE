@@ -499,10 +499,15 @@
       ! the compressed form: strength is computed into the slots, and the
       ! masks are copies of lmask_n/lmask_s restricted to the same physical
       ! domain the block reduction walks
-      pmaxn = global_maxval(strength_slot, distrb_info, lmask_n_slot)
-      pmaxs = global_maxval(strength_slot, distrb_info, lmask_s_slot)
-      if (pmaxn < maxval_spval) pmaxn = c0
-      if (pmaxs < maxval_spval) pmaxs = c0
+      ! kdyn <= 0 means init_dyn_shared never ran, so the slot was never
+      ! allocated.  The block form it replaced was c0 everywhere there, so
+      ! its reduction returned zero -- which is what pmaxn/pmaxs hold.
+      if (allocated(strength_slot)) then
+         pmaxn = global_maxval(strength_slot, distrb_info, lmask_n_slot)
+         pmaxs = global_maxval(strength_slot, distrb_info, lmask_s_slot)
+         if (pmaxn < maxval_spval) pmaxn = c0
+         if (pmaxs < maxval_spval) pmaxs = c0
+      endif
 
       pmaxn = pmaxn / c1000   ! convert to kN/m
       pmaxs = pmaxs / c1000

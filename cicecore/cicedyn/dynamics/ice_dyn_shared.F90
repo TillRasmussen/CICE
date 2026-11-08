@@ -3241,7 +3241,7 @@
 ! in Lemieux et al. paper. 
 
       subroutine deformations (lo, hi,     icemask_s, &
-                               nbrW, nbrSW, nbrS,        ijslot, &
+                               nbrW, nbrSW, nbrS,        &
                                uvel,       vvel,   &
                                dxT,        dyT,    &
                                dxU,        dyU,    &
@@ -3265,12 +3265,6 @@
          nbrW     , & ! neighbour slot one step W
          nbrSW    , & ! neighbour slot one step SW
          nbrS        ! neighbour slot one step S
-
-      ! (j-1)*nx_block+i of the cell owning each slot.  The five outputs are
-      ! history and ridging fields that are read block-shaped elsewhere, so
-      ! they are written through ijslot: exactly the cells icellT touched.
-      integer (kind=int_kind), dimension (:), intent(in) :: &
-         ijslot
 
       ! compressed: this block's slice, 1-based, cells 1..ncells, dead slot last
       real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
@@ -3301,8 +3295,7 @@
 
       integer (kind=int_kind) :: &
          is             , & ! slot counter
-         isW, isS, isSW , & ! the three neighbour slots this cell reads
-         ijb                ! 1D index of the owning cell in the block
+         isW, isS, isSW     ! the three neighbour slots this cell reads
 
       real (kind=dbl_kind) :: &                       ! at each corner :
         divune, divunw, divuse, divusw            , & ! divergence
@@ -3321,13 +3314,13 @@
 
       ! schedule(static), not runtime -- see the note in stress.
       !$omp parallel do schedule(static) default(none)              &
-      !$omp private(is, isW, isS, isSW, ijb, divune, divunw, divuse, &
+      !$omp private(is, isW, isS, isSW, divune, divunw, divuse, &
       !$omp         divusw, tensionne, tensionnw, tensionse, tensionsw, &
       !$omp         shearne, shearnw, shearse, shearsw, Deltane, Deltanw, &
       !$omp         Deltase, Deltasw, Deltappne, Deltappnw, Deltappse, &
       !$omp         Deltappsw, tmp, numetp, nume, deno, dvdxn, dvdxs, &
       !$omp         dudye, dudyw) &
-      !$omp  shared(lo, hi, icemask_s, nbrW, nbrSW, nbrS, ijslot, uvel, vvel, dxT, dyT, &
+      !$omp  shared(lo, hi, icemask_s, nbrW, nbrSW, nbrS, uvel, vvel, dxT, dyT, &
       !$omp         dxU, dyU, cxp, cyp, cxm, cym, tarear, vort, shear, &
       !$omp         divu, rdg_conv, rdg_shear, e_factor, epp2i, arlx1i, &
       !$omp         denom1, revp, capping)
@@ -3337,7 +3330,6 @@
          isW  = nbrW(is)
          isS  = nbrS(is)
          isSW = nbrSW(is)
-         ijb  = ijslot(is)
 
          !-----------------------------------------------------------------
          ! strain rates
@@ -3400,7 +3392,7 @@
 ! Nov 2021
 
       subroutine deformationsCD_T (lo, hi,     icemask_s, &
-                                   nbrW, nbrS,        ijslot, &
+                                   nbrW, nbrS,        &
                                    uvelE,      vvelE,  &
                                    uvelN,      vvelN,  &
                                    dxN,        dyE,    &
@@ -3423,12 +3415,6 @@
          nbrW     , & ! neighbour slot one step W
          nbrS        ! neighbour slot one step S
 
-      ! (j-1)*nx_block+i of the cell owning each slot.  The five outputs are
-      ! history and ridging fields read block-shaped elsewhere, so they are
-      ! written through ijslot: exactly the cells the icellT loop touched.
-      integer (kind=int_kind), dimension (:), intent(in) :: &
-         ijslot
-
       ! compressed: this block's slice, 1-based, cells 1..ncells, dead slot last
       real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
          uvelE    , & ! x-component of velocity (m/s) at the E point
@@ -3441,10 +3427,6 @@
          dyT      , & ! height of T-cell through the middle (m)
          tarear       ! 1/tarea
 
-      ! EXPLICIT shape, not assumed: the callers pass vort(:,iblk) and rely
-      ! on sequence association to present the block as one flat vector.  An
-      ! assumed-shape dummy would reject that -- the outputs stay block-shaped
-      ! and are written through ijslot.
       real (kind=dbl_kind), dimension (:), intent(inout), contiguous :: &
          vort     , & ! vorticity (1/s)
          shear    , & ! strain rate II component (1/s)
@@ -3456,8 +3438,7 @@
 
       integer (kind=int_kind) :: &
          is             , & ! slot counter
-         isW, isS       , & ! the two neighbour slots read here
-         ijb                ! 1D index of the owning cell in the block
+         isW, isS           ! the two neighbour slots read here
 
       ! slot-shaped: these never leave the routine, and the compressed
       ! strain-rate helper fills them in the slot layout.
@@ -3480,9 +3461,9 @@
 
       ! schedule(static), not runtime -- see the note in stress.
       !$omp parallel do schedule(static) default(none)              &
-      !$omp private(is, isW, isS, ijb, divT, tensionT, shearT, DeltaT, &
+      !$omp private(is, isW, isS, divT, tensionT, shearT, DeltaT, &
       !$omp         tmp) &
-      !$omp  shared(lo, hi, icemask_s, nbrW, nbrS, ijslot, uvelE, vvelE, uvelN, &
+      !$omp  shared(lo, hi, icemask_s, nbrW, nbrS, uvelE, vvelE, uvelN, &
       !$omp         vvelN, dxN, dyE, dxT, dyT, tarear, vort, shear, divu, &
       !$omp         rdg_conv, rdg_shear, e_factor, epp2i)
       do is = lo, hi
@@ -3504,7 +3485,6 @@
                   + (dyT(is)**2)*(vvelE(is)/dyE(is) - vvelE(isW)/dyE(isW))
 
          DeltaT   = sqrt(divT**2 + e_factor*(tensionT**2 + shearT**2))
-         ijb  = ijslot(is)
 
          !-----------------------------------------------------------------
          ! deformations for mechanical redistribution
@@ -3518,7 +3498,7 @@
          ! shear = sqrt(tension**2 + shearing**2)
          shear(is) = tarear(is)*sqrt( tensionT**2 + shearT**2 )
          ! vorticity
-         vort (ijb) = tarear(is)*( ( dyE(is)*vvelE(is) - dyE(isW)*vvelE(isW) ) &
+         vort (is)  = tarear(is)*( ( dyE(is)*vvelE(is) - dyE(isW)*vvelE(isW) ) &
                                   - ( dxN(is)*uvelN(is) - dxN(isS)*uvelN(isS)) )
 
       enddo                     ! is
@@ -3542,7 +3522,7 @@
 ! in Lemieux et al. paper. 
 
     subroutine deformationsC_T (lo, hi,     icemask_s,    &
-                                   nbrW, nbrSW, nbrS,        ijslot, &
+                                   nbrW, nbrSW, nbrS,        &
                                 uvelE,      vvelE,     &
                                 uvelN,      vvelN,     &
                                 dxN,        dyE,       &
@@ -3568,12 +3548,6 @@
          nbrSW    , & ! neighbour slot one step SW
          nbrS        ! neighbour slot one step S
 
-      ! (j-1)*nx_block+i of the cell owning each slot.  The five outputs are
-      ! history and ridging fields read block-shaped elsewhere, so they are
-      ! written through ijslot: exactly the cells the icellT loop touched.
-      integer (kind=int_kind), dimension (:), intent(in) :: &
-         ijslot
-
       ! compressed: this block's slice, 1-based, cells 1..ncells, dead slot last
       real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
          uvelE    , & ! x-component of velocity (m/s) at the E point
@@ -3589,10 +3563,6 @@
          uareaavg , & ! precomputed sum of the 4 U areas round this T cell
          shearU       ! shearU
 
-      ! EXPLICIT shape, not assumed: the callers pass vort(:,iblk) and rely
-      ! on sequence association to present the block as one flat vector.  An
-      ! assumed-shape dummy would reject that -- the outputs stay block-shaped
-      ! and are written through ijslot.
       real (kind=dbl_kind), dimension (:), intent(inout), contiguous :: &
          vort     , & ! vorticity (1/s)
          shear    , & ! strain rate II component (1/s)
@@ -3604,8 +3574,7 @@
 
       integer (kind=int_kind) :: &
          is             , & ! slot counter
-         isW, isS, isSW , & ! the three neighbour slots read here
-         ijb                ! 1D index of the owning cell in the block
+         isW, isS, isSW     ! the three neighbour slots read here
 
       ! slot-shaped: these never leave the routine, and the compressed
       ! strain-rate helper fills them in the slot layout.
@@ -3632,9 +3601,9 @@
 
     ! schedule(static), not runtime -- see the note in stress.
     !$omp parallel do schedule(static) default(none)              &
-    !$omp private(is, isW, isS, isSW, ijb, divT, tensionT, shearT, &
+    !$omp private(is, isW, isS, isSW, divT, tensionT, shearT, &
     !$omp         DeltaT, tmp, shearTsqr, DeltappTsqr) &
-    !$omp  shared(lo, hi, icemask_s, nbrW, nbrSW, nbrS, ijslot, uvelE, vvelE, uvelN, &
+    !$omp  shared(lo, hi, icemask_s, nbrW, nbrSW, nbrS, uvelE, vvelE, uvelN, &
     !$omp         vvelN, dxN, dyE, dxT, dyT, tarear, uarea, uareaavg, &
     !$omp         shearU, vort, shear, divu, rdg_conv, rdg_shear, &
     !$omp         e_factor, epp2i)
@@ -3657,7 +3626,6 @@
          shearT   = (dxT(is)**2)*(uvelN(is)/dxN(is) - uvelN(isS)/dxN(isS)) &
                   + (dyT(is)**2)*(vvelE(is)/dyE(is) - vvelE(isW)/dyE(isW))
          isSW = nbrSW(is)
-         ijb  = ijslot(is)
 
          !-----------------------------------------------------------------
          ! deformations for mechanical redistribution
@@ -3687,7 +3655,7 @@
          ! shear = sqrt(tension**2 + shearing**2)
          shear(is) = tarear(is)*sqrt( tensionT**2 + shearT**2 )
          ! vorticity
-         vort (ijb) = tarear(is)*( ( dyE(is)*vvelE(is) - dyE(isW)*vvelE(isW) ) &
+         vort (is)  = tarear(is)*( ( dyE(is)*vvelE(is) - dyE(isW)*vvelE(isW) ) &
                                   - ( dxN(is)*uvelN(is) - dxN(isS)*uvelN(isS)) )
 
       enddo                     ! is

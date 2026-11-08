@@ -200,8 +200,7 @@
          uvelE    , & ! x-component of velocity on E grid (m/s)
          vvelE    , & ! y-component of velocity on E grid (m/s)
          uvelN    , & ! x-component of velocity on N grid (m/s)
-         vvelN    , & ! y-component of velocity on N grid (m/s)
-         strength     ! ice strength (N/m)
+         vvelN        ! y-component of velocity on N grid (m/s)
 
       !-----------------------------------------------------------------
       ! ice state at start of time step, saved for later in the step
@@ -334,7 +333,6 @@
          uvelN     (nx_block,ny_block,max_blocks) , & ! x-component of velocity on N grid (m/s)
          vvelN     (nx_block,ny_block,max_blocks) , & ! y-component of velocity on N grid (m/s)
 
-         strength  (nx_block,ny_block,max_blocks) , & ! ice strength (N/m)
          aice_init (nx_block*ny_block,max_blocks) , & ! initial concentration of ice, for diagnostics
          aicen     (nx_block,ny_block,ncat,max_blocks) , & ! concentration of ice
          vicen     (nx_block,ny_block,ncat,max_blocks) , & ! volume per unit area of ice (m)
@@ -363,7 +361,6 @@
       vvelE = c0
       uvelN = c0
       vvelN = c0
-      strength   = c0
       aice_init  = c0
       aicen = c0
       vicen = c0

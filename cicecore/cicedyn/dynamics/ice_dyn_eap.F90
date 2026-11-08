@@ -176,7 +176,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
           grid_atm_dynu, grid_atm_dynv, grid_ocn_dynu, grid_ocn_dynv
       use ice_restoring, only: ice_restoring_halo, restore_ice
       use ice_state, only: aice_slot, aice0_slot, vice_slot, vsno_slot, aice, aiU, vice, vsno, uvel, vvel, divu, shear, vort, &
-          aice_init, aice0, aicen, vicen, strength, &
+          aice_init, aice0, aicen, vicen, &
           aicen_slot, vicen_slot
       use ice_timers, only: timer_dynamics, timer_bound, &
           ice_timer_start, ice_timer_stop
@@ -425,7 +425,6 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
          ! New strength used in Ukita Moritz rheology
          !-----------------------------------------------------------------
 
-         strength(:,:,iblk) = c0  ! initialize
          ! and the slots: the pack this replaces cleared the inactive
          ! ones and the dead slot as a side effect of copying the block
          strength_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = c0
@@ -439,19 +438,12 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
          do is = 1, dynCnt(iblk)
             if (.not. iceTmask_slot(dynOff(iblk)+is)) cycle
             ms = dynOff(iblk) + is
-            ij = dynIJ(ms)
-            j  = (ij-1)/nx_block + 1
-            i  = ij - (j-1)*nx_block
             call icepack_ice_strength(aice     = aice_slot (ms), &
                                       vice  = vice_slot (ms), &
                                       aice0 = aice0_slot(ms), &
                                       aicen    = aicen_slot   (ms,:), &
                                       vicen    = vicen_slot   (ms,:), &
                                       strength = strength_slot(ms))
-
-                                      ! block form too: ice_diagnostics takes a global_maxval of it
-
-                                      strength(i,j,iblk) = strength_slot(ms)
          enddo  ! is
       enddo  ! iblk
       !$OMP END PARALLEL DO

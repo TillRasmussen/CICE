@@ -93,14 +93,7 @@
       real (kind=dbl_kind), allocatable :: &
          divergU  (:)   , & ! div array on U points, differentiate from divu
          tensionU (:)   , & ! tension array on U points
-         shearU   (:,:) , & ! shear array on U points
          deltaU   (:)      ! delta array on U points
-
-      ! the i and j dimensions are flattened: element (i,j,iblk) of the block
-      ! layout lives at ((j-1)*nx_block + i, iblk)
-      real (kind=dbl_kind), allocatable, target :: &
-         umass    (:,:)   , & ! total mass of ice and snow (u grid)
-         umassdti (:,:)       ! mass of U-cell/dte (kg/m^2 s)
 
       ! the i and j dimensions are flattened: element (i,j,iblk) of the block
       ! layout lives at ((j-1)*nx_block + i, iblk)
@@ -157,8 +150,6 @@
       endif
 
       allocate( tmass    (nx_block*ny_block,max_blocks), & ! total mass of ice and snow (kg/m^2)
-                umass    (nx_block*ny_block,max_blocks), & ! total mass of ice and snow (u grid)
-                umassdti (nx_block*ny_block,max_blocks), & ! mass of U-cell/dte (kg/m^2 s)
                 stat=ierr)
       if (ierr/=0) call abort_ice(subname//' ERROR: Out of memory B-Grid evp')
 
@@ -167,7 +158,6 @@
 
          allocate( divergU  (dynTot), &
                    tensionU (dynTot), &
-                   shearU   (nx_block*ny_block,max_blocks), &
                    deltaU   (dynTot), &
                    stat=ierr)
          if (ierr/=0) call abort_ice(subname//' ERROR: Out of memory U evp')
@@ -263,7 +253,7 @@
       use ice_state, only: aice, aiU, vice, vsno, aice_slot, aice0_slot, vice_slot, vsno_slot, uvel, vvel, uvelN, vvelN, &
           aicen_slot, vicen_slot, &
           uvelE, vvelE, divu, shear, vort, &
-          aice_init, aice0, aicen, vicen, strength
+          aice_init, aice0, aicen, vicen
       use ice_timers, only: timer_dynamics, timer_bound, &
           ice_timer_start, ice_timer_stop, timer_evp
       use ice_dyn_shared, only: evp_algorithm, stack_fields, unstack_fields, &
@@ -376,7 +366,6 @@
 
          divergU  (:) = c0
          tensionU (:) = c0
-         shearU   (:,:) = c0
          deltaU   (:) = c0
 
       endif
@@ -448,7 +437,6 @@
       call unstack_fields(fld3, tmass, aice_init, cdn_ocn)
       call unstack_fields(fld4, uocn, vocn, ss_tltx, ss_tlty)
 
-      call grid_average_X2Y('S', tmass    , 'T'          , umass   , 'U')
       call grid_average_X2Y('S', tmass    , 'T'          , umass_slot, 'U')
       call grid_average_X2Y('S', cdn_ocn  , 'T'          , cdn_ocnU_slot, 'U')
       call grid_average_X2Y('S', aice_init, 'T'          , aiU     , 'U')
@@ -577,7 +565,6 @@
             ! ice strength
             !-----------------------------------------------------------------
 
-            strength(:,:,iblk) = c0  ! initialize
             ! and the slots: the pack this replaces cleared the inactive
             ! ones and the dead slot as a side effect of copying the block
             strength_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = c0
@@ -590,19 +577,12 @@
             do is = 1, dynCnt(iblk)
                if (.not. iceTmask_slot(dynOff(iblk)+is)) cycle
                ms = dynOff(iblk) + is
-               ij = dynIJ(ms)
-               j  = (ij-1)/nx_block + 1
-               i  = ij - (j-1)*nx_block
                call icepack_ice_strength(aice     = aice_slot (ms), &
                                          vice  = vice_slot (ms), &
                                          aice0 = aice0_slot(ms), &
                                          aicen    = aicen_slot   (ms,:), &
                                          vicen    = vicen_slot   (ms,:), &
                                          strength = strength_slot(ms))
-
-                                         ! block form too: ice_diagnostics takes a global_maxval of it
-
-                                         strength(i,j,iblk) = strength_slot(ms)
             enddo  ! is
 
          enddo  ! iblk
@@ -654,7 +634,6 @@
             ! ice strength
             !-----------------------------------------------------------------
 
-            strength(:,:,iblk) = c0  ! initialize
             ! and the slots: the pack this replaces cleared the inactive
             ! ones and the dead slot as a side effect of copying the block
             strength_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = c0
@@ -667,19 +646,12 @@
             do is = 1, dynCnt(iblk)
                if (.not. iceTmask_slot(dynOff(iblk)+is)) cycle
                ms = dynOff(iblk) + is
-               ij = dynIJ(ms)
-               j  = (ij-1)/nx_block + 1
-               i  = ij - (j-1)*nx_block
                call icepack_ice_strength(aice     = aice_slot (ms), &
                                          vice  = vice_slot (ms), &
                                          aice0 = aice0_slot(ms), &
                                          aicen    = aicen_slot   (ms,:), &
                                          vicen    = vicen_slot   (ms,:), &
                                          strength = strength_slot(ms))
-
-                                         ! block form too: ice_diagnostics takes a global_maxval of it
-
-                                         strength(i,j,iblk) = strength_slot(ms)
             enddo  ! is
 
 
@@ -947,10 +919,10 @@
             ! constant through the subcycling, so packed once and never
             ! unpacked; the block-layout originals stay for the consumers
             ! outside the dynamics
-            ! umassdti, waterxU, wateryU, forcexU and forceyU are not packed
-            ! here: dyn_prep2 already filled their compressed copies in the
-            ! same loop that computed them, which costs one store instead of
-            ! a second traversal of the block.
+            ! waterxU, wateryU, forcexU and forceyU are not packed here:
+            ! dyn_prep2 already filled their compressed copies in the same
+            ! loop that computed them, which costs one store instead of a
+            ! second traversal of the block.
             ! strength is constant through the subcycling; the twelve
             ! stress components are the subcycle's own state, read and
             ! written every pass and unpacked once at the end for the
@@ -1142,7 +1114,7 @@
 
             call deformations (                                                                                                              &
                                1, dynTot, iceTmask_slot,                                                &
-                               NbrW_Task, NbrSW_Task, NbrS_Task, dynIJ,          &
+                               NbrW_Task, NbrSW_Task, NbrS_Task,                 &
                                uvel_slot, vvel_slot, &
                                dxT_slot, dyT_slot,   &
                                dxU_slot, dyU_slot,   &
@@ -1158,9 +1130,6 @@
          ! Pack once, subcycle compressed, unpack once -- the shape the EAP
          ! conversion uses.  The block arrays stay authoritative outside the
          ! subcycle, which is what restart, history and the couplers read.
-         !
-         ! shearU is not packed: strain_rates_U is the only thing
-         ! that writes it and it writes straight into the slots.
          ! ------------------------------------------------------------------
          !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
          do iblk = 1, nblocks
@@ -1392,7 +1361,6 @@
          ! reads the block arrays, so this has to come first.
          !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
          do iblk = 1, nblocks
-            call unpack_from_slots(shearU_slot   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), shearU   (:,iblk))
             call unpack_from_slots(uvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), uvelE(:,:,iblk))
             call unpack_from_slots(vvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), vvelE(:,:,iblk))
             call unpack_from_slots(uvelN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), uvelN(:,:,iblk))
@@ -1425,7 +1393,7 @@
          !-----------------------------------------------------------------
 
             call deformationsC_T (1, dynTot, iceTmask_slot,               &
-                                  NbrW_Task, NbrSW_Task, NbrS_Task, dynIJ,           &
+                                  NbrW_Task, NbrSW_Task, NbrS_Task,                  &
                                   uvelE_slot, vvelE_slot,  &
                                   uvelN_slot, vvelN_slot,  &
                                   dxN_slot, dyE_slot,      &
@@ -1685,7 +1653,6 @@
          ! reads the block arrays.
          !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
          do iblk = 1, nblocks
-            call unpack_from_slots(shearU_slot   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), shearU   (:,iblk))
             call unpack_from_slots(uvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), uvelE(:,:,iblk))
             call unpack_from_slots(vvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), vvelE(:,:,iblk))
             call unpack_from_slots(uvelN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), uvelN(:,:,iblk))
@@ -1726,7 +1693,7 @@
          !-----------------------------------------------------------------
 
             call deformationsCD_T (1, dynTot, iceTmask_slot,              &
-                                   NbrW_Task, NbrS_Task, dynIJ,          &
+                                   NbrW_Task, NbrS_Task,                 &
                                    uvelE_slot, vvelE_slot, &
                                    uvelN_slot, vvelN_slot, &
                                    dxN_slot, dyE_slot,     &

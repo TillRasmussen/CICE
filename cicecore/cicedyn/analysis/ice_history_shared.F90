@@ -37,6 +37,7 @@
       public :: define_hist_field, accum_hist_field, icefields_nml, construct_filename, ice_brine_density
       public :: accum_hist_field_2D_slotin
       public :: accum_hist_field_2D_aiflux
+      public :: accum_hist_field_2D_aiflux_slot
       public :: hist_field_needed
       public :: expand_a2D, compress_a2D, expand_a3Dc, compress_a3Dc, &
                 expand_hist_plane, compress_hist_plane
@@ -1603,6 +1604,54 @@
       enddo
 
       end subroutine accum_hist_field_2D_aiflux
+
+!=======================================================================
+
+!     Accumulates the product of two slot-shaped fields.  Same cell
+!     selection as accum_hist_field_2D_aiflux; only the first factor
+!     differs, so a field that acquires a slot form moves here.
+
+      subroutine accum_hist_field_2D_aiflux_slot(id, iblk, fluxs, agg, field)
+
+      use ice_blocks, only: nx_block
+      use ice_calendar, only: nstreams
+      use ice_grid, only: tmask, dynCnt, dynOff, dynIJ, skipPhys
+
+      integer (int_kind), dimension(:), intent(in) :: &
+         id                ! location in avail_fields array
+
+      integer (kind=int_kind), intent(in) :: iblk
+
+      ! this block's slot slice of the first factor
+      real (kind=dbl_kind), intent(in) :: &
+         fluxs(:)
+
+      ! this block's slot slice of the aggregate state
+      real (kind=dbl_kind), intent(in) :: &
+         agg(:)
+
+      ! (slot, field)
+      real (kind=dbl_kind), intent(inout) :: &
+         field(:,:)
+
+      integer (kind=int_kind) :: ij, is, m, ns, idns
+
+      character(len=*), parameter :: subname = '(accum_hist_field_2D_aiflux_slot)'
+
+      do ns = 1, nstreams
+         idns = id(ns)
+         if (idns > 0) then
+            do is = 1, dynCnt(iblk)
+               m = dynOff(iblk) + is
+               if (skipPhys(m)) cycle
+               ij = dynIJ(m)
+               if (.not. tmask(ij,iblk)) cycle
+               field(m,idns) = field(m,idns) + fluxs(is)*agg(is)
+            enddo
+         endif
+      enddo
+
+      end subroutine accum_hist_field_2D_aiflux_slot
 
 !=======================================================================
 

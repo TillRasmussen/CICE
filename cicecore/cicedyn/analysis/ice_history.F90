@@ -2894,8 +2894,11 @@
              call accum_hist_field(n_taubxE, iblk, taubxE(:,iblk), a2D)
          if (f_taubyE(1:1) /= 'x') &
              call accum_hist_field(n_taubyE, iblk, taubyE(:,iblk), a2D)
-         if (f_strength(1:1)/= 'x') &
-             call accum_hist_field(n_strength,iblk, strength(:,:,iblk), a2D)
+         ! kdyn <= 0 leaves the slot unallocated; the block form was c0 there,
+         ! and accumulating c0 is a no-op, so skipping reproduces it.
+         if (f_strength(1:1)/= 'x' .and. allocated(strength_slot)) &
+             call accum_hist_field(n_strength,iblk, strength_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                                   dynMap(:,iblk), a2D)
 
 ! The following fields (divu, shear, vort, sig1, and sig2) will be smeared
 !  if averaged over more than a few days.
@@ -3196,8 +3199,11 @@
          endif
 
          if (f_sicompstren(1:1) /= 'x') then
-           call accum_hist_field_2D_aiflux(n_sicompstren, iblk, strength(:,:,iblk), &
-                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+           ! kdyn <= 0: see the n_strength note -- the block form was c0 here
+           if (allocated(strength_slot)) &
+             call accum_hist_field_2D_aiflux_slot(n_sicompstren, iblk, &
+                   strength_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                   aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
          endif
 
          if (f_sihc(1:1) /= 'x') then
@@ -4594,7 +4600,7 @@
 
                  if (kdyn == 2) then  ! for EAP dynamics different time of output
                     if (n_trsig    (ns) /= 0) a2D(ms,n_trsig(ns)) = &
-                                        strength(i,j,iblk)
+                                        strength_slot(ms)
                  else
                     if (n_trsig(ns) /= 0) then
                        ! see the note at principal_stress: no dynamics, no slot stresses,
