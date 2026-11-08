@@ -235,7 +235,7 @@
 !   dynCnt(iblk)    number of slots that block holds
 !   dynTot          total slots over all local blocks
 !   dynMap(ij,iblk) block-local slot of a cell, 0 if not stored
-!   dynCntA(iblk)   of dynCnt, how many are potentially active; those are
+!   nActive_TU(iblk) of dynCnt, how many are potentially active; those are
 !                   numbered FIRST, so a block reads [ active | ring | dead ]
 !                   and an active-only loop runs off+1 .. off+cntA
 !   dynIJ(slot)     reverse of dynMap, 0 at a dead slot
@@ -274,7 +274,7 @@
          dynMaxCnt     ! largest dynCnt over the local blocks
 
       integer (kind=int_kind), dimension(:), allocatable, public :: &
-         dynOff, dynCnt, dynCntA, dynIJ, dynBlk
+         dynOff, dynCnt, nActive_TU, dynIJ, dynBlk
 
       integer (kind=int_kind), dimension(:,:), allocatable, public :: &
          dynMap, Nbr_Local
@@ -7476,7 +7476,7 @@
       ! kernel to read a T-point array such as str.
       ! ------------------------------------------------------------------
       allocate(mask_any(nx_block*ny_block,max_blocks), &
-               dynOff(max_blocks), dynCnt(max_blocks), dynCntA(max_blocks), &
+               dynOff(max_blocks), dynCnt(max_blocks), nActive_TU(max_blocks), &
                dynMap(nx_block*ny_block,max_blocks), stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
 
@@ -7622,7 +7622,7 @@
          enddo
       enddo
 
-      call set_ragged_layout(mask_any, mask_act, dynOff, dynCnt, dynCntA, &
+      call set_ragged_layout(mask_any, mask_act, dynOff, dynCnt, nActive_TU, &
                              dynTot, dynMap)
       deallocate(mask_any, mask_act)
       dynMaxCnt = max(maxval(dynCnt), 1)

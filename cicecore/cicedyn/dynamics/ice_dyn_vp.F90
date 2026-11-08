@@ -974,24 +974,24 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
             vlin_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = vprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
             call pack_to_slots(strength(:,:,iblk), dynMap(:,iblk), strength_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
 
-            call calc_zeta_dPr (dynCnt(iblk), skipT(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                                ulin_s        (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),    &
-                                vlin_s        (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),    &
-                                dxT_slot      (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),    &
-                                dyT_slot      (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),    &
-                                dxhy_slot     (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),    &
-                                dyhx_slot     (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),    &
-                                cxp_slot      (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),    &
-                                cyp_slot      (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),    &
-                                cxm_slot      (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),    &
-                                cym_slot      (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),    &
-                                DminTarea_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),    &
-                                strength_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),    &
-                                Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_W), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_SW), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_S),          &
-                                zetax2_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),        &
-                                etax2_s (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),        &
-                                repprs_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),        &
-                                stPr_s  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
+            call calc_zeta_dPr (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipT, &
+                                ulin_s,    &
+                                vlin_s,    &
+                                dxT_slot,    &
+                                dyT_slot,    &
+                                dxhy_slot,    &
+                                dyhx_slot,    &
+                                cxp_slot,    &
+                                cyp_slot,    &
+                                cxm_slot,    &
+                                cym_slot,    &
+                                DminTarea_slot,    &
+                                strength_slot,    &
+                                NbrW_Task, NbrSW_Task, NbrS_Task,          &
+                                zetax2_s,        &
+                                etax2_s,        &
+                                repprs_s,        &
+                                stPr_s)
 
             ! Transitional pack/unpack: every other consumer of vrel and Cb
             ! still reads the block layout, so the compressed copies are built
@@ -1001,16 +1001,16 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
             ulin_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = ulin(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
             vlin_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = vlin(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
 
-            call calc_vrel_Cb (dynCnt(iblk), skipU (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                               Cw_s  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),             &
-                               aiU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),             &
-                               TbU_s (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),             &
-                               uocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),             &
-                               vocnU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),             &
-                               ulin_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),             &
-                               vlin_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),             &
-                               vrel_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),             &
-                               Cb_s  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            call calc_vrel_Cb (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipU, &
+                               Cw_s,             &
+                               aiU_slot,             &
+                               TbU_s,             &
+                               uocnU_slot,             &
+                               vocnU_slot,             &
+                               ulin_s,             &
+                               vlin_s,             &
+                               vrel_s,             &
+                               Cb_s)
 
             call unpack_from_slots(Cb_s  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), Cb  (:,iblk))
 
@@ -1018,17 +1018,17 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
             ! stPr and vrel are already compressed; uarear is compressed once
             ! per run.  Only the four still-block-layout inputs are packed.
 
-            call calc_bvec (dynCnt(iblk), skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                            stPr_s   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),       &
-                            uarear_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),       &
-                            waterxU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),         &
-                            wateryU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),         &
-                            bxfix_s  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),         &
-                            byfix_s  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),         &
-                            bx_s     (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),         &
-                            by_s     (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),         &
-                            vrel_s   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),         &
-                            Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_E), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_NE), Nbr_Local(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),nbr_N))
+            call calc_bvec (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipU, &
+                            stPr_s,       &
+                            uarear_slot,       &
+                            waterxU_slot,         &
+                            wateryU_slot,         &
+                            bxfix_s,         &
+                            byfix_s,         &
+                            bx_s,         &
+                            by_s,         &
+                            vrel_s,         &
+                            NbrE_Task, NbrNE_Task, NbrN_Task)
 
 
             ! Compute nonlinear residual norm (PDE residual)
@@ -1047,10 +1047,10 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                          umassdti_slot, fmU_slot,    &
                          uarear_slot,                                                      &
                          mvAu_s, mvAv_s)
-            call residual_vec (dynCnt(iblk), skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),                                          &
-                               bx_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), by_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),     &
-                               mvAu_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), mvAv_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               Fx_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), Fy_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            call residual_vec (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipU,                                          &
+                               bx_s, by_s,     &
+                               mvAu_s, mvAv_s, &
+                               Fx_s, Fy_s)
          enddo
          !$OMP END PARALLEL DO
          nlres_norm = global_norm(Fx_s, Fy_s)
@@ -1321,7 +1321,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
 ! Computes the viscosities and dPr/dx, dPr/dy
 
-      subroutine calc_zeta_dPr (ncells  , skipme  , &
+      subroutine calc_zeta_dPr (lo      , hi  , skipme  , &
                                 uvel    , vvel    , &
                                 dxT     , dyT     , &
                                 dxhy    , dyhx    , &
@@ -1335,7 +1335,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       use ice_dyn_shared, only: strain_rates, visc_replpress
 
       integer (kind=int_kind), intent(in) :: &
-         ncells                ! slots held by this block
+         lo, hi                ! first and last slot of this block
 
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
          skipme       ! inactive-slot flag, T cells
@@ -1391,11 +1391,16 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
       ! Initialize stPr, zetax2 and etax2 to zero
       ! (for cells where iceTmask is false)
-      stPr   = c0
-      zetax2 = c0
-      etax2  = c0
+      ! ⚠ THIS BLOCK'S RANGE ONLY.  These used to be per-block slices, so a
+      ! whole-array "= c0" zeroed just the slice; they are passed whole now,
+      ! and zeroing all of dynTot here would wipe every other block's
+      ! results -- each call leaving only its own.  hi+1 is the dead slot,
+      ! which the slice included.
+      stPr  (lo:hi+1,:) = c0
+      zetax2(lo:hi+1,:) = c0
+      etax2 (lo:hi+1,:) = c0
 
-      do is = 1, ncells
+      do is = lo, hi
          if (skipme(is)) cycle
 
          isW  = nbrW(is)
@@ -1664,7 +1669,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 
 ! Compute vrel and seabed stress coefficients
 
-      subroutine calc_vrel_Cb (ncells  , skipme  , &
+      subroutine calc_vrel_Cb (lo      , hi  , skipme  , &
                                Cw      ,           &
                                aiU     , TbU     , &
                                uocn    , vocn    , &
@@ -1674,7 +1679,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       use ice_dyn_shared, only: u0 ! residual velocity for seabed stress (m/s)
 
       integer (kind=int_kind), intent(in) :: &
-         ncells                ! slots held by this block
+         lo, hi                ! first and last slot of this block
 
       ! skipme(is) is .true. where the slot carries no ice this step.  Together
       ! with ncells this replaces the icellU / indxUi / indxUj chain: the loop
@@ -1714,7 +1719,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
          file=__FILE__, line=__LINE__)
 
-      do is = 1, ncells
+      do is = lo, hi
          if (skipme(is)) cycle
 
          ! (magnitude of relative ocean current)*rhow*drag*aice
@@ -2087,7 +2092,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 ! that cannot be written as A(u,v)*(u,v), where A(u,v) is a matrix with entries
 ! depending on (u,v)
 
-      subroutine calc_bvec (ncells  , skipme  , &
+      subroutine calc_bvec (lo      , hi  , skipme  , &
                             stPr    , uarear  , &
                             waterxU , wateryU , &
                             bxfix   , byfix   , &
@@ -2095,7 +2100,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                             vrel    , nbrE, nbrNE, nbrN)
 
       integer (kind=int_kind), intent(in) :: &
-         ncells                ! slots held by this block
+         lo, hi                ! first and last slot of this block
 
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
          skipme      ! inactive-slot flag
@@ -2143,7 +2148,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
          file=__FILE__, line=__LINE__)
 
-      do is = 1, ncells
+      do is = lo, hi
          if (skipme(is)) cycle
 
          ! the three T cells whose Pr stresses reach this U point, as EVP's
@@ -2175,13 +2180,13 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
 ! Au = A(u,v)_[x] * uvel (x components of  A(u,v) * (u,v))
 ! Av = A(u,v)_[y] * vvel (y components of  A(u,v) * (u,v))
 
-      subroutine residual_vec (ncells     , skipme  , &
+      subroutine residual_vec (lo      , hi     , skipme  , &
                                bx         , by      , &
                                Au         , Av      , &
                                Fx         , Fy        )
 
       integer (kind=int_kind), intent(in) :: &
-         ncells                ! slots held by this block
+         lo, hi                ! first and last slot of this block
 
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
          skipme       ! inactive-slot flag, U cells
@@ -2208,7 +2213,7 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
       ! compute residual
       !-----------------------------------------------------------------
 
-      do is = 1, ncells
+      do is = lo, hi
          if (skipme(is)) cycle
 
          Fx(is) = bx(is) - Au(is)
@@ -3804,11 +3809,11 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                       umassdti_slot, fmU_slot,    &
                       uarear_slot,                                                      &
                       workspace_x, workspace_y)
-         call residual_vec (dynCnt(iblk), skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),                                                    &
-                            bx(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), by(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),                   &
-                            workspace_x(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), workspace_y(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            arnoldi_basis_x(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,1),                                                    &
-                            arnoldi_basis_y(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,1))
+         call residual_vec (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipU,                                                    &
+                            bx, by,                   &
+                            workspace_x, workspace_y, &
+                            arnoldi_basis_x(:,1),                                                    &
+                            arnoldi_basis_y(:,1))
       enddo
       !$OMP END PARALLEL DO
 
@@ -4179,11 +4184,11 @@ use ice_dyn_shared, only: skipT, dynIJ, dynCnt, dynOff
                       umassdti_slot, fmU_slot,    &
                       uarear_slot,                                                      &
                       workspace_x, workspace_y)
-         call residual_vec (dynCnt(iblk), skipU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)),                                                    &
-                            bx(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), by(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),                   &
-                            workspace_x(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), workspace_y(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                            arnoldi_basis_x(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,1),                                                    &
-                            arnoldi_basis_y(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,1))
+         call residual_vec (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), skipU,                                                    &
+                            bx, by,                   &
+                            workspace_x, workspace_y, &
+                            arnoldi_basis_x(:,1),                                                    &
+                            arnoldi_basis_y(:,1))
       enddo
       !$OMP END PARALLEL DO
 
