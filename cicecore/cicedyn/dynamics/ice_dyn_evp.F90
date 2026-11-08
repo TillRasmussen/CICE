@@ -131,7 +131,7 @@
       use ice_grid, only: dynIJ, dynBlk
       use ice_calendar, only: dt_dyn
       use ice_dyn_shared, only: init_dyn_shared, evp_algorithm, &
-          dynTot, dynOff, dynCnt, dynMap
+          dynTot, dynOff, dynCnt, dynMap, dxN_slot, dyE_slot
       use ice_grid, only: pack_to_slots
       use ice_dyn_evp1d, only: dyn_evp1d_init
 
@@ -203,12 +203,15 @@
 
          ! Constant for the run, so built once here, in a slot loop.
          !
-         ! The NEIGHBOUR metric is still read from the block array.  It has
-         ! to be: dxN at the E neighbour is often an ordinary LAND cell,
-         ! which carries a real metric but is outside mask_any and so has no
-         ! slot of its own -- Nbr*_Task would resolve it to the shared dead
-         ! slot and read c1 instead of the cell's value.  dynIJ/dynBlk give
-         ! the same element the block loop this replaced indexed.
+         ! The neighbour metric now comes from the slots.  It could not
+         ! before: dxN at the E neighbour is often ordinary LAND, which
+         ! carries a real metric, and until the neighbour ring joined
+         ! mask_any that cell had no slot -- Nbr*_Task resolved it to the
+         ! shared dead slot and read c1 instead of the cell's value.
+         !
+         ! The interior test stays.  It is what keeps the loop off the
+         ! padding, where the metric is genuinely zero and the division
+         ! would trap; it is not about neighbours.
          do is = 1, dynTot
             ijb = dynIJ(is)
             if (ijb == 0) cycle                  ! dead slot
@@ -218,8 +221,8 @@
             i = ijb - (j-1)*nx_block
             if (i < this_block%ilo .or. i > this_block%ihi .or. &
                 j < this_block%jlo .or. j > this_block%jhi) cycle
-            ratiodxN_slot (is) = - dxN(ijb+1       ,iblk) / dxN(ijb,iblk)
-            ratiodyE_slot (is) = - dyE(ijb+nx_block,iblk) / dyE(ijb,iblk)
+            ratiodxN_slot (is) = - dxN_slot(NbrE_Task(is)) / dxN_slot(is)
+            ratiodyE_slot (is) = - dyE_slot(NbrN_Task(is)) / dyE_slot(is)
             ratiodxNr_slot(is) =   c1 / ratiodxN_slot(is)
             ratiodyEr_slot(is) =   c1 / ratiodyE_slot(is)
          enddo

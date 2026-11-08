@@ -2819,12 +2819,12 @@
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
          skipme
 
-      ! One vector per direction.  ⚠ A missing neighbour resolves to the
-      ! block's dead slot.  That is safe for the MAXIMA over aice_s/vice_s,
-      ! which are non-negative, but NOT for the minimum over hwater_s: c0
-      ! there would win every min, pass hwu < threshold_hw and manufacture
-      ! a seabed stress.  hwater_s therefore holds hwater_dead at dead
-      ! slots, not c0 -- see ice_flux.
+      ! One vector per direction.  Every neighbour of an active cell owns a
+      ! slot carrying its real value: these loops gate on skipme, an active
+      ! cell is always inside the static mask, and the neighbour ring is
+      ! marked around every cell of that mask.  So the minimum over
+      ! hwater_s no longer reaches a dead slot, which is what used to need
+      ! a large sentinel there rather than c0.
       integer (kind=int_kind), dimension (:), intent(in), contiguous :: &
          nbrE    , & ! neighbour slot one step E
          nbrNE   , & ! neighbour slot one step NE

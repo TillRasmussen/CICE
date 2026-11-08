@@ -436,18 +436,14 @@
          rdg_shear   ! shear term for ridging (1/s)
 
       ! Water depth, compressed.  Static: packed once in init_coupler_flux.
-      ! ⚠ Dead slots hold hwater_dead, NOT c0.  grid_neighbor_min reduces
-      ! hwater over a cell's corner neighbours, and a missing neighbour
-      ! resolves to the dead slot; c0 there would win every minimum, pass
-      ! hwu < threshold_hw and produce a spurious non-zero seabed stress.
-      ! A max over a non-negative field would not care -- a min does.
+      ! Dead slots hold c0 like every other compressed field.  They used to
+      ! need a large sentinel because grid_neighbor_min reduces hwater over
+      ! a cell's corner neighbours and a missing neighbour resolved to the
+      ! dead slot, where c0 wins every minimum and fakes a seabed stress.
+      ! The neighbour ring now gives those cells slots of their own, so the
+      ! reduction never reaches a dead slot from an active cell.
       real (kind=dbl_kind), dimension (:), allocatable, public :: &
          hwater_slot ! water depth (m), compressed
-
-      ! Far deeper than any ocean and than threshold_hw/max_depth, but small
-      ! enough that au*hwater_dead/k1 cannot overflow.
-      real (kind=dbl_kind), parameter, public :: &
-         hwater_dead = 1.0e10_dbl_kind
 
       real (kind=dbl_kind), dimension(:,:,:,:), allocatable, public :: &
          rsiden    ,&   ! fraction of ice that melts laterally
@@ -1138,12 +1134,10 @@
       ! the ghost slots, rather than block-then-pack.  bathymetry is a good
       ! pilot for that: static, read once, and used by nothing but the
       ! seabed stress kernels.
-      ! Dead slots get hwater_dead so they can never win a minimum.
-      hwater_slot(:) = hwater_dead
+      hwater_slot(:) = c0
       do iblk = 1, nblocks
          call pack_to_slots(hwater(:,iblk), dynMap(:,iblk), &
                             hwater_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         hwater_slot(dynOff(iblk)+dynCnt(iblk)+1) = hwater_dead
       enddo
       daice_da(:,:,:) = c0            ! data assimilation increment rate
 
