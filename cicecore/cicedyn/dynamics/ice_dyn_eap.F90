@@ -356,12 +356,6 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
                          wateryU_slot, &
                          forcexU_slot, &
                          forceyU_slot, &
-                         stressp_1 (:,iblk), stressp_2 (:,iblk), &
-                         stressp_3 (:,iblk), stressp_4 (:,iblk), &
-                         stressm_1 (:,iblk), stressm_2 (:,iblk), &
-                         stressm_3 (:,iblk), stressm_4 (:,iblk), &
-                         stress12_1(:,iblk), stress12_2(:,iblk), &
-                         stress12_3(:,iblk), stress12_4(:,iblk), &
                          uvel_init,   vvel_init,   &
                          uvel(:,iblk), vvel(:,iblk), &
                         dynMap(:,iblk), dynOff(iblk), dynCnt(iblk), iceUmask_slot, &

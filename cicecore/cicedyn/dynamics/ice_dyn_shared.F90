@@ -1458,12 +1458,6 @@
                             taubx,      tauby,      &
                             waterx,     watery,     &
                             forcex,     forcey,     &
-                            stressp_1,  stressp_2,  &
-                            stressp_3,  stressp_4,  &
-                            stressm_1,  stressm_2,  &
-                            stressm_3,  stressm_4,  &
-                            stress12_1, stress12_2, &
-                            stress12_3, stress12_4, &
                             uvel_init,  vvel_init,  &
                             uvel,       vvel,       &
                             Xmap,       Xoff,       ncnt,       &
@@ -1573,9 +1567,6 @@
          fm          ! Coriolis param. * mass in U-cell (kg/s)
 
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(inout) :: &
-         stressp_1, stressp_2, stressp_3, stressp_4 , & ! sigma11+sigma22
-         stressm_1, stressm_2, stressm_3, stressm_4 , & ! sigma11-sigma22
-         stress12_1,stress12_2,stress12_3,stress12_4, & ! sigma12
          uvel    , & ! x-component of velocity (m/s)
          vvel    , & ! y-component of velocity (m/s)
          strintx , & ! divergence of internal ice stress, x (N/m^2)
@@ -1766,18 +1757,6 @@
                stress12_3_slot(Xoff+mslotz) = c0
                stress12_4_slot(Xoff+mslotz) = c0
             endif
-            stressp_1 (i,j) = c0
-            stressp_2 (i,j) = c0
-            stressp_3 (i,j) = c0
-            stressp_4 (i,j) = c0
-            stressm_1 (i,j) = c0
-            stressm_2 (i,j) = c0
-            stressm_3 (i,j) = c0
-            stressm_4 (i,j) = c0
-            stress12_1(i,j) = c0
-            stress12_2(i,j) = c0
-            stress12_3(i,j) = c0
-            stress12_4(i,j) = c0
          endif
       enddo                     ! i
       enddo                     ! j

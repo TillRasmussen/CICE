@@ -548,12 +548,6 @@
                             wateryU_slot, &
                             forcexU_slot, &
                             forceyU_slot, &
-                            stressp_1 (:,iblk), stressp_2 (:,iblk), &
-                            stressp_3 (:,iblk), stressp_4 (:,iblk), &
-                            stressm_1 (:,iblk), stressm_2 (:,iblk), &
-                            stressm_3 (:,iblk), stressm_4 (:,iblk), &
-                            stress12_1(:,iblk), stress12_2(:,iblk), &
-                            stress12_3(:,iblk), stress12_4(:,iblk), &
                             uvel_init,   vvel_init,   &
                             uvel(:,iblk), vvel(:,iblk), &
                            dynMap(:,iblk), dynOff(iblk), dynCnt(iblk), iceUmask_slot, &
@@ -618,12 +612,6 @@
                             wateryU_slot, &
                             forcexU_slot, &
                             forceyU_slot, &
-                            stressp_1 (:,iblk), stressp_2 (:,iblk), &
-                            stressp_3 (:,iblk), stressp_4 (:,iblk), &
-                            stressm_1 (:,iblk), stressm_2 (:,iblk), &
-                            stressm_3 (:,iblk), stressm_4 (:,iblk), &
-                            stress12_1(:,iblk), stress12_2(:,iblk), &
-                            stress12_3(:,iblk), stress12_4(:,iblk), &
                             uvel_init,   vvel_init,   &
                             uvel(:,iblk), vvel(:,iblk), &
                            dynMap(:,iblk), dynOff(iblk), dynCnt(iblk), iceUmask_slot, &
@@ -680,12 +668,6 @@
                             wateryN_slot, &
                             forcexN_slot, &
                             forceyN_slot, &
-                            stressp_1 (:,iblk), stressp_2 (:,iblk), &
-                            stressp_3 (:,iblk), stressp_4 (:,iblk), &
-                            stressm_1 (:,iblk), stressm_2 (:,iblk), &
-                            stressm_3 (:,iblk), stressm_4 (:,iblk), &
-                            stress12_1(:,iblk), stress12_2(:,iblk), &
-                            stress12_3(:,iblk), stress12_4(:,iblk), &
                             uvelN_init,   vvelN_init,   &
                             uvelN     (:,:,iblk), vvelN     (:,:,iblk), &
                            dynMap(:,iblk), dynOff(iblk), dynCnt(iblk), iceNmask_slot, &
@@ -718,12 +700,6 @@
                             wateryE_slot, &
                             forcexE_slot, &
                             forceyE_slot, &
-                            stressp_1 (:,iblk), stressp_2 (:,iblk), &
-                            stressp_3 (:,iblk), stressp_4 (:,iblk), &
-                            stressm_1 (:,iblk), stressm_2 (:,iblk), &
-                            stressm_3 (:,iblk), stressm_4 (:,iblk), &
-                            stress12_1(:,iblk), stress12_2(:,iblk), &
-                            stress12_3(:,iblk), stress12_4(:,iblk), &
                             uvelE_init,   vvelE_init,   &
                             uvelE     (:,:,iblk), vvelE     (:,:,iblk), &
                            dynMap(:,iblk), dynOff(iblk), dynCnt(iblk), iceEmask_slot, &
