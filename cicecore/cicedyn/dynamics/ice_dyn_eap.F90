@@ -48,10 +48,6 @@
       real (kind=dbl_kind), dimension (nx_yield,ny_yield,na_yield) :: &
          s11r, s12r, s22r, s11s, s12s, s22s
 
-      real (kind=dbl_kind), dimension (:,:,:), allocatable :: &
-         a11_1, a11_2, a11_3, a11_4,       & ! components of
-         a12_1, a12_2, a12_3, a12_4          ! structure tensor
-
       ! Compressed copies of the state the EAP subcycle carries, so the whole
       ! subcycle can run on slots the way the B-grid one does: stress_eap and
       ! stepa both read and write these every subcycle, and the block arrays
@@ -162,7 +158,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
           seabed_stress_factor_LKD, seabed_stress_factor_prob, &
           seabed_stress_method, seabed_stress, &
           stack_fields, unstack_fields, iceTmask, iceUmask, &
-          fld2, fld3, fld4, fld2c, dxhy, dyhx, cxp, cyp, cxm, cym
+          fld2, fld3, fld4, fld2c
       use ice_flux, only: rdg_conv, strairxT, strairyT, &
           strairxU, strairyU, uocn, vocn, ss_tltx, ss_tlty, fmU, &
           strtltxU, strtltyU, strocnxU, strocnyU, strintxU, strintyU, taubxU, taubyU, &
@@ -722,14 +718,6 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
          ! or convert at their own boundary.
          if (ldiag) then
          endif
-         call unpack_from_slots(a11_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), a11_1(:,:,iblk))
-         call unpack_from_slots(a11_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), a11_2(:,:,iblk))
-         call unpack_from_slots(a11_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), a11_3(:,:,iblk))
-         call unpack_from_slots(a11_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), a11_4(:,:,iblk))
-         call unpack_from_slots(a12_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), a12_1(:,:,iblk))
-         call unpack_from_slots(a12_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), a12_2(:,:,iblk))
-         call unpack_from_slots(a12_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), a12_3(:,:,iblk))
-         call unpack_from_slots(a12_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), a12_4(:,:,iblk))
       enddo
       !$OMP END PARALLEL DO
 
@@ -795,17 +783,6 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
 
       call init_dyn_shared(dt_dyn)
 
-      allocate( a11_1        (nx_block,ny_block,max_blocks), &
-                a11_2        (nx_block,ny_block,max_blocks), &
-                a11_3        (nx_block,ny_block,max_blocks), &
-                a11_4        (nx_block,ny_block,max_blocks), &
-                a12_1        (nx_block,ny_block,max_blocks), &
-                a12_2        (nx_block,ny_block,max_blocks), &
-                a12_3        (nx_block,ny_block,max_blocks), &
-                a12_4        (nx_block,ny_block,max_blocks), &
-                stat=ierr)
-      if (ierr/=0) call abort_ice(subname//' ERROR: Out of memory')
-
       ! init_dyn_shared above has built the compressed layout, so dynTot is set
       allocate( a11_1_slot(dynTot), a11_2_slot(dynTot),      &
                 a11_3_slot(dynTot), a11_4_slot(dynTot),      &
@@ -848,23 +825,6 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
       a12_3_slot = c0
       a12_4_slot = c0
 
-
-      !$OMP PARALLEL DO PRIVATE(iblk,i,j) SCHEDULE(runtime)
-      do iblk = 1, nblocks
-      do j = 1, ny_block
-      do i = 1, nx_block
-         a11_1        (i,j,iblk) = p5
-         a11_2        (i,j,iblk) = p5
-         a11_3        (i,j,iblk) = p5
-         a11_4        (i,j,iblk) = p5
-         a12_1        (i,j,iblk) = c0
-         a12_2        (i,j,iblk) = c0
-         a12_3        (i,j,iblk) = c0
-         a12_4        (i,j,iblk) = c0
-      enddo                     ! i
-      enddo                     ! j
-      enddo                     ! iblk
-      !$OMP END PARALLEL DO
 
       !-----------------------------------------------------------------
       ! create lookup table for eap dynamics (see Appendix A1)
@@ -2477,12 +2437,32 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
       ! local variables
 
       integer (kind=int_kind) :: &
-         i, j, iblk
+         i, j, iblk, ierr
 
       logical (kind=log_kind) :: &
          diag
 
+      ! The structure tensor in BLOCK form, for the duration of the read
+      ! only.  read_restart_field lands here, ice_HaloUpdate_stress needs
+      ! the pairs together across a tripole cut, and pack_to_slots moves it
+      ! to the slot form the subcycle actually runs on.  Nothing outside
+      ! this routine reads the block form, so it does not outlive it.
+      real (kind=dbl_kind), dimension (:,:,:), allocatable :: &
+         a11_1, a11_2, a11_3, a11_4,       & ! components of
+         a12_1, a12_2, a12_3, a12_4          ! structure tensor
+
       character(len=*), parameter :: subname = '(read_restart_eap)'
+
+      allocate( a11_1(nx_block,ny_block,max_blocks), &
+                a11_2(nx_block,ny_block,max_blocks), &
+                a11_3(nx_block,ny_block,max_blocks), &
+                a11_4(nx_block,ny_block,max_blocks), &
+                a12_1(nx_block,ny_block,max_blocks), &
+                a12_2(nx_block,ny_block,max_blocks), &
+                a12_3(nx_block,ny_block,max_blocks), &
+                a12_4(nx_block,ny_block,max_blocks), &
+                stat=ierr)
+      if (ierr/=0) call abort_ice(subname//' ERROR: Out of memory')
 
       diag = .true.
 
@@ -2585,6 +2565,10 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
          call pack_to_slots(a12_4(:,:,iblk), dynMap(:,iblk), a12_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
       enddo
       !$OMP END PARALLEL DO
+
+      deallocate( a11_1, a11_2, a11_3, a11_4, &
+                  a12_1, a12_2, a12_3, a12_4, stat=ierr)
+      if (ierr/=0) call abort_ice(subname//' ERROR: deallocate')
 
       end subroutine read_restart_eap
 

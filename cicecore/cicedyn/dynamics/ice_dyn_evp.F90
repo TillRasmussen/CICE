@@ -257,8 +257,8 @@
       use ice_timers, only: timer_dynamics, timer_bound, &
           ice_timer_start, ice_timer_stop, timer_evp
       use ice_dyn_shared, only: evp_algorithm, stack_fields, unstack_fields, &
-          DminTarea, visc_method, deformations, deformationsC_T, deformationsCD_T, &
-          strain_rates_U, dxhy, dyhx, cxp, cyp, cxm, cym, &
+          visc_method, deformations, deformationsC_T, deformationsCD_T, &
+          strain_rates_U, &
           iceTmask, iceUmask, iceEmask, iceNmask, &
           dyn_haloUpdate, fld2, fld3, fld4, fld2c
       ! the compressed layout, and the C/CD slot arrays the subcycle runs on

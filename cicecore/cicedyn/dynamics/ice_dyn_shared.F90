@@ -441,19 +441,6 @@
       logical (kind=log_kind), dimension (:,:), allocatable, target, public :: &
          iceTmask      ! ice extent mask (T-cell)
 
-      real (kind=dbl_kind), allocatable, public :: &
-         DminTarea(:,:)      ! deltamin * tarea (m^2/s)
-
-      ! the i and j dimensions are flattened: element (i,j,iblk) of the block
-      ! layout lives at ((j-1)*nx_block + i, iblk)
-      real (kind=dbl_kind), dimension (:,:), allocatable, public :: &
-         cyp    , & ! 1.5*HTE(i,j)-0.5*HTW(i,j) = 1.5*HTE(i,j)-0.5*HTE(i-1,j)
-         cxp    , & ! 1.5*HTN(i,j)-0.5*HTS(i,j) = 1.5*HTN(i,j)-0.5*HTN(i,j-1)
-         cym    , & ! 0.5*HTE(i,j)-1.5*HTW(i,j) = 0.5*HTE(i,j)-1.5*HTE(i-1,j)
-         cxm    , & ! 0.5*HTN(i,j)-1.5*HTS(i,j) = 0.5*HTN(i,j)-1.5*HTN(i,j-1)
-         dxhy   , & ! 0.5*(HTE(i,j) - HTW(i,j)) = 0.5*(HTE(i,j) - HTE(i-1,j))
-         dyhx       ! 0.5*(HTN(i,j) - HTS(i,j)) = 0.5*(HTN(i,j) - HTN(i,j-1))
-
       ! ice isotropic tensile strength parameter
       real (kind=dbl_kind), public :: &
          Ktens               ! T=Ktens*P (tensile strength: see Konig and Holland, 2010)
@@ -650,7 +637,6 @@
          vvel_init (dynTot), & ! y-component of velocity (m/s), beginning of timestep
          iceTmask  (nx_block*ny_block,max_blocks), & ! T mask for dynamics
          iceUmask  (nx_block*ny_block,max_blocks), & ! U mask for dynamics
-         DminTarea (nx_block*ny_block,max_blocks), & !
          stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
 
@@ -658,7 +644,6 @@
       vvel_init  = c0
       iceTmask   = .false.
       iceUmask   = .false.
-      DminTarea  = c0
 
       allocate( &
          fld2(nx_block,ny_block,2,max_blocks), &
@@ -671,28 +656,6 @@
       fld3 = c0
       fld4 = c0
 
-      allocate( &
-         cyp(nx_block*ny_block,max_blocks), & ! 1.5*HTE - 0.5*HTW
-         cxp(nx_block*ny_block,max_blocks), & ! 1.5*HTN - 0.5*HTS
-         cym(nx_block*ny_block,max_blocks), & ! 0.5*HTE - 1.5*HTW
-         cxm(nx_block*ny_block,max_blocks), & ! 0.5*HTN - 1.5*HTS
-         stat=ierr)
-      if (ierr/=0) call abort_ice(subname//': Out of memory')
-
-      cyp = c0
-      cxp = c0
-      cym = c0
-      cxm = c0
-
-      if (grid_ice == 'B' .and. evp_algorithm == "standard_2d") then
-         allocate( &
-            dxhy(nx_block*ny_block,max_blocks), & ! 0.5*(HTE - HTW)
-            dyhx(nx_block*ny_block,max_blocks), & ! 0.5*(HTN - HTS)
-            stat=ierr)
-         if (ierr/=0) call abort_ice(subname//': Out of memory')
-         dxhy = c0
-         dyhx = c0
-      endif
 
       if (grid_ice == 'CD' .or. grid_ice == 'C') then
          ! N and E share the one list; only their activity flags differ
@@ -1045,10 +1008,25 @@
          ijb   ,             & ! 1D index of (i,j) in the flattened block layout
          ilo, ihi, jlo, jhi, & !min and max index for interior of blocks
          nprocs,             & ! number of processors
+         ierr,               & ! allocation status
          iblk                  ! block index
 
       type (block) :: &
          this_block   ! block information for current block
+
+      ! The metric helpers in BLOCK form, for this routine only.  They are
+      ! built from HTE/HTN below and packed straight to their _slot forms,
+      ! which is what the kernels read; nothing reads the block form again.
+      ! dxhy/dyhx stay conditional -- on the evp1d path they are deliberately
+      ! never built, see the note in convert_2d_1d_init.
+      real (kind=dbl_kind), dimension (:,:), allocatable :: &
+         cyp    , & ! 1.5*HTE(i,j)-0.5*HTW(i,j) = 1.5*HTE(i,j)-0.5*HTE(i-1,j)
+         cxp    , & ! 1.5*HTN(i,j)-0.5*HTS(i,j) = 1.5*HTN(i,j)-0.5*HTN(i,j-1)
+         cym    , & ! 0.5*HTE(i,j)-1.5*HTW(i,j) = 0.5*HTE(i,j)-1.5*HTE(i-1,j)
+         cxm    , & ! 0.5*HTN(i,j)-1.5*HTS(i,j) = 0.5*HTN(i,j)-1.5*HTN(i,j-1)
+         dxhy   , & ! 0.5*(HTE(i,j) - HTW(i,j)) = 0.5*(HTE(i,j) - HTE(i-1,j))
+         dyhx   , & ! 0.5*(HTN(i,j) - HTS(i,j)) = 0.5*(HTN(i,j) - HTN(i,j-1))
+         DminTarea  ! deltamin * tarea (m^2/s)
 
       character(len=*), parameter :: subname = '(init_dyn_shared)'
 
@@ -1070,6 +1048,30 @@
       call set_evp_parameters (dt)
       ! allocate dyn shared (init_uvel,init_vvel)
       call alloc_dyn_shared
+
+      allocate( &
+         cyp      (nx_block*ny_block,max_blocks), & ! 1.5*HTE - 0.5*HTW
+         cxp      (nx_block*ny_block,max_blocks), & ! 1.5*HTN - 0.5*HTS
+         cym      (nx_block*ny_block,max_blocks), & ! 0.5*HTE - 1.5*HTW
+         cxm      (nx_block*ny_block,max_blocks), & ! 0.5*HTN - 1.5*HTS
+         DminTarea(nx_block*ny_block,max_blocks), & ! deltamin * tarea
+         stat=ierr)
+      if (ierr/=0) call abort_ice(subname//': Out of memory')
+      cyp       = c0
+      cxp       = c0
+      cym       = c0
+      cxm       = c0
+      DminTarea = c0
+
+      if (grid_ice == 'B' .and. evp_algorithm == "standard_2d") then
+         allocate( &
+            dxhy(nx_block*ny_block,max_blocks), & ! 0.5*(HTE - HTW)
+            dyhx(nx_block*ny_block,max_blocks), & ! 0.5*(HTN - HTS)
+            stat=ierr)
+         if (ierr/=0) call abort_ice(subname//': Out of memory')
+         dxhy = c0
+         dyhx = c0
+      endif
       ! Set halo_dynbundle, this is empirical at this point, could become namelist
       halo_dynbundle = .true.
       nprocs = get_num_procs()
@@ -1235,6 +1237,14 @@
             call pack_to_slots(dyhx(:,iblk), dynMap(:,iblk), &
                  dyhx_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
          enddo
+      endif
+
+      ! Packed; the block forms have no further reader.
+      deallocate(cyp, cxp, cym, cxm, DminTarea, stat=ierr)
+      if (ierr/=0) call abort_ice(subname//': deallocate')
+      if (allocated(dxhy)) then
+         deallocate(dxhy, dyhx, stat=ierr)
+         if (ierr/=0) call abort_ice(subname//': deallocate')
       endif
 
   end subroutine init_dyn_shared

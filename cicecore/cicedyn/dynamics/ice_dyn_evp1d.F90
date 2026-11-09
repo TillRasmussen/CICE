@@ -820,7 +820,7 @@ module ice_dyn_evp1d
      use ice_domain, only : distrb_info
      use ice_grid, only: dyT, dxT, uarear, tmask, &
              dynMap, dynOff, uarear_slot, dxT_slot, dyT_slot
-     use ice_dyn_shared, only: DminTarea, fcor_slot, DminTarea_slot
+     use ice_dyn_shared, only: fcor_slot, DminTarea_slot
      implicit none
 
      ! nx, ny

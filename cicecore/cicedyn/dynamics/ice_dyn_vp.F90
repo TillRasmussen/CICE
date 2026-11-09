@@ -261,7 +261,6 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
       use ice_dyn_shared, only: deformations, iceTmask, iceUmask, &
                                NbrW_Task, NbrSW_Task, NbrS_Task, &
                                NbrE_Task, NbrNE_Task, NbrN_Task, &
-          cxp, cyp, cxm, cym, &
           stressp_1_slot, stressp_2_slot, stressp_3_slot, stressp_4_slot, &
           stressm_1_slot, stressm_2_slot, stressm_3_slot, stressm_4_slot, &
           stress12_1_slot, stress12_2_slot, stress12_3_slot, stress12_4_slot
@@ -820,7 +819,6 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
       use ice_domain_size, only: max_blocks
       use ice_flux, only:   fmU
       use ice_grid, only: dxT, dyT, uarear
-      use ice_dyn_shared, only: DminTarea, dxhy, dyhx, cxp, cyp, cxm, cym
       use ice_state, only: uvel, vvel
       use ice_restoring, only: ice_restoring_halo, restore_ice
       use ice_timers, only: ice_timer_start, ice_timer_stop, timer_bound
@@ -3674,7 +3672,6 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
       use ice_boundary, only: ice_HaloUpdate3DR8_compressed
       use ice_domain, only: maskhalo_dyn, halo_info
       use ice_timers, only: ice_timer_start, ice_timer_stop, timer_bound
-      use ice_dyn_shared, only: dxhy, dyhx, cxp, cyp, cxm, cym
 
       real (kind=dbl_kind), dimension(:), intent(in), contiguous :: &
          umassdti  ! mass of U-cell/dte (kg/m^2 s)
@@ -4062,7 +4059,6 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
       use ice_boundary, only: ice_HaloUpdate3DR8_compressed
       use ice_domain, only: maskhalo_dyn, halo_info
       use ice_timers, only: ice_timer_start, ice_timer_stop, timer_bound
-      use ice_dyn_shared, only: dyhx, dxhy, cxp, cyp, cxm, cym
 
       real (kind=dbl_kind), dimension(:), intent(in), contiguous :: &
          umassdti  ! mass of U-cell/dte (kg/m^2 s)
