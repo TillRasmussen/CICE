@@ -348,7 +348,7 @@
       use ice_boundary, only: ice_HaloUpdate2DR8_compressed, &
                               ice_HaloUpdate3DR8_compressed
       use ice_grid, only: HTE, HTN, dxu, dyu,       &
-                          earea, narea, hm,   &
+                          earea, narea,       &
                           dynMap, dynOff, dynCnt, Nbr_Local, dynIJ, dynTot, skipRmp, &
                           skipPhys, tarear_slot,                          &
                           dxU_slot, dyU_slot, HTN_slot, HTE_slot,         &
@@ -559,7 +559,6 @@
          call construct_fields(iblk,              ntrace,            &
                                tracer_type,       depend,            &
                                has_dependents,                       &
-                               hm     (:, iblk),                    &
                                mm(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,0),                     &
                                mc(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,0),                     &
                                mx(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,0),                     &
@@ -573,7 +572,6 @@
             call construct_fields(iblk,                ntrace,              &
                                   tracer_type,         depend,              &
                                   has_dependents,                          &
-                                  hm       (:, iblk),                      &
                                   mm(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,n),                     &
                                   mc(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,n),                     &
                                   mx(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,n),                     &
@@ -1099,7 +1097,6 @@
       subroutine construct_fields (iblk,           ntrace,     &
                                    tracer_type,    depend,     &
                                    has_dependents,             &
-                                   hm,                         &
                                    mm,             mc,         &
                                    mx,             my,         &
                                    mmask,                      &
@@ -1108,7 +1105,7 @@
                                    tmask)
 
       use ice_grid, only: dynMap, dynOff, dynCnt, Nbr_Local, skipRmp, &
-                          pack_to_slots
+                          pack_to_slots, hm_slot
 
       integer (kind=int_kind), intent(in) ::   &
          iblk              , & ! block index, to slice the compressed layout
@@ -1122,13 +1119,9 @@
          has_dependents        ! true if a tracer has dependent tracers
 
       ! Assumed shape, so this routine does not name the block dimensions.
-      ! ⚠ hm is rank 1: the caller passes hm(:,iblk), which is already
-      ! flattened.  The others arrive as genuine rank-2/rank-3 sections.
-      ! contiguous because they are handed on to pack_to_slots, whose dummy
-      ! is explicit-shape by design -- see ice_grid.
-      real (kind=dbl_kind), dimension (:), intent(in), contiguous ::   &
-         hm                    ! land/boundary mask, thickness (T-cell)
-
+      ! The mass mask is not an argument: hm has no category dimension, so
+      ! threading it through ncat+1 calls -- and packing it in each -- was
+      ! work for a value that never changes.  It comes from ice_grid below.
       ! Compressed: this block's slice, one category.  They arrive already
       ! in the slot layout, so the packs this routine used to do are gone.
       real (kind=dbl_kind), dimension (:), intent(in), contiguous ::   &
@@ -1175,7 +1168,7 @@
       ! here: they arrive compressed, so only the genuinely local vectors
       ! remain.
       real (kind=dbl_kind), dimension (dynCnt(iblk)+1) :: &
-         hm_s, zero_s, &
+         zero_s, &
          mxav_s, myav_s, &
          tc_s, tx_s, ty_s
 
@@ -1248,13 +1241,12 @@
       ! xav and yav are never assigned -- they are c0 for the whole routine,
       ! which is what the "echmod: grid arrays = 0" note below refers to --
       ! so they are passed as a zero vector.
-      call pack_to_slots(hm   , dynMap(:,iblk), hm_s)
       zero_s(:) = c0
 
       call limited_gradient (ncells,                                            &
                              skipRmp(dynOff(iblk)+1:dynOff(iblk)+ncells),       &
                              Nbr_Local (dynOff(iblk)+1:dynOff(iblk)+ncells,:),     &
-                             mm,       hm_s,                                    &
+                             mm,       hm_slot(dynOff(iblk)+1:dynOff(iblk)+ncells+1), &
                              zero_s,   zero_s,                                  &
                              mx,     my)
 
