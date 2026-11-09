@@ -2770,16 +2770,16 @@
          if (f_strocny(1:1) /= 'x') &
              call accum_hist_field(n_strocny, iblk, strocnyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                                    dynMap(:,iblk), a2D)
-         if (f_strintx(1:1) /= 'x') &
+         if (f_strintx(1:1) /= 'x' .and. allocated(strintxU_slot)) &
              call accum_hist_field(n_strintx, iblk, strintxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                                    dynMap(:,iblk), a2D)
-         if (f_strinty(1:1) /= 'x') &
+         if (f_strinty(1:1) /= 'x' .and. allocated(strintyU_slot)) &
              call accum_hist_field(n_strinty, iblk, strintyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                                    dynMap(:,iblk), a2D)
-         if (f_taubx(1:1) /= 'x') &
+         if (f_taubx(1:1) /= 'x' .and. allocated(taubxU_slot)) &
              call accum_hist_field(n_taubx, iblk, taubxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                                    dynMap(:,iblk), a2D)
-         if (f_tauby(1:1) /= 'x') &
+         if (f_tauby(1:1) /= 'x' .and. allocated(taubyU_slot)) &
              call accum_hist_field(n_tauby, iblk, taubyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
                                    dynMap(:,iblk), a2D)
          if (f_strairxN(1:1) /= 'x') &
@@ -3708,28 +3708,22 @@
            call accum_hist_field(n_siforcecorioly, iblk, worka(:,:), a2D)
          endif
 
-         if (f_siforceintstrx(1:1) /= 'x') then
-           ! strintxU is flattened, aice is not -- reshape the latter rather
-           ! than hold strintxU back.  One block copied, on history steps only,
-           ! gated on the namelist flag.  It goes if aice is ever flattened.
+         if (f_siforceintstrx(1:1) /= 'x' .and. allocated(strintxU_slot)) then
            workas(:) = c0
            do is = 1, dynCnt(iblk)
               msh = dynOff(iblk) + is
               if (skipPhys(msh)) cycle
-              workas(is) = aice_slot(msh)*strintxU(dynIJ(msh),iblk)
+              workas(is) = aice_slot(msh)*strintxU_slot(msh)
            enddo
            call accum_hist_field_2D_slotin(n_siforceintstrx, iblk, workas, a2D)
          endif
 
-         if (f_siforceintstry(1:1) /= 'x') then
-           ! strintyU is flattened, aice is not -- reshape the latter rather
-           ! than hold strintyU back.  One block copied, on history steps only,
-           ! gated on the namelist flag.  It goes if aice is ever flattened.
+         if (f_siforceintstry(1:1) /= 'x' .and. allocated(strintyU_slot)) then
            workas(:) = c0
            do is = 1, dynCnt(iblk)
               msh = dynOff(iblk) + is
               if (skipPhys(msh)) cycle
-              workas(is) = aice_slot(msh)*strintyU(dynIJ(msh),iblk)
+              workas(is) = aice_slot(msh)*strintyU_slot(msh)
            enddo
            call accum_hist_field_2D_slotin(n_siforceintstry, iblk, workas, a2D)
          endif

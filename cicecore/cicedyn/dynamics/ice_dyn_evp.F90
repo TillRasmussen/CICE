@@ -1846,8 +1846,11 @@
          call ice_HaloUpdate (strintyN,        halo_info, &
                               field_loc_Nface, field_type_vector)
          call ice_timer_stop(timer_bound)
-         call grid_average_X2Y('S', strintxE, 'E', strintxU, 'U')    ! diagnostic
-         call grid_average_X2Y('S', strintyN, 'N', strintyU, 'U')    ! diagnostic
+         ! into the slots: this is the only producer on the C/CD path, and
+         ! history reads strintxU_slot.  Writing the block form here left the
+         ! slot at whatever the B-grid stepu last put there.
+         call grid_average_X2Y('S', strintxE, 'E', strintxU_slot, 'U')  ! diagnostic
+         call grid_average_X2Y('S', strintyN, 'N', strintyU_slot, 'U')  ! diagnostic
       endif
 
       call ice_timer_stop(timer_dynamics)    ! dynamics
