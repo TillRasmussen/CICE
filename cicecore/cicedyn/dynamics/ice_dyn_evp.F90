@@ -731,19 +731,22 @@
                             TbE_slot, &
                             rheofactE_slot)
 
-            do i=1,nx_block
-            do j=1,ny_block
-               if (.not.iceUmask((j-1)*nx_block+i,iblk)) then
-                  stresspU ((j-1)*nx_block+i,iblk) = c0
-                  stressmU ((j-1)*nx_block+i,iblk) = c0
-                  stress12U((j-1)*nx_block+i,iblk) = c0
+            ! ⚠ On the SLOTS.  stressC_T/stressC_U accumulate into the slot
+            ! form, so clearing only the block form leaves a cell that has
+            ! just lost its ice carrying the previous step's stress forward
+            ! through the (1-arlx1i*revp) term.
+            do is = 1, dynCnt(iblk)
+               ms = dynOff(iblk) + is
+               if (.not.iceUmask_slot(ms)) then
+                  stresspU_slot (ms) = c0
+                  stressmU_slot (ms) = c0
+                  stress12U_slot(ms) = c0
                endif
-               if (.not.iceTmask((j-1)*nx_block+i,iblk)) then
-                  stresspT ((j-1)*nx_block+i,iblk) = c0
-                  stressmT ((j-1)*nx_block+i,iblk) = c0
-                  stress12T((j-1)*nx_block+i,iblk) = c0
+               if (.not.iceTmask_slot(ms)) then
+                  stresspT_slot (ms) = c0
+                  stressmT_slot (ms) = c0
+                  stress12T_slot(ms) = c0
                endif
-            enddo
             enddo
          enddo  ! iblk
          !$OMP END PARALLEL DO
@@ -1233,6 +1236,7 @@
                             uarea_slot    , etax2U_slot   , &
                             deltaU        , strengthU_slot, &
                             shearU_slot   , stress12U_slot)
+
 
             call ice_timer_start(timer_bound)
             if (maskhalo_dyn) then
