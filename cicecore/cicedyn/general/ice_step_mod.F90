@@ -1180,8 +1180,10 @@
       use ice_dyn_vp, only: implicit_solver
       use ice_dyn_shared, only: kdyn
       use ice_flux, only: strocnxU, strocnyU, strocnxT_iavg, strocnyT_iavg
+      use ice_flux, only: strocnxE, strocnyN
       use ice_flux, only: init_history_dyn
-      use ice_grid, only: grid_average_X2Y
+      use ice_grid, only: grid_average_X2Y, grid_ice
+      use ice_dyn_shared, only: aiE_slot, aiN_slot
       use ice_state, only: aiU
       use ice_transport_driver, only: advection, transport_upwind, transport_remap
 
@@ -1194,11 +1196,14 @@
          this_block      ! block information for current block
 
       integer (kind=int_kind) :: &
-         is, & ! slot, and its flattened cell index
+         is, ms,          & ! slot counter, and the slot itself
          ilo,ihi,jlo,jhi, & ! beginning and end of physical domain
          iblk,            & ! block index
          i, j,            & ! horizontal indices
          ij                 ! 1D index of (i,j) in the block
+
+      real (kind=dbl_kind) :: &
+         puny               ! a very small number
 
       real (kind=dbl_kind), dimension (nx_block,ny_block,max_blocks) :: &
          work1, &     ! temporary
@@ -1220,39 +1225,85 @@
       ! Compute strocnxT_iavg, strocnyT_iavg for thermo and coupling
       !-----------------------------------------------------------------
 
-      ! strocn computed on U, N, E as needed. Map strocn U divided by aiU to T
-      ! conservation requires aiU be divided before averaging
+      ! strocn computed on U, N, E as needed. Map strocn divided by ice area to T
+      ! conservation requires ice area be divided before averaging
+      ! B grid: use strocn U divided by aiU
+      ! C/CD grid: use strocnx E divided by aiE and strocny N divided by aiN.
+      call icepack_query_parameters(puny_out=puny)
+      call icepack_warnings_flush(nu_diag)
+      if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
+         file=__FILE__, line=__LINE__)
+
       work1 = c0
       work2 = c0
-      !$OMP PARALLEL DO PRIVATE(iblk,i,j,ij,is,ilo,ihi,jlo,jhi,this_block)
-      do iblk = 1, nblocks
-         this_block = get_block(blocks_ice(iblk), iblk)
-         ilo = this_block%ilo
-         ihi = this_block%ihi
-         jlo = this_block%jlo
-         jhi = this_block%jhi
-         ! Slot-driven: the land inside the physical domain is not visited.
-         ! Every array below is still block-shaped, reached through the (i,j)
-         ! recovered from the slot.  See prep_radiation for why this is the
-         ! step that comes before converting the arrays.
-         do is = 1, dynCnt(iblk)
-            if (skipPhys(dynOff(iblk)+is)) cycle
-            ij = dynIJ(dynOff(iblk)+is)
-            j  = (ij-1)/nx_block + 1
-            i  = ij - (j-1)*nx_block
-            if (aiU(ij,iblk) /= c0) then
-               work1(i,j,iblk) = strocnxU(dynOff(iblk)+is)/aiU(ij,iblk)
-               work2(i,j,iblk) = strocnyU(dynOff(iblk)+is)/aiU(ij,iblk)
-            endif
-         enddo   ! is
-      enddo
-      !$OMP END PARALLEL DO
-      call ice_HaloUpdate (work1,              halo_info, &
-                           field_loc_NEcorner, field_type_vector)
-      call ice_HaloUpdate (work2,              halo_info, &
-                           field_loc_NEcorner, field_type_vector)
-      call grid_average_X2Y('F', work1, 'U', strocnxT_iavg, 'T')    ! shift
-      call grid_average_X2Y('F', work2, 'U', strocnyT_iavg, 'T')
+      ! Slot-driven: the land inside the physical domain is not visited.
+      ! work1/work2 are still block-shaped, reached through the (i,j)
+      ! recovered from the slot.  See prep_radiation for why this is the
+      ! step that comes before converting the arrays.
+      if (grid_ice == 'C' .or. grid_ice == 'CD') then
+         ! kdyn <= 0 means init_dyn_shared never ran, so aiE_slot/aiN_slot
+         ! were never allocated.  The block aiE/aiN this replaced were c0
+         ! there, so aiE > puny was false and work1/work2 stayed c0 -- which
+         ! is what skipping the loop leaves them at.  The average below still
+         ! runs, on zeros, exactly as it did on the block form.
+         if (allocated(aiE_slot)) then
+         !$OMP PARALLEL DO PRIVATE(iblk,i,j,ij,is,ms,ilo,ihi,jlo,jhi,this_block)
+         do iblk = 1, nblocks
+            this_block = get_block(blocks_ice(iblk), iblk)
+            ilo = this_block%ilo
+            ihi = this_block%ihi
+            jlo = this_block%jlo
+            jhi = this_block%jhi
+            do is = 1, dynCnt(iblk)
+               ms = dynOff(iblk) + is
+               if (skipPhys(ms)) cycle
+               ij = dynIJ(ms)
+               j  = (ij-1)/nx_block + 1
+               i  = ij - (j-1)*nx_block
+               if (aiE_slot(ms) > puny) then
+                  work1(i,j,iblk) = strocnxE(ms)/aiE_slot(ms)
+               endif
+               if (aiN_slot(ms) > puny) then
+                  work2(i,j,iblk) = strocnyN(ms)/aiN_slot(ms)
+               endif
+            enddo   ! is
+         enddo
+         !$OMP END PARALLEL DO
+         endif
+         call ice_HaloUpdate (work1,           halo_info, &
+                              field_loc_Eface, field_type_vector)
+         call ice_HaloUpdate (work2,           halo_info, &
+                              field_loc_Nface, field_type_vector)
+         call grid_average_X2Y('F', work1, 'E', strocnxT_iavg, 'T')    ! shift
+         call grid_average_X2Y('F', work2, 'N', strocnyT_iavg, 'T')
+      else
+         !$OMP PARALLEL DO PRIVATE(iblk,i,j,ij,is,ms,ilo,ihi,jlo,jhi,this_block)
+         do iblk = 1, nblocks
+            this_block = get_block(blocks_ice(iblk), iblk)
+            ilo = this_block%ilo
+            ihi = this_block%ihi
+            jlo = this_block%jlo
+            jhi = this_block%jhi
+            do is = 1, dynCnt(iblk)
+               ms = dynOff(iblk) + is
+               if (skipPhys(ms)) cycle
+               ij = dynIJ(ms)
+               j  = (ij-1)/nx_block + 1
+               i  = ij - (j-1)*nx_block
+               if (aiU(ij,iblk) /= c0) then
+                  work1(i,j,iblk) = strocnxU(ms)/aiU(ij,iblk)
+                  work2(i,j,iblk) = strocnyU(ms)/aiU(ij,iblk)
+               endif
+            enddo   ! is
+         enddo
+         !$OMP END PARALLEL DO
+         call ice_HaloUpdate (work1,              halo_info, &
+                              field_loc_NEcorner, field_type_vector)
+         call ice_HaloUpdate (work2,              halo_info, &
+                              field_loc_NEcorner, field_type_vector)
+         call grid_average_X2Y('F', work1, 'U', strocnxT_iavg, 'T')    ! shift
+         call grid_average_X2Y('F', work2, 'U', strocnyT_iavg, 'T')
+      endif
 
       !-----------------------------------------------------------------
       ! Horizontal ice transport

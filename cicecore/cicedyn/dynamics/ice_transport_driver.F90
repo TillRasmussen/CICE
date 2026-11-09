@@ -1289,7 +1289,14 @@
          kt = 2
 
          do ms = 1, size(aim,dim=1) - 1
-            if (aim(ms,n) <= c0) cycle
+            if (aim(ms,n) <= c0) then
+               ! set to zero if no ice left in cell, rather than leaving the
+               ! previous step's value standing
+               aicen(ms,n) = c0
+               vicen(ms,n) = c0
+               vsnon(ms,n) = c0
+               cycle
+            endif
 
             aicen(ms,n) = aim(ms,n)
             vicen(ms,n) = aim(ms,n)*trm(ms,1,n) ! aice*hice
