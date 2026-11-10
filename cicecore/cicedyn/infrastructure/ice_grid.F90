@@ -245,9 +245,21 @@
 !   dynCnt(iblk)    number of slots that block holds
 !   dynTot          total slots over all local blocks
 !   dynMap(ij,iblk) block-local slot of a cell, 0 if not stored
-!   nActive_TU(iblk) of dynCnt, how many are potentially active; those are
+!   dynCntA(iblk) of dynCnt, how many are potentially active; those are
 !                   numbered FIRST, so a block reads [ active | ring | dead ]
 !                   and an active-only loop runs off+1 .. off+cntA
+!
+! ⚠ The dyn* names are all PER BLOCK, and that is what the conversion exists
+! to remove.  The per-TASK names nActive_TU and nStored_TU are reserved for
+! the end state, where the ring becomes one trailing segment rather than one
+! per block:
+!
+!     [ active blk1 | active blk2 | ... | ring | dead ]
+!
+! and a kernel runs 1..nActive_TU across the whole task with no block loop.
+! They are deliberately NOT used for the per-block counts above -- a reader
+! who meets nActive_TU should be able to assume task scope.  Until the ring
+! moves, a task-level active count would not name a contiguous range.
 !   dynIJ(slot)     reverse of dynMap, 0 at a dead slot
 !   dynBlk(slot)    block owning each slot, 0 at a dead slot
 !   Nbr_Local(slot,d)  block-local slot one step in direction d
@@ -284,7 +296,7 @@
          dynMaxCnt     ! largest dynCnt over the local blocks
 
       integer (kind=int_kind), dimension(:), allocatable, public :: &
-         dynOff, dynCnt, nActive_TU, dynIJ, dynBlk
+         dynOff, dynCnt, dynCntA, dynIJ, dynBlk
 
       integer (kind=int_kind), dimension(:,:), allocatable, public :: &
          dynMap, Nbr_Local
@@ -7486,7 +7498,7 @@
       ! kernel to read a T-point array such as str.
       ! ------------------------------------------------------------------
       allocate(mask_any(nx_block*ny_block,max_blocks), &
-               dynOff(max_blocks), dynCnt(max_blocks), nActive_TU(max_blocks), &
+               dynOff(max_blocks), dynCnt(max_blocks), dynCntA(max_blocks), &
                dynMap(nx_block*ny_block,max_blocks), stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
 
@@ -7632,7 +7644,7 @@
          enddo
       enddo
 
-      call set_ragged_layout(mask_any, mask_act, dynOff, dynCnt, nActive_TU, &
+      call set_ragged_layout(mask_any, mask_act, dynOff, dynCnt, dynCntA, &
                              dynTot, dynMap)
       deallocate(mask_any, mask_act)
       dynMaxCnt = max(maxval(dynCnt), 1)
