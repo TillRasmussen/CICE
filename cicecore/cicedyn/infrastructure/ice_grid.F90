@@ -187,6 +187,11 @@
          lmask_n_slot, & ! northern hemisphere mask, compressed
          lmask_s_slot    ! southern hemisphere mask, compressed
 
+      ! tmask, compressed: one value per slot.  Static block geometry, so it
+      ! is built once here beside the hemisphere masks.
+      logical (kind=log_kind), dimension (:), allocatable, public :: &
+         tmask_slot      ! T-cell mask, compressed
+
       ! the i and j dimensions are flattened: element (i,j,iblk) of the block
       ! layout lives at ((j-1)*nx_block + i, iblk)
       real (kind=dbl_kind), dimension (:,:), allocatable, public :: &
@@ -7667,14 +7672,17 @@
       ! jb..je bounds select, which is what lets a slot reduction match the
       ! block one.  Dead slots own no cell and stay .false.
       ! ------------------------------------------------------------------
-      allocate(lmask_n_slot(dynTot), lmask_s_slot(dynTot), stat=ierr)
+      allocate(lmask_n_slot(dynTot), lmask_s_slot(dynTot), &
+               tmask_slot(dynTot), stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
       lmask_n_slot(:) = .false.
       lmask_s_slot(:) = .false.
+      tmask_slot  (:) = .false.
       do m = 1, dynTot
          if (dynIJ(m) == 0) cycle
          lmask_n_slot(m) = lmask_n(dynIJ(m), dynBlk(m))
          lmask_s_slot(m) = lmask_s(dynIJ(m), dynBlk(m))
+         tmask_slot  (m) = tmask  (dynIJ(m), dynBlk(m))
       enddo
 
       ! ------------------------------------------------------------------

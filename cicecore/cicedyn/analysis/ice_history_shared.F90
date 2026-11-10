@@ -1265,7 +1265,7 @@
       use ice_blocks, only: block, get_block, nx_block
       use ice_calendar, only: nstreams
       use ice_domain, only: blocks_ice
-      use ice_grid, only: tmask, dynMap, dynOff
+      use ice_grid, only: tmask_slot, dynMap, dynOff
 
       integer (int_kind), dimension(:), intent(in) :: &  ! max_nstrm
          id                ! location in avail_fields array for use in
@@ -1307,9 +1307,12 @@
        do j = jlo, jhi
        do i = ilo, ihi
           ij = (j-1)*nx_block + i
-          if (tmask(ij,iblk)) then
-             m = map(ij)
-             if (m > 0) &
+          ! m > 0 FIRST: map is 0 where no slot exists, and
+          ! tmask_slot(dynOff(iblk)+0) would read the previous block's last
+          ! slot -- index 0, out of bounds, for iblk = 1.
+          m = map(ij)
+          if (m > 0) then
+             if (tmask_slot(dynOff(iblk)+m)) &
                 field(dynOff(iblk)+m,idns) = field(dynOff(iblk)+m,idns) + field_accum(m)
           endif
        enddo
@@ -1398,7 +1401,7 @@
       use ice_blocks, only: block, get_block, nx_block
       use ice_calendar, only: nstreams
       use ice_domain, only: blocks_ice
-      use ice_grid, only: tmask, dynMap, dynOff
+      use ice_grid, only: tmask_slot, dynMap, dynOff
 
       integer (int_kind), dimension(:), intent(in) :: &  ! max_nstrm
          id                ! location in avail_fields array for use in
@@ -1441,11 +1444,10 @@
        do j = jlo, jhi
        do i = ilo, ihi
           ij = (j-1)*nx_block + i
-          if (tmask(ij,iblk)) then
-             m = dynMap(ij,iblk)
-             ! every tmask cell has a slot -- mask_any includes tmask -- so
-             ! this guard is hygiene, not a filter
-             if (m > 0) &
+          ! m > 0 FIRST -- see the note in _2D_compressed.
+          m = dynMap(ij,iblk)
+          if (m > 0) then
+             if (tmask_slot(dynOff(iblk)+m)) &
                 field(dynOff(iblk)+m,k,idns) = field(dynOff(iblk)+m,k,idns) &
                                              + field_accum(i,j,k)
           endif
@@ -1477,7 +1479,7 @@
 
       use ice_blocks, only: nx_block
       use ice_calendar, only: nstreams
-      use ice_grid, only: tmask, dynCnt, dynOff, dynIJ, skipPhys
+      use ice_grid, only: tmask_slot, dynCnt, dynOff, dynIJ, skipPhys
 
       integer (int_kind), dimension(:), intent(in) :: &
          id                ! location in avail_fields array
@@ -1503,10 +1505,9 @@
          if (idns > 0) then
             do k = 1, ndim
             do is = 1, dynCnt(iblk)
-               if (skipPhys(dynOff(iblk)+is)) cycle
-               ij = dynIJ(dynOff(iblk)+is)
-               if (.not. tmask(ij,iblk)) cycle
                m = dynOff(iblk) + is
+               if (skipPhys(m)) cycle
+               if (.not. tmask_slot(m)) cycle
                field(m,k,idns) = field(m,k,idns) + field_accum(is,k)
             enddo
             enddo
@@ -1521,7 +1522,7 @@
 
       use ice_blocks, only: nx_block
       use ice_calendar, only: nstreams
-      use ice_grid, only: tmask, dynCnt, dynOff, dynIJ, skipPhys
+      use ice_grid, only: tmask_slot, dynCnt, dynOff, dynIJ, skipPhys
 
       integer (int_kind), dimension(:), intent(in) :: &
          id                ! location in avail_fields array
@@ -1544,10 +1545,9 @@
          idns = id(ns)
          if (idns > 0) then
             do is = 1, dynCnt(iblk)
-               if (skipPhys(dynOff(iblk)+is)) cycle
-               ij = dynIJ(dynOff(iblk)+is)
-               if (.not. tmask(ij,iblk)) cycle
                m = dynOff(iblk) + is
+               if (skipPhys(m)) cycle
+               if (.not. tmask_slot(m)) cycle
                field(m,idns) = field(m,idns) + field_accum(is)
             enddo
          endif
@@ -1615,7 +1615,7 @@
 
       use ice_blocks, only: nx_block
       use ice_calendar, only: nstreams
-      use ice_grid, only: tmask, dynCnt, dynOff, dynIJ, skipPhys
+      use ice_grid, only: tmask_slot, dynCnt, dynOff, dynIJ, skipPhys
 
       integer (int_kind), dimension(:), intent(in) :: &
          id                ! location in avail_fields array
@@ -1644,8 +1644,7 @@
             do is = 1, dynCnt(iblk)
                m = dynOff(iblk) + is
                if (skipPhys(m)) cycle
-               ij = dynIJ(m)
-               if (.not. tmask(ij,iblk)) cycle
+               if (.not. tmask_slot(m)) cycle
                field(m,idns) = field(m,idns) + fluxs(is)*agg(is)
             enddo
          endif
@@ -1734,7 +1733,7 @@
       use ice_blocks, only: block, get_block, nx_block
       use ice_calendar, only: nstreams
       use ice_domain, only: blocks_ice
-      use ice_grid, only: tmask, dynMap, dynOff
+      use ice_grid, only: tmask_slot, dynMap, dynOff
 
       integer (int_kind), dimension(:), intent(in) :: &  ! max_nstrm
          id                ! location in avail_fields array
@@ -1774,9 +1773,9 @@
        do j = jlo, jhi
        do i = ilo, ihi
           ij = (j-1)*nx_block + i
-          if (tmask(ij,iblk)) then
-             m = dynMap(ij,iblk)
-             if (m > 0) &
+          m = dynMap(ij,iblk)
+          if (m > 0) then
+             if (tmask_slot(dynOff(iblk)+m)) &
                 field(dynOff(iblk)+m,n,k,idns) = field(dynOff(iblk)+m,n,k,idns) &
                                                + field_accum(i,j,n,k)
           endif
