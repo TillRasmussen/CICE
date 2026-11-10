@@ -205,9 +205,6 @@ module ice_dyn_evp1d
 !=============================================================================
 
   subroutine dyn_evp1d_run(dt          ,                                           &
-                           L_stressp_1 , L_stressp_2 , L_stressp_3 , L_stressp_4 , &
-                           L_stressm_1 , L_stressm_2 , L_stressm_3 , L_stressm_4 , &
-                           L_stress12_1, L_stress12_2, L_stress12_3, L_stress12_4, &
                            L_uvel      , L_vvel)
 
     use ice_blocks    , only: ns_boundary_type
@@ -241,12 +238,6 @@ module ice_dyn_evp1d
     real(kind=dbl_kind)   , dimension(:,:)  , intent(inout) :: &
       L_uvel      , L_vvel
 
-    ! these have their i and j dimensions flattened, i.e. element (i,j,iblk)
-    ! lives at ((j-1)*nx_block + i, iblk)
-    real(kind=dbl_kind)   , dimension(:,:)  , intent(inout) ::  &
-      L_stressp_1 , L_stressp_2 , L_stressp_3 , L_stressp_4 ,  &
-      L_stressm_1 , L_stressm_2 , L_stressm_3 , L_stressm_4 ,  &
-      L_stress12_1, L_stress12_2, L_stress12_3, L_stress12_4
     real(kind=dbl_kind), intent(in) :: dt   ! dynamics timestep
 
     ! local variables
@@ -467,42 +458,9 @@ module ice_dyn_evp1d
     ! also covers the snapshot case, where only the write step's value
     ! survives.
     if (any(write_history) .or. write_restart == 1 .or. write_ic) then
-       call scatter_stresses(L_stressp_1 , L_stressp_2 , L_stressp_3 , L_stressp_4 , &
-                             L_stressm_1 , L_stressm_2 , L_stressm_3 , L_stressm_4 , &
-                             L_stress12_1, L_stress12_2, L_stress12_3, L_stress12_4)
-
-       ! ⚠ The restart and the history read the SLOT copies now, so the
-       ! scatter above is only half the job on this path: the block arrays
-       ! it just wrote have to reach the slots too.  Same I/O gate as the
-       ! scatter, so this costs nothing on an ordinary timestep.
-       !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
-       do iblk = 1, nblocks
-          call pack_to_slots(L_stressp_1(:,iblk), dynMap(:,iblk), &
-                             stressp_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-          call pack_to_slots(L_stressp_2(:,iblk), dynMap(:,iblk), &
-                             stressp_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-          call pack_to_slots(L_stressp_3(:,iblk), dynMap(:,iblk), &
-                             stressp_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-          call pack_to_slots(L_stressp_4(:,iblk), dynMap(:,iblk), &
-                             stressp_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-          call pack_to_slots(L_stressm_1(:,iblk), dynMap(:,iblk), &
-                             stressm_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-          call pack_to_slots(L_stressm_2(:,iblk), dynMap(:,iblk), &
-                             stressm_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-          call pack_to_slots(L_stressm_3(:,iblk), dynMap(:,iblk), &
-                             stressm_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-          call pack_to_slots(L_stressm_4(:,iblk), dynMap(:,iblk), &
-                             stressm_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-          call pack_to_slots(L_stress12_1(:,iblk), dynMap(:,iblk), &
-                             stress12_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-          call pack_to_slots(L_stress12_2(:,iblk), dynMap(:,iblk), &
-                             stress12_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-          call pack_to_slots(L_stress12_3(:,iblk), dynMap(:,iblk), &
-                             stress12_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-          call pack_to_slots(L_stress12_4(:,iblk), dynMap(:,iblk), &
-                             stress12_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-       enddo
-       !$OMP END PARALLEL DO
+       ! Straight into the slots now; the block arrays and the twelve
+       ! pack_to_slots that used to follow are gone.
+       call scatter_stresses
     endif
     ! calculate number of active points. allocate if initial or if array size should increase
     ! call calc_nActiveTU(iceTmask_log,nActive, iceUmask)
@@ -989,20 +947,21 @@ module ice_dyn_evp1d
   ! uvel, vvel and the four diagnostics are the opposite case: they must keep
   ! the value the gather brought in at those cells, which is why they still
   ! have globals of their own and do NOT come through here.
-  subroutine scatter_slot_r8(L_blk, A_1d, n)
+  subroutine scatter_slot_r8(A_slot, A_1d, n)
 
      use ice_communicate, only : my_task, master_task
-     use ice_gather_scatter, only : scatter_global
-     use ice_domain, only : distrb_info
+     use ice_gather_scatter, only : scatter_globalR8_compressed
+     use ice_domain, only : distrb_info, nblocks
+     use ice_grid, only : dynMap, dynOff, dynCnt
      implicit none
 
-     ! i and j flattened: element (i,j,iblk) at ((j-1)*nx_block + i, iblk)
-     real(kind=dbl_kind), dimension(:,:), intent(out) :: L_blk
+     ! the compressed destination, dimension(dynTot)
+     real(kind=dbl_kind), dimension(:), intent(inout) :: A_slot
      ! allocatable for the same reason as in gather_slot_r8
      real(kind=dbl_kind), allocatable, dimension(:), intent(in) :: A_1d
      integer(kind=int_kind), intent(in) :: n
 
-     integer(kind=int_kind) :: iw, i, j
+     integer(kind=int_kind) :: iw, i, j, iblk
 
      character(len=*), parameter :: subname = '(scatter_slot_r8)'
 
@@ -1015,7 +974,19 @@ module ice_dyn_evp1d
         end do
      endif
 
-     call scatter_global(L_blk, G_work, master_task, distrb_info, grid_ext=.true.)
+     ! Straight into the slots.  The block array this used to land in was a
+     ! waypoint: every caller packed it to the slot form on the next line.
+     call scatter_globalR8_compressed(A_slot, G_work, dynMap, dynOff, &
+                 master_task, distrb_info, grid_ext=.true.)
+
+     ! ⚠ scatter_globalR8_compressed writes only where map > 0, while the
+     ! pack_to_slots it replaces also zeroed the dead slot.  Nothing reads
+     ! the stress slots at a neighbour -- every use in the four solvers is
+     ! at its own cell -- so the value cannot matter today, but reproducing
+     ! pack_to_slots exactly costs one store per block and keeps it that way.
+     do iblk = 1, nblocks
+        A_slot(dynOff(iblk) + dynCnt(iblk) + 1) = c0
+     enddo
 
   end subroutine scatter_slot_r8
 
@@ -1112,19 +1083,13 @@ module ice_dyn_evp1d
 ! between -- ice_history touches them only inside its write_history gate, and
 ! the 1d arrays carry the state onward regardless.
 
-  subroutine scatter_stresses(L_stressp_1 , L_stressp_2 , L_stressp_3 , L_stressp_4 , &
-                              L_stressm_1 , L_stressm_2 , L_stressm_3 , L_stressm_4 , &
-                              L_stress12_1, L_stress12_2, L_stress12_3, L_stress12_4)
+  subroutine scatter_stresses
 
-     use ice_communicate, only : master_task
-     use ice_gather_scatter, only : scatter_global
-     use ice_domain, only : distrb_info
+     use ice_dyn_shared, only : &
+        stressp_1_slot , stressp_2_slot , stressp_3_slot , stressp_4_slot , &
+        stressm_1_slot , stressm_2_slot , stressm_3_slot , stressm_4_slot , &
+        stress12_1_slot, stress12_2_slot, stress12_3_slot, stress12_4_slot
      implicit none
-
-     real(kind=dbl_kind), dimension(:,:), intent(out) ::        &
-        L_stressp_1 , L_stressp_2 , L_stressp_3 , L_stressp_4 , &
-        L_stressm_1 , L_stressm_2 , L_stressm_3 , L_stressm_4 , &
-        L_stress12_1, L_stress12_2, L_stress12_3, L_stress12_4
 
      character(len=*), parameter :: subname = '(scatter_stresses)'
 
@@ -1133,18 +1098,18 @@ module ice_dyn_evp1d
      ! zeroed them and filled them at the active cells every timestep even
      ! though only an I/O step ever scattered them; that work moves here, to
      ! the gate that actually wants it.
-     call scatter_slot_r8(L_stressp_1 , stressp_1 , nActive)
-     call scatter_slot_r8(L_stressp_2 , stressp_2 , nActive)
-     call scatter_slot_r8(L_stressp_3 , stressp_3 , nActive)
-     call scatter_slot_r8(L_stressp_4 , stressp_4 , nActive)
-     call scatter_slot_r8(L_stressm_1 , stressm_1 , nActive)
-     call scatter_slot_r8(L_stressm_2 , stressm_2 , nActive)
-     call scatter_slot_r8(L_stressm_3 , stressm_3 , nActive)
-     call scatter_slot_r8(L_stressm_4 , stressm_4 , nActive)
-     call scatter_slot_r8(L_stress12_1, stress12_1, nActive)
-     call scatter_slot_r8(L_stress12_2, stress12_2, nActive)
-     call scatter_slot_r8(L_stress12_3, stress12_3, nActive)
-     call scatter_slot_r8(L_stress12_4, stress12_4, nActive)
+     call scatter_slot_r8(stressp_1_slot, stressp_1, nActive)
+     call scatter_slot_r8(stressp_2_slot, stressp_2, nActive)
+     call scatter_slot_r8(stressp_3_slot, stressp_3, nActive)
+     call scatter_slot_r8(stressp_4_slot, stressp_4, nActive)
+     call scatter_slot_r8(stressm_1_slot, stressm_1, nActive)
+     call scatter_slot_r8(stressm_2_slot, stressm_2, nActive)
+     call scatter_slot_r8(stressm_3_slot, stressm_3, nActive)
+     call scatter_slot_r8(stressm_4_slot, stressm_4, nActive)
+     call scatter_slot_r8(stress12_1_slot, stress12_1, nActive)
+     call scatter_slot_r8(stress12_2_slot, stress12_2, nActive)
+     call scatter_slot_r8(stress12_3_slot, stress12_3, nActive)
+     call scatter_slot_r8(stress12_4_slot, stress12_4, nActive)
 
   end subroutine scatter_stresses
 
