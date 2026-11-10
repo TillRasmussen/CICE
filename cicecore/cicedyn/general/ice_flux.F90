@@ -150,14 +150,9 @@
 
       ! the i and j dimensions are flattened: element (i,j,iblk) of the block
       ! layout lives at ((j-1)*nx_block + i, iblk)
-      real (kind=dbl_kind), dimension (:,:), allocatable, public :: &
-       ! ice stress tensor in each corner of T cell (kg/s^2)
-         stressp_1, stressp_2, stressp_3, stressp_4 , & ! sigma11+sigma22
-         stressm_1, stressm_2, stressm_3, stressm_4 , & ! sigma11-sigma22
-         stress12_1,stress12_2,stress12_3,stress12_4, & ! sigma12
-       ! ice stress tensor at U and T locations (grid_ice = 'C|CD') (kg/s^2)
-         stresspT, stressmT, stress12T, & ! sigma11+sigma22, sigma11-sigma22, sigma12
-         stresspU, stressmU, stress12U    ! "
+      ! The block stress tensor used to live here.  It is now local to the
+      ! restart readers, the only code that still wants the block layout:
+      ! the solvers run on the _slot forms in ice_dyn_shared.
 
        ! internal
 
@@ -562,18 +557,6 @@
          dardg2dt   (nx_block,ny_block,max_blocks), & ! rate of area gain by new ridges (1/s)
          dvirdgdt   (nx_block,ny_block,max_blocks), & ! rate of ice volume ridged (m/s)
          opening    (nx_block,ny_block,max_blocks), & ! rate of opening due to divergence/shear (1/s)
-         stressp_1  (nx_block*ny_block,max_blocks), & ! sigma11+sigma22
-         stressp_2  (nx_block*ny_block,max_blocks), & ! sigma11+sigma22
-         stressp_3  (nx_block*ny_block,max_blocks), & ! sigma11+sigma22
-         stressp_4  (nx_block*ny_block,max_blocks), & ! sigma11+sigma22
-         stressm_1  (nx_block*ny_block,max_blocks), & ! sigma11-sigma22
-         stressm_2  (nx_block*ny_block,max_blocks), & ! sigma11-sigma22
-         stressm_3  (nx_block*ny_block,max_blocks), & ! sigma11-sigma22
-         stressm_4  (nx_block*ny_block,max_blocks), & ! sigma11-sigma22
-         stress12_1 (nx_block*ny_block,max_blocks), & ! sigma12
-         stress12_2 (nx_block*ny_block,max_blocks), & ! sigma12
-         stress12_3 (nx_block*ny_block,max_blocks), & ! sigma12
-         stress12_4 (nx_block*ny_block,max_blocks), & ! sigma12
          fmU        (nx_block*ny_block,max_blocks), & ! Coriolis param. * mass in U-cell (kg/s)
          zlvl       (nx_block,ny_block,max_blocks), & ! atm level height (momentum) (m)
          zlvs       (nx_block,ny_block,max_blocks), & ! atm level height (scalar quantities) (m)
@@ -753,18 +736,6 @@
       dardg2dt   = c0
       dvirdgdt   = c0
       opening    = c0
-      stressp_1  = c0
-      stressp_2  = c0
-      stressp_3  = c0
-      stressp_4  = c0
-      stressm_1  = c0
-      stressm_2  = c0
-      stressm_3  = c0
-      stressm_4  = c0
-      stress12_1 = c0
-      stress12_2 = c0
-      stress12_3 = c0
-      stress12_4 = c0
       fmU        = c0
       zlvl       = c0
       zlvs       = c0
@@ -929,12 +900,6 @@
             strintxE   (nx_block,ny_block,max_blocks), & ! divergence of internal ice stress, x at E points (N/m^2)
             strintyE   (nx_block,ny_block,max_blocks), & ! divergence of internal ice stress, y at E points (N/m^2)
             fmE        (nx_block*ny_block,max_blocks), & ! Coriolis param. * mass in E-cell (kg/s)
-            stresspT   (nx_block*ny_block,max_blocks), & ! sigma11+sigma22
-            stressmT   (nx_block*ny_block,max_blocks), & ! sigma11-sigma22
-            stress12T  (nx_block*ny_block,max_blocks), & ! sigma12
-            stresspU   (nx_block*ny_block,max_blocks), & ! sigma11+sigma22
-            stressmU   (nx_block*ny_block,max_blocks), & ! sigma11-sigma22
-            stress12U  (nx_block*ny_block,max_blocks), & ! sigma12
             stat=ierr)
          if (ierr/=0) call abort_ice('(alloc_flux): Out of memory (C or CD grid)')
 
@@ -948,12 +913,6 @@
          strintxE   = c0
          strintyE   = c0
          fmE        = c0
-         stresspT   = c0
-         stressmT   = c0
-         stress12T  = c0
-         stresspU   = c0
-         stressmU   = c0
-         stress12U  = c0
       endif
 
       ! Pond diagnostics

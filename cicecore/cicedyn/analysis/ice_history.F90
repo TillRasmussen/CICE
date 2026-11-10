@@ -2244,8 +2244,7 @@
           taubxE, taubyE, strocnxE, strocnyE, &
           fmU, fmN, fmE, daidtt, dvidtt, daidtd, dvidtd, dvsdtd, fsurf, &
           fcondtop, fcondbot, fsurfn, fcondtopn, flatn, fsensn, albcnt, snwcnt, &
-          stresspT, stressmT, stress12T, &
-          stressp_2, stressp_3, stressp_4, sig1, sig2, sigP, &
+          sig1, sig2, sigP, &
           mlt_onset, frz_onset, dagedtt, dagedtd, fswint_ai, keffn_top, &
           snowfrac, alvdr_ai, alvdf_ai, alidr_ai, alidf_ai, update_ocn_f, &
           cpl_frazil

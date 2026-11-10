@@ -350,13 +350,16 @@
       use ice_domain_size, only: nilyr, nslyr, ncat, &
           max_blocks
       use ice_dyn_shared, only: iceUmask, iceEmask, iceNmask,kdyn
+      ! for the inlined stresses_to_slots below
+      use ice_dyn_shared, only: &
+          stressp_1_slot, stressp_2_slot, stressp_3_slot, stressp_4_slot, &
+          stressm_1_slot, stressm_2_slot, stressm_3_slot, stressm_4_slot, &
+          stress12_1_slot, stress12_2_slot, stress12_3_slot, stress12_4_slot, &
+          stresspT_slot, stressmT_slot, stress12T_slot, &
+          stresspU_slot, stressmU_slot, stress12U_slot
+      use ice_grid, only: dynMap, dynOff, dynCnt, pack_to_slots, grid_ice
       use ice_flux, only: scale_factor, swvdr, swvdf, swidr, swidf, &
-          strocnxT_iavg, strocnyT_iavg, sst, frzmlt, &
-          stressp_1, stressp_2, stressp_3, stressp_4, &
-          stressm_1, stressm_2, stressm_3, stressm_4, &
-          stress12_1, stress12_2, stress12_3, stress12_4, &
-          stresspT, stressmT, stress12T, &
-          stresspU, stressmU, stress12U
+          strocnxT_iavg, strocnyT_iavg, sst, frzmlt
       use ice_flux, only: coszen, Tf
       use ice_state, only: trcr_depend, aice, vice, vsno, trcr, &
           aice0, aicen, vicen, vsnon, trcrn, aice_init3d, uvel, vvel, &
@@ -375,6 +378,7 @@
       integer (kind=int_kind) :: &
          i, j, k, iblk, &     ! counting indices
          ntrcr, &             ! number of tracers
+         ierr, &              ! allocation status
          nt_Tsfc, nt_sice, nt_qice, nt_qsno
 
       logical (kind=log_kind) :: &
@@ -385,6 +389,18 @@
          work1
 
       character (len=3) :: nchar
+
+
+      ! The eighteen block stresses live only for this read: the file lands
+      ! here, ice_HaloUpdate_stress pairs them across a tripole cut, the
+      ! ghosts are zeroed, and pack_to_slots moves them to the slot forms the
+      ! solvers actually run on.  Nothing outside this routine reads them.
+      real (kind=dbl_kind), dimension (:,:), allocatable :: &
+         stressp_1, stressp_2, stressp_3, stressp_4, &
+         stressm_1, stressm_2, stressm_3, stressm_4, &
+         stress12_1, stress12_2, stress12_3, stress12_4, &
+         stresspT, stressmT, stress12T, &
+         stresspU, stressmU, stress12U
 
       character(len=*), parameter :: subname = '(restartfile)'
 
@@ -401,6 +417,32 @@
          file=__FILE__, line=__LINE__)
 
       call init_restart_read(ice_ic)
+
+      allocate(stressp_1 (nx_block*ny_block,max_blocks), &
+               stressp_2 (nx_block*ny_block,max_blocks), &
+               stressp_3 (nx_block*ny_block,max_blocks), &
+               stressp_4 (nx_block*ny_block,max_blocks), &
+               stressm_1 (nx_block*ny_block,max_blocks), &
+               stressm_2 (nx_block*ny_block,max_blocks), &
+               stressm_3 (nx_block*ny_block,max_blocks), &
+               stressm_4 (nx_block*ny_block,max_blocks), &
+               stress12_1(nx_block*ny_block,max_blocks), &
+               stress12_2(nx_block*ny_block,max_blocks), &
+               stress12_3(nx_block*ny_block,max_blocks), &
+               stress12_4(nx_block*ny_block,max_blocks), &
+               stresspT  (nx_block*ny_block,max_blocks), &
+               stressmT  (nx_block*ny_block,max_blocks), &
+               stress12T (nx_block*ny_block,max_blocks), &
+               stresspU  (nx_block*ny_block,max_blocks), &
+               stressmU  (nx_block*ny_block,max_blocks), &
+               stress12U (nx_block*ny_block,max_blocks), stat=ierr)
+      if (ierr/=0) call abort_ice(subname//' ERROR: Out of memory')
+      stressp_1 = c0 ; stressp_2 = c0 ; stressp_3 = c0 ; stressp_4 = c0
+      stressm_1 = c0 ; stressm_2 = c0 ; stressm_3 = c0 ; stressm_4 = c0
+      stress12_1 = c0; stress12_2 = c0; stress12_3 = c0; stress12_4 = c0
+      stresspT = c0  ; stressmT = c0  ; stress12T = c0
+      stresspU = c0  ; stressmU = c0  ; stress12U = c0
+
       call calendar()
 
       diag = .true.
@@ -741,7 +783,66 @@
 
       ! the block arrays now hold the file values; the dynamics runs on
       ! the slot copies, so seed those from them
-      call stresses_to_slots
+      ! stresses_to_slots, inlined: the block arrays above are local to
+      ! this routine now, so a module procedure cannot see them.
+      ! ⚠ kdyn <= 0 means init_dyn_shared never ran, so the slot copies do
+      ! not exist.  The block arrays are allocated and zeroed by alloc_flux
+      ! regardless, which is exactly what the restart carried before the
+      ! stresses moved, so there is nothing to convert either way.
+      if (.not. allocated(stressp_1_slot)) return
+
+      !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
+      do iblk = 1, nblocks
+         call pack_to_slots(stressp_1(:,iblk), dynMap(:,iblk), &
+                            stressp_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         call pack_to_slots(stressp_2(:,iblk), dynMap(:,iblk), &
+                            stressp_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         call pack_to_slots(stressp_3(:,iblk), dynMap(:,iblk), &
+                            stressp_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         call pack_to_slots(stressp_4(:,iblk), dynMap(:,iblk), &
+                            stressp_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         call pack_to_slots(stressm_1(:,iblk), dynMap(:,iblk), &
+                            stressm_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         call pack_to_slots(stressm_2(:,iblk), dynMap(:,iblk), &
+                            stressm_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         call pack_to_slots(stressm_3(:,iblk), dynMap(:,iblk), &
+                            stressm_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         call pack_to_slots(stressm_4(:,iblk), dynMap(:,iblk), &
+                            stressm_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         call pack_to_slots(stress12_1(:,iblk), dynMap(:,iblk), &
+                            stress12_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         call pack_to_slots(stress12_2(:,iblk), dynMap(:,iblk), &
+                            stress12_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         call pack_to_slots(stress12_3(:,iblk), dynMap(:,iblk), &
+                            stress12_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         call pack_to_slots(stress12_4(:,iblk), dynMap(:,iblk), &
+                            stress12_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+      enddo
+      !$OMP END PARALLEL DO
+
+      ! The C and CD stresses, the same way.  EVP used to seed these from
+      ! the block arrays on EVERY step and write them back again, a round
+      ! trip whose only reader was its own next entry pack.  Seeding them
+      ! here once, as the B-grid twelve already were, is what let that go.
+      if (grid_ice == 'C' .or. grid_ice == 'CD') then
+         !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
+         do iblk = 1, nblocks
+            call pack_to_slots(stresspT (:,iblk), dynMap(:,iblk), &
+                               stresspT_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            call pack_to_slots(stressmT (:,iblk), dynMap(:,iblk), &
+                               stressmT_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            call pack_to_slots(stress12T(:,iblk), dynMap(:,iblk), &
+                               stress12T_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            call pack_to_slots(stresspU (:,iblk), dynMap(:,iblk), &
+                               stresspU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            call pack_to_slots(stressmU (:,iblk), dynMap(:,iblk), &
+                               stressmU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            call pack_to_slots(stress12U(:,iblk), dynMap(:,iblk), &
+                               stress12U_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         enddo
+         !$OMP END PARALLEL DO
+      endif
+
 
       !-----------------------------------------------------------------
       ! Ensure ice is binned in correct categories
@@ -882,10 +983,7 @@
           max_blocks
       use ice_dyn_shared, only: iceUmask
       use ice_flux, only: scale_factor, swvdr, swvdf, swidr, swidf, &
-          strocnxT_iavg, strocnyT_iavg, sst, frzmlt, Tf, &
-          stressp_1, stressp_2, stressp_3, stressp_4, &
-          stressm_1, stressm_2, stressm_3, stressm_4, &
-          stress12_1, stress12_2, stress12_3, stress12_4
+          strocnxT_iavg, strocnyT_iavg, sst, frzmlt, Tf
       use ice_read_write, only: ice_open, ice_read
       use ice_state, only: trcr_depend, aice, vice, vsno, trcr, &
           aice0, aicen, vicen, vsnon, trcrn, aice_init3d, uvel, vvel, &
@@ -899,6 +997,7 @@
          i, j, k, n, iblk, &     ! counting indices
          ntrcr, &                ! number of tracers
          nt_Tsfc, nt_sice, nt_qice, nt_qsno, &
+         ierr, &                 ! allocation status
          iignore                 ! dummy variable
 
       real (kind=real_kind) :: &
@@ -916,7 +1015,33 @@
       real (kind=dbl_kind) :: &
          time_forc      ! historic, now local
 
+      ! Block stresses for the duration of this read only -- see restartfile.
+      ! ⚠ This is the CICE v4 legacy reader and it is commented out in every
+      ! driver; note that unlike restartfile it never packed these to the
+      ! slot forms, so a v4 restart would not seed them.
+      real (kind=dbl_kind), dimension (:,:), allocatable :: &
+         stressp_1, stressp_2, stressp_3, stressp_4, &
+         stressm_1, stressm_2, stressm_3, stressm_4, &
+         stress12_1, stress12_2, stress12_3, stress12_4
+
       character(len=*), parameter :: subname = '(restartfile_v4)'
+
+      allocate(stressp_1 (nx_block*ny_block,max_blocks), &
+               stressp_2 (nx_block*ny_block,max_blocks), &
+               stressp_3 (nx_block*ny_block,max_blocks), &
+               stressp_4 (nx_block*ny_block,max_blocks), &
+               stressm_1 (nx_block*ny_block,max_blocks), &
+               stressm_2 (nx_block*ny_block,max_blocks), &
+               stressm_3 (nx_block*ny_block,max_blocks), &
+               stressm_4 (nx_block*ny_block,max_blocks), &
+               stress12_1(nx_block*ny_block,max_blocks), &
+               stress12_2(nx_block*ny_block,max_blocks), &
+               stress12_3(nx_block*ny_block,max_blocks), &
+               stress12_4(nx_block*ny_block,max_blocks), stat=ierr)
+      if (ierr/=0) call abort_ice(subname//' ERROR: Out of memory')
+      stressp_1 = c0 ; stressp_2 = c0 ; stressp_3 = c0 ; stressp_4 = c0
+      stressm_1 = c0 ; stressm_2 = c0 ; stressm_3 = c0 ; stressm_4 = c0
+      stress12_1 = c0; stress12_2 = c0; stress12_3 = c0; stress12_4 = c0
 
       call icepack_query_tracer_sizes(ntrcr_out=ntrcr)
       call icepack_warnings_flush(nu_diag)
@@ -1551,87 +1676,6 @@
 !=======================================================================
 
 
-!=======================================================================
-
-      subroutine stresses_to_slots
-
-      use ice_flux, only: &
-          stressp_1, stressp_2, stressp_3, stressp_4, &
-          stressm_1, stressm_2, stressm_3, stressm_4, &
-          stress12_1, stress12_2, stress12_3, stress12_4, &
-          stresspT, stressmT, stress12T, stresspU, stressmU, stress12U
-      use ice_dyn_shared, only: &
-          stressp_1_slot, stressp_2_slot, stressp_3_slot, stressp_4_slot, &
-          stressm_1_slot, stressm_2_slot, stressm_3_slot, stressm_4_slot, &
-          stress12_1_slot, stress12_2_slot, stress12_3_slot, stress12_4_slot, &
-          stresspT_slot, stressmT_slot, stress12T_slot, &
-          stresspU_slot, stressmU_slot, stress12U_slot
-      use ice_domain, only: nblocks
-      use ice_grid, only: dynMap, dynOff, dynCnt, pack_to_slots, grid_ice
-
-      integer (kind=int_kind) :: iblk
-
-      character(len=*), parameter :: subname = '(stresses_to_slots)'
-
-      ! ⚠ kdyn <= 0 means init_dyn_shared never ran, so the slot copies do
-      ! not exist.  The block arrays are allocated and zeroed by alloc_flux
-      ! regardless, which is exactly what the restart carried before the
-      ! stresses moved, so there is nothing to convert either way.
-      if (.not. allocated(stressp_1_slot)) return
-
-      !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
-      do iblk = 1, nblocks
-         call pack_to_slots(stressp_1(:,iblk), dynMap(:,iblk), &
-                            stressp_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(stressp_2(:,iblk), dynMap(:,iblk), &
-                            stressp_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(stressp_3(:,iblk), dynMap(:,iblk), &
-                            stressp_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(stressp_4(:,iblk), dynMap(:,iblk), &
-                            stressp_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(stressm_1(:,iblk), dynMap(:,iblk), &
-                            stressm_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(stressm_2(:,iblk), dynMap(:,iblk), &
-                            stressm_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(stressm_3(:,iblk), dynMap(:,iblk), &
-                            stressm_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(stressm_4(:,iblk), dynMap(:,iblk), &
-                            stressm_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(stress12_1(:,iblk), dynMap(:,iblk), &
-                            stress12_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(stress12_2(:,iblk), dynMap(:,iblk), &
-                            stress12_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(stress12_3(:,iblk), dynMap(:,iblk), &
-                            stress12_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(stress12_4(:,iblk), dynMap(:,iblk), &
-                            stress12_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-      enddo
-      !$OMP END PARALLEL DO
-
-      ! The C and CD stresses, the same way.  EVP used to seed these from
-      ! the block arrays on EVERY step and write them back again, a round
-      ! trip whose only reader was its own next entry pack.  Seeding them
-      ! here once, as the B-grid twelve already were, is what let that go.
-      if (grid_ice == 'C' .or. grid_ice == 'CD') then
-         !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
-         do iblk = 1, nblocks
-            call pack_to_slots(stresspT (:,iblk), dynMap(:,iblk), &
-                               stresspT_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(stressmT (:,iblk), dynMap(:,iblk), &
-                               stressmT_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(stress12T(:,iblk), dynMap(:,iblk), &
-                               stress12T_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(stresspU (:,iblk), dynMap(:,iblk), &
-                               stresspU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(stressmU (:,iblk), dynMap(:,iblk), &
-                               stressmU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(stress12U(:,iblk), dynMap(:,iblk), &
-                               stress12U_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         enddo
-         !$OMP END PARALLEL DO
-      endif
-
-      end subroutine stresses_to_slots
 
       end module ice_restart_driver
 
