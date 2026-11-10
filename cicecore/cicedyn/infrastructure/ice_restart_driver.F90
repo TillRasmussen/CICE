@@ -72,12 +72,7 @@
           stresspT_slot, stressmT_slot, stress12T_slot,                       &
           stresspU_slot, stressmU_slot, stress12U_slot
       use ice_flux, only: scale_factor, swvdr, swvdf, swidr, swidf, &
-          strocnxT_iavg, strocnyT_iavg, sst, frzmlt, &
-          stressp_1, stressp_2, stressp_3, stressp_4, &
-          stressm_1, stressm_2, stressm_3, stressm_4, &
-          stress12_1, stress12_2, stress12_3, stress12_4, &
-          stresspT, stressmT, stress12T, &
-          stresspU, stressmU, stress12U
+          strocnxT_iavg, strocnyT_iavg, sst, frzmlt
       use ice_flux, only: coszen
       use ice_state, only: aicen, vicen, vsnon, trcrn, uvel, vvel, &
                            uvelE, vvelE, uvelN, vvelN
@@ -196,10 +191,6 @@
       !-----------------------------------------------------------------
       ! internal stress
       !-----------------------------------------------------------------
-      ! the stresses are compressed; bring them into the block layout the
-      ! restart writer takes
-      call stresses_to_block
-
       call write_restart_slot (nu_dump,stressp_1_slot,'stressp_1',diag)
       call write_restart_slot (nu_dump,stressp_3_slot,'stressp_3',diag)
       call write_restart_slot (nu_dump,stressp_2_slot,'stressp_2',diag)
@@ -1559,68 +1550,6 @@
 
 !=======================================================================
 
-!=======================================================================
-! The stresses live in the compressed layout; the restart file is
-! two-dimensional.  These two move between them at the I/O boundary,
-! the same contract expand_a2D/compress_a2D use for the history.
-!
-! ⚠ Keeping the conversion HERE is what leaves write_restart_field and
-! read_restart_field untouched, so io_netcdf and io_pio2 -- neither of
-! which can be compiled on the development machine -- need no change.
-
-      subroutine stresses_to_block
-
-      use ice_flux, only: &
-          stressp_1, stressp_2, stressp_3, stressp_4, &
-          stressm_1, stressm_2, stressm_3, stressm_4, &
-          stress12_1, stress12_2, stress12_3, stress12_4
-      use ice_dyn_shared, only: &
-          stressp_1_slot, stressp_2_slot, stressp_3_slot, stressp_4_slot, &
-          stressm_1_slot, stressm_2_slot, stressm_3_slot, stressm_4_slot, &
-          stress12_1_slot, stress12_2_slot, stress12_3_slot, stress12_4_slot
-      use ice_domain, only: nblocks
-      use ice_grid, only: dynMap, dynOff, dynCnt, unpack_from_slots
-
-      integer (kind=int_kind) :: iblk
-
-      character(len=*), parameter :: subname = '(stresses_to_block)'
-
-      ! ⚠ kdyn <= 0 means init_dyn_shared never ran, so the slot copies do
-      ! not exist.  The block arrays are allocated and zeroed by alloc_flux
-      ! regardless, which is exactly what the restart carried before the
-      ! stresses moved, so there is nothing to convert either way.
-      if (.not. allocated(stressp_1_slot)) return
-
-      !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
-      do iblk = 1, nblocks
-         call unpack_from_slots(stressp_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                dynMap(:,iblk), stressp_1(:,iblk))
-         call unpack_from_slots(stressp_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                dynMap(:,iblk), stressp_2(:,iblk))
-         call unpack_from_slots(stressp_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                dynMap(:,iblk), stressp_3(:,iblk))
-         call unpack_from_slots(stressp_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                dynMap(:,iblk), stressp_4(:,iblk))
-         call unpack_from_slots(stressm_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                dynMap(:,iblk), stressm_1(:,iblk))
-         call unpack_from_slots(stressm_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                dynMap(:,iblk), stressm_2(:,iblk))
-         call unpack_from_slots(stressm_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                dynMap(:,iblk), stressm_3(:,iblk))
-         call unpack_from_slots(stressm_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                dynMap(:,iblk), stressm_4(:,iblk))
-         call unpack_from_slots(stress12_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                dynMap(:,iblk), stress12_1(:,iblk))
-         call unpack_from_slots(stress12_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                dynMap(:,iblk), stress12_2(:,iblk))
-         call unpack_from_slots(stress12_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                dynMap(:,iblk), stress12_3(:,iblk))
-         call unpack_from_slots(stress12_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                                dynMap(:,iblk), stress12_4(:,iblk))
-      enddo
-      !$OMP END PARALLEL DO
-
-      end subroutine stresses_to_block
 
 !=======================================================================
 
