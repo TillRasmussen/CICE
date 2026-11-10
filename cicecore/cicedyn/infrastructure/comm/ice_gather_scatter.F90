@@ -73,9 +73,6 @@
       sg_recvIW        ! (slot, global blk) destination 1-D index, dst_task only
    integer (int_kind), allocatable, target, dimension(:)   :: &
       sg_nRecv         ! (global blk) how many arrive for that block, dst only
-   integer (int_kind), allocatable, dimension(:,:) :: &
-      sg_sendIJ        ! (slot, local blk) block-local cell of each send slot,
-                       ! so a task can test its own mask without the master
    integer (int_kind), allocatable, target, dimension(:,:) :: &
       sg_fSend         ! (slot, local blk) the surviving subset of sg_sendIdx
    integer (int_kind), allocatable, target, dimension(:)   :: &
@@ -2981,11 +2978,10 @@
     ! message is the padded full-length list rather than a count exchange.
     !-----------------------------------------------------------------
     allocate(mySlot(maxSlots), sg_sendIdx(maxSlots,nb), sg_nSend(nb), &
-             sg_sendIJ(maxSlots,nb), sg_fSend(maxSlots,nb), sg_nfSend(nb), &
+             sg_fSend(maxSlots,nb), sg_nfSend(nb), &
              stat=ierr)
     if (ierr /= 0) call abort_ice(subname//' ERROR: out of memory (send)')
     sg_sendIdx = 0
-    sg_sendIJ  = 0
     sg_nSend   = 0
 
 #ifndef NO_MPI
@@ -3047,19 +3043,13 @@
        integer (int_kind), dimension(:), intent(in) :: lst
        integer (int_kind), intent(in) :: lblk
        integer (int_kind) :: kk, ijc
-       integer (int_kind), dimension(maxSlots) :: inv
        ! slot -> block-local cell, so slot_gather_filter can test this task's
        ! own mask at the right place without asking the master for anything
-       inv = 0
-       do ijc = 1, maxSlots
-          if (map(ijc,lblk) > 0) inv(map(ijc,lblk)) = ijc
-       enddo
        sg_nSend(lblk) = 0
        do kk = 1, maxSlots
           if (lst(kk) == 0) exit
           sg_nSend(lblk) = kk
           sg_sendIdx(kk,lblk) = off(lblk) + lst(kk)
-          sg_sendIJ (kk,lblk) = inv(lst(kk))
        enddo
     end subroutine store_send_list
 
@@ -3092,8 +3082,8 @@
 
     logical (log_kind), intent(in) :: &
        active_only  ! .false. restores the full slot list
-    logical (log_kind), dimension(:,:), intent(in) :: &
-       maskT, maskU     ! this task's blocks, i and j flattened
+    logical (log_kind), dimension(:), intent(in) :: &
+       maskT, maskU     ! this task's slots, dimension(dynTot)
     logical (log_kind), dimension(:,:), intent(in) :: &
        G_maskT, G_maskU ! extended-global, meaningful on dst_task alone
     integer (int_kind), dimension(:), allocatable, intent(in) :: &
@@ -3114,10 +3104,14 @@
           iblk = src_dist%blockLocalID(n)
           kk = 0
           do k = 1, sg_nSend(iblk)
-             ij = sg_sendIJ(k,iblk)
-             if (maskT(ij,iblk) .or. maskU(ij,iblk)) then
+             ! sg_sendIdx IS the index into the caller's slot array, so the
+             ! mask is read at the same place the datum will be -- no cell
+             ! recovery, and the send ORDER is still k, which is what keeps
+             ! the two sides agreeing entry for entry.
+             ij = sg_sendIdx(k,iblk)
+             if (maskT(ij) .or. maskU(ij)) then
                 kk = kk + 1
-                sg_fSend(kk,iblk) = sg_sendIdx(k,iblk)
+                sg_fSend(kk,iblk) = ij
              endif
           enddo
           sg_nfSend(iblk) = kk

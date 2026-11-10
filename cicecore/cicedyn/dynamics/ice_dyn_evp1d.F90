@@ -208,8 +208,7 @@ module ice_dyn_evp1d
                            L_stressp_1 , L_stressp_2 , L_stressp_3 , L_stressp_4 , &
                            L_stressm_1 , L_stressm_2 , L_stressm_3 , L_stressm_4 , &
                            L_stress12_1, L_stress12_2, L_stress12_3, L_stress12_4, &
-                           L_uvel      , L_vvel      ,                     &
-                           L_icetmask  , L_iceUmask)
+                           L_uvel      , L_vvel)
 
     use ice_blocks    , only: ns_boundary_type
     use ice_calendar, only : write_history, write_restart, write_ic
@@ -249,11 +248,6 @@ module ice_dyn_evp1d
       L_stressm_1 , L_stressm_2 , L_stressm_3 , L_stressm_4 ,  &
       L_stress12_1, L_stress12_2, L_stress12_3, L_stress12_4
     real(kind=dbl_kind), intent(in) :: dt   ! dynamics timestep
-
-    ! L_iceTmask and L_iceUmask have their i and j dimensions flattened,
-    ! i.e. element (i,j,iblk) lives at ((j-1)*nx_block + i, iblk)
-    logical(kind=log_kind), dimension(:,:), intent(in) ::      &
-      L_iceTmask  , L_iceUmask
 
     ! local variables
 
@@ -305,7 +299,6 @@ module ice_dyn_evp1d
     ltripole = (trim(ns_boundary_type) == 'tripole')
 
     call gather_dyn(&
-                    L_iceTmask  , L_iceUmask  ,                             &
                     G_strintxU  , G_strintyU  , G_taubxU    , G_taubyU    , &
                     lstrint     , ltaub       ,                             &
                     G_uvel      , G_vvel      ,                             &
@@ -1029,25 +1022,21 @@ module ice_dyn_evp1d
 !=============================================================================
 
   subroutine gather_dyn(                                                      &
-                        L_icetmask  , L_iceUmask  ,                             &
                         G_strintxU  , G_strintyU  , G_taubxU    , G_taubyU    , &
                         lstrint     , ltaub       ,                             &
                         G_uvel      , G_vvel      ,                             &
                         G_iceTmask,  G_iceUmask)
      use ice_communicate, only : master_task
      use ice_gather_scatter, only : gather_global, gather_globalR8_compressed, &
-          slot_gather_filter
+          gather_globalL1_compressed, slot_gather_filter
      use ice_grid, only : dynMap, dynOff
+     use ice_dyn_shared, only : iceTmask_slot, iceUmask_slot
      use ice_dyn_shared, only : umass_slot, strintxU_slot, strintyU_slot, &
           taubxU_slot, taubyU_slot, TbU_slot, &
            strength_slot, cdn_ocnU_slot, aiU_slot, uocnU_slot, vocnU_slot, &
            forcexU_slot, forceyU_slot, uvel_slot, vvel_slot
      use ice_domain, only : distrb_info
      implicit none
-     ! L_iceTmask and L_iceUmask have their i and j dimensions flattened,
-     ! i.e. element (i,j,iblk) lives at ((j-1)*nx_block + i, iblk)
-     logical(kind=log_kind), dimension(:,:), intent(in)  :: &
-        L_iceTmask  , L_iceUmask
      ! the four diagnostics, gathered so the round trip leaves alone any cell
      ! this solver does not own -- see the note in convert_1d_2d_dyn
      real(kind=dbl_kind)   , dimension(:,:), intent(inout) :: &
@@ -1072,13 +1061,15 @@ module ice_dyn_evp1d
      ! from its own block copy, the master from the gathered global one --
      ! and the two lists agree entry for entry.  Gathered after the data, as
      ! they used to be, the filter would be a step behind.
-     call gather_global(G_iceTmask  ,     L_iceTmask  ,     master_task, distrb_info, grid_ext=.true.)
-     call gather_global(G_iceUmask  ,     L_iceUmask  ,     master_task, distrb_info, grid_ext=.true.)
+     call gather_globalL1_compressed(G_iceTmask, iceTmask_slot, dynMap, dynOff, &
+                 master_task, distrb_info, grid_ext=.true.)
+     call gather_globalL1_compressed(G_iceUmask, iceUmask_slot, dynMap, dynOff, &
+                 master_task, distrb_info, grid_ext=.true.)
 
      ! evp1d_reorder decides what the word "active" means for the wire, the
      ! same way it decides it for the kernels: off, every ocean slot moves;
      ! on, only the slots carrying ice.
-     call slot_gather_filter(evp1d_reorder, L_iceTmask, L_iceUmask,        &
+     call slot_gather_filter(evp1d_reorder, iceTmask_slot, iceUmask_slot,  &
                              G_iceTmask, G_iceUmask, indxTij, nx,          &
                              master_task, distrb_info)
 
