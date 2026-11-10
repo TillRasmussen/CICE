@@ -31,6 +31,7 @@
       implicit none
       private
       public :: init_transport, transport_remap, transport_upwind
+      public :: state_to_tracers, tracers_to_state  ! public for transportchk unit test
 
       character (len=char_len), public ::     &
          advection   ! type of advection scheme used
