@@ -237,9 +237,9 @@
           strax, stray, &
           hwater, hwater_slot, &
           strairxN, strairyN, fmN, &
-          strtltxN, strtltyN, strocnxN, strocnyN, strintxN, strintyN, taubxN, taubyN, &
+          strtltxN, strtltyN, strocnxN, strocnyN, strintxN, strintyN, &
           strairxE, strairyE, fmE, &
-          strtltxE, strtltyE, strocnxE, strocnyE, strintxE, strintyE, taubxE, taubyE
+          strtltxE, strtltyE, strocnxE, strocnyE, strintxE, strintyE
       use ice_grid, only: tmask, umask, umaskCD, nmask, emask, uvm, epm, npm, &
           dxE, dxN, dxT, dxU, dyE, dyN, dyT, dyU, &
           tarear, uarear, earear, narear, grid_average_X2Y, uarea, &
@@ -1360,8 +1360,6 @@
                call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceNmask_slot, &
                     vvelN_slot, &
                     taubyN_slot)
-               call unpack_from_slots(taubxE_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), taubxE  (:,iblk))
-               call unpack_from_slots(taubyN_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), taubyN  (:,iblk))
             endif
          enddo
          !$OMP END PARALLEL DO
@@ -1658,10 +1656,6 @@
                     taubxN_slot, &
                     vvelN_slot, &
                     taubyN_slot)
-               call unpack_from_slots(taubxE_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), taubxE  (:,iblk))
-               call unpack_from_slots(taubyE_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), taubyE  (:,iblk))
-               call unpack_from_slots(taubxN_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), taubxN  (:,iblk))
-               call unpack_from_slots(taubyN_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), taubyN  (:,iblk))
             endif
          enddo
          !$OMP END PARALLEL DO

@@ -76,11 +76,7 @@
       real (kind=dbl_kind), dimension (:,:), allocatable, public :: &
          hwater  , & ! water depth for seabed stress calc (landfast ice)
          taubxU  , & ! seabed stress (x) (N/m^2)
-         taubyU  , & ! seabed stress (y) (N/m^2)
-         taubxN  , & ! seabed stress (x) at N points (N/m^2)
-         taubyN  , & ! seabed stress (y) at N points (N/m^2)
-         taubxE  , & ! seabed stress (x) at E points (N/m^2)
-         taubyE      ! seabed stress (y) at E points (N/m^2)
+         taubyU      ! seabed stress (y) (N/m^2)
 
       ! The sea-surface-slope stresses, compressed.
       !
@@ -890,26 +886,18 @@
 
       if (grid_ice == "CD" .or. grid_ice == "C") then
          allocate( &
-            taubxN     (nx_block*ny_block,max_blocks), & ! seabed stress (x) at N points (N/m^2)
-            taubyN     (nx_block*ny_block,max_blocks), & ! seabed stress (y) at N points (N/m^2)
             strintxN   (nx_block,ny_block,max_blocks), & ! divergence of internal ice stress, x at N points (N/m^2)
             strintyN   (nx_block,ny_block,max_blocks), & ! divergence of internal ice stress, y at N points (N/m^2)
             fmN        (nx_block*ny_block,max_blocks), & ! Coriolis param. * mass in N-cell (kg/s)
-            taubxE     (nx_block*ny_block,max_blocks), & ! seabed stress (x) at E points (N/m^2)
-            taubyE     (nx_block*ny_block,max_blocks), & ! seabed stress (y) at E points (N/m^2)
             strintxE   (nx_block,ny_block,max_blocks), & ! divergence of internal ice stress, x at E points (N/m^2)
             strintyE   (nx_block,ny_block,max_blocks), & ! divergence of internal ice stress, y at E points (N/m^2)
             fmE        (nx_block*ny_block,max_blocks), & ! Coriolis param. * mass in E-cell (kg/s)
             stat=ierr)
          if (ierr/=0) call abort_ice('(alloc_flux): Out of memory (C or CD grid)')
 
-         taubxN     = c0
-         taubyN     = c0
          strintxN   = c0
          strintyN   = c0
          fmN        = c0
-         taubxE     = c0
-         taubyE     = c0
          strintxE   = c0
          strintyE   = c0
          fmE        = c0
@@ -1464,8 +1452,6 @@
       vredistn (:,:,:,:) = c0
 
       if (grid_ice == "CD" .or. grid_ice == "C") then
-         taubxE     (:,:) = c0
-         taubyE     (:,:) = c0
          strtltxE = c0
          strtltyE = c0
          strocnxE = c0
@@ -1475,8 +1461,6 @@
          strintxE   (:,:,:) = c0
          strintyE   (:,:,:) = c0
          fmE        (:,:) = c0
-         taubxN     (:,:) = c0
-         taubyN     (:,:) = c0
          strtltxN = c0
          strtltyN = c0
          strocnxN = c0

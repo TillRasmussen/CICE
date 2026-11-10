@@ -259,15 +259,22 @@
 
       subroutine accum_hist_drag (iblk)
 
-      use ice_history_shared, only: a2D, accum_hist_field
+      use ice_history_shared, only: a2D, accum_hist_field, &
+          accum_hist_field_2D_slotin
       use ice_arrays_column, only: hfreebd, hdraft, hridge, distrdg, hkeel, &
           dkeel, lfloe, dfloe, Cdn_atm, Cdn_atm_skin, Cdn_atm_floe, &
           Cdn_atm_pond, Cdn_atm_rdg, Cdn_atm_ratio, Cdn_ocn_skin, &
           Cdn_ocn_keel, Cdn_ocn_floe, Cdn_ocn
+      use ice_grid, only: dynCnt, dynOff, dynIJ, dynMaxCnt
 
       integer (kind=int_kind), intent(in) :: &
            iblk                 ! block index
       logical (kind=log_kind) :: formdrag
+      integer (kind=int_kind) :: is
+      ! Cdn_ocn has no slot form: icepack writes it per cell in ice_step_mod,
+      ! so this builds one for the single accumulator that wants it, the way
+      ! ice_history does for its own block-array products.
+      real (kind=dbl_kind), dimension(dynMaxCnt) :: workas
       character(len=*), parameter :: subname = '(accum_hist_drag)'
 
       !---------------------------------------------------------------
@@ -287,8 +294,12 @@
 
       if (f_Cdn_atm     (1:1) /= 'x') &
         call accum_hist_field(n_Cdn_atm, iblk, Cdn_atm(:,:,iblk), a2D)
-      if (f_Cdn_ocn     (1:1) /= 'x') &
-        call accum_hist_field(n_Cdn_ocn, iblk, Cdn_ocn(:,iblk), a2D)
+      if (f_Cdn_ocn     (1:1) /= 'x') then
+        do is = 1, dynCnt(iblk)
+           workas(is) = Cdn_ocn(dynIJ(dynOff(iblk)+is),iblk)
+        enddo
+        call accum_hist_field_2D_slotin(n_Cdn_ocn, iblk, workas, a2D)
+      endif
       if (f_drag     (1:1) /= 'x') then
         call accum_hist_field(n_hfreebd, iblk, hfreebd(:,:,iblk), a2D)
         call accum_hist_field(n_hdraft, iblk, hdraft(:,:,iblk), a2D)

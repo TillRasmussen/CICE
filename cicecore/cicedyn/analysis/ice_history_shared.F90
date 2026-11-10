@@ -780,8 +780,6 @@
 
       interface accum_hist_field ! generic interface
            module procedure accum_hist_field_2D, &
-                            accum_hist_field_2D_flat, &
-                            accum_hist_field_2D_compressed, &
                             accum_hist_field_3D, &
                             accum_hist_field_3D_compressed, &
                             accum_hist_field_3D_slotin, &
@@ -1185,64 +1183,6 @@
 ! flattened, i.e. dimension(nx_block*ny_block), with element (i,j) at
 ! (j-1)*nx_block + i
 
-      subroutine accum_hist_field_2D_flat(id, iblk, field_accum, field)
-
-      use ice_blocks, only: block, get_block, nx_block
-      use ice_calendar, only: nstreams
-      use ice_domain, only: blocks_ice
-      use ice_grid, only: tmask, dynMap, dynOff
-
-      integer (int_kind), dimension(:), intent(in) :: &  ! max_nstrm
-         id                ! location in avail_fields array for use in
-                           ! later routines
-
-      integer (kind=int_kind), intent(in) :: iblk
-
-      real (kind=dbl_kind), intent(in) :: &
-         field_accum(:)
-
-      ! (slot, field) -- see accum_hist_field_2D.
-      real (kind=dbl_kind), intent(inout) :: &
-         field(:,:)
-
-      type (block) :: &
-         this_block           ! block information for current block
-
-      integer (kind=int_kind) :: i,j, ij, m, ilo, ihi, jlo, jhi, ns, idns
-
-      character(len=*), parameter :: subname = '(accum_hist_field_2D_flat)'
-
-      !---------------------------------------------------------------
-      ! increment field
-      !---------------------------------------------------------------
-
-       do ns = 1, nstreams
-       idns = id(ns)
-       if (idns > 0) then
-
-       this_block = get_block(blocks_ice(iblk),iblk)
-       ilo = this_block%ilo
-       ihi = this_block%ihi
-       jlo = this_block%jlo
-       jhi = this_block%jhi
-
-       do j = jlo, jhi
-       do i = ilo, ihi
-          ij = (j-1)*nx_block + i
-          if (tmask(ij,iblk)) then
-             m = dynMap(ij,iblk)
-             if (m > 0) then
-                m = dynOff(iblk) + m
-                field(m,idns) = field(m,idns) + field_accum(ij)
-             endif
-          endif
-       enddo
-       enddo
-
-       endif
-       enddo
-
-      end subroutine accum_hist_field_2D_flat
 
 !=======================================================================
 
@@ -1260,68 +1200,6 @@
 ! test below never actually rejects one.  It is there because a slot array
 ! indexed at a cell that has none would otherwise read element 0.
 
-      subroutine accum_hist_field_2D_compressed(id, iblk, field_accum, map, field)
-
-      use ice_blocks, only: block, get_block, nx_block
-      use ice_calendar, only: nstreams
-      use ice_domain, only: blocks_ice
-      use ice_grid, only: tmask_slot, dynMap, dynOff
-
-      integer (int_kind), dimension(:), intent(in) :: &  ! max_nstrm
-         id                ! location in avail_fields array for use in
-                           ! later routines
-
-      integer (kind=int_kind), intent(in) :: iblk
-
-      real (kind=dbl_kind), intent(in) :: &
-         field_accum(:)    ! this block's compressed slice
-
-      integer (kind=int_kind), intent(in) :: &
-         map(:)            ! this block's dynMap column
-
-      ! (slot, field) -- see accum_hist_field_2D.
-      real (kind=dbl_kind), intent(inout) :: &
-         field(:,:)
-
-      type (block) :: &
-         this_block           ! block information for current block
-
-      integer (kind=int_kind) :: i,j, ij, m, ilo, ihi, jlo, jhi, ns, idns
-
-      character(len=*), parameter :: subname = '(accum_hist_field_2D_compressed)'
-
-      !---------------------------------------------------------------
-      ! increment field
-      !---------------------------------------------------------------
-
-       do ns = 1, nstreams
-       idns = id(ns)
-       if (idns > 0) then
-
-       this_block = get_block(blocks_ice(iblk),iblk)
-       ilo = this_block%ilo
-       ihi = this_block%ihi
-       jlo = this_block%jlo
-       jhi = this_block%jhi
-
-       do j = jlo, jhi
-       do i = ilo, ihi
-          ij = (j-1)*nx_block + i
-          ! m > 0 FIRST: map is 0 where no slot exists, and
-          ! tmask_slot(dynOff(iblk)+0) would read the previous block's last
-          ! slot -- index 0, out of bounds, for iblk = 1.
-          m = map(ij)
-          if (m > 0) then
-             if (tmask_slot(dynOff(iblk)+m)) &
-                field(dynOff(iblk)+m,idns) = field(dynOff(iblk)+m,idns) + field_accum(m)
-          endif
-       enddo
-       enddo
-
-       endif
-       enddo
-
-      end subroutine accum_hist_field_2D_compressed
 
 !=======================================================================
 
