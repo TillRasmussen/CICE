@@ -410,9 +410,7 @@
       ! Fill arrays with fields to be remapped.
       !-------------------------------------------------------------------
 
-         call state_to_tracers(nx_block,            ny_block,            &
-                               dynMap(:,iblk),                           &
-                               ntrcr,               ntrace,              &
+         call state_to_tracers(ntrcr,               ntrace,              &
                                aice0_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
                                trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:),                      &
                                vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
@@ -1077,9 +1075,7 @@
 !
 ! author William H. Lipscomb, LANL
 
-      subroutine state_to_tracers (nx_block, ny_block,   &
-                                   map,                  &
-                                   ntrcr,    ntrace,     &
+      subroutine state_to_tracers (ntrcr,    ntrace,     &
                                    aice0,    aicen,      &
                                    trcrn,                &
                                    vicen,    vsnon,      &
@@ -1087,21 +1083,14 @@
 
       use ice_domain_size, only: ncat, nslyr
 
-      ! The state variables stay block-shaped: they are model state, read
-      ! and written by I/O, and the compressed layout stops at this
-      ! boundary.  aim and trm are the work arrays, so they are slots.
-      !
-      ! Every loop here ran over the WHOLE block, so no range mask is
-      ! needed -- a cell with no slot is simply dropped, and nothing
-      ! downstream reads one.
+      ! Slot in, slot out.  Both sides are this block's slice in slot order,
+      ! so the routine is a straight copy and needs neither the block
+      ! dimensions nor dynMap -- a cell with no slot is simply absent, and
+      ! nothing downstream reads one.
 
       integer (kind=int_kind), intent(in) ::     &
-         nx_block, ny_block, & ! block dimensions
          ntrcr             , & ! number of tracers in use
          ntrace                ! number of tracers in use incl. hi, hs
-
-      integer (kind=int_kind), dimension (:), intent(in) :: &
-         map         ! this block's dynMap column
 
       ! ⚠ Compressed.  update_state writes aice0_slot in the same loop that
       ! calls icepack_aggregate, so it is current here, and this routine no
@@ -1283,8 +1272,8 @@
       do i = 1, nx_block
          ms = map((j-1)*nx_block + i)
          if (ms < 1) cycle
-         aice0(i,j) = aim(ms,0)
-            aice0_s(ms)  = aim(ms,0)
+         aice0(i,j)  = aim(ms,0)
+         aice0_s(ms) = aim(ms,0)
       enddo
       enddo
 

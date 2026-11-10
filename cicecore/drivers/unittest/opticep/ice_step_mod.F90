@@ -912,11 +912,14 @@
 ! authors: Lettie Roach, NIWA
 !          Elizabeth C. Hunke, LANL
 
-      subroutine step_dyn_wave (dt)
+      subroutine step_dyn_wave (dt, iblk)
 
+      use ice_state, only: aicen_slot, trcrn_slot
+      use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys, dynMap, &
+          unpack_cat_from_slots, unpack_trc_from_slots
       use ice_arrays_column, only: wave_spectrum, wave_sig_ht, &
           d_afsd_wave, wavefreq, dwavefreq
-      use ice_domain_size, only: ncat, nfsd, nfreq
+      use ice_domain_size, only: nfreq
       use ice_state, only: trcrn, aicen, aice, vice
       use ice_timers, only: ice_timer_start, ice_timer_stop, timer_column, &
           timer_fsd
@@ -924,15 +927,14 @@
       real (kind=dbl_kind), intent(in) :: &
          dt      ! time step
 
+      integer (kind=int_kind), intent(in) :: &
+         iblk    ! block index
+
       ! local variables
 
-      type (block) :: &
-         this_block      ! block information for current block
-
       integer (kind=int_kind) :: &
-         ilo,ihi,jlo,jhi, & ! beginning and end of physical domain
-         iblk,            & ! block index
-         i, j               ! horizontal indices
+         is, ij, ms, & ! slot, and its flattened cell index
+         i, j          ! horizontal indices
 
       character(len=*), parameter :: subname = '(step_dyn_wave)'
 
@@ -943,37 +945,38 @@
       if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
          file=__FILE__, line=__LINE__)
 
-      !$OMP PARALLEL DO PRIVATE(iblk,i,j,ilo,ihi,jlo,jhi,this_block)
-      do iblk = 1, nblocks
+      ! ⚠ No pack on entry: update_state runs before this, and bound_state
+      ! packs the slots at its end.  The unpack below stays -- restart,
+      ! history, restoring, diagnostics and ice_dyn_evp/eap still read the
+      ! block forms.
 
-         this_block = get_block(blocks_ice(iblk),iblk)
-         ilo = this_block%ilo
-         ihi = this_block%ihi
-         jlo = this_block%jlo
-         jhi = this_block%jhi
+      do is = 1, dynCnt(iblk)
+         if (skipPhys(dynOff(iblk)+is)) cycle
+         ij = dynIJ(dynOff(iblk)+is)
+         j  = (ij-1)/nx_block + 1
+         i  = ij - (j-1)*nx_block
+         ms = dynOff(iblk) + is
+         d_afsd_wave(i,j,:,iblk) = c0
+         call icepack_step_wavefracture(dt = dt, nfreq = nfreq,                      &
+                                        aice        = aice           (i,j,    iblk), &
+                                        vice        = vice           (i,j,    iblk), &
+                                        aicen       = aicen_slot          (ms, :), &
+                                        wave_spectrum = wave_spectrum(i,j,:,  iblk), &
+                                        wavefreq    = wavefreq       (:),            &
+                                        dwavefreq   = dwavefreq      (:),            &
+                                        trcrn       = trcrn_slot          (ms, :,:), &
+                                        d_afsd_wave = d_afsd_wave    (i,j,:,  iblk), &
+                                        wave_height = wave_sig_ht    (i,j,    iblk))
+         ! uncomment to print the location and ice state of the failing grid cell
+         ! if (icepack_warnings_aborted()) then
+         !    call diagnostic_abort(i, j, iblk, subname//' icepack_step_wavefracture aborted')
+         ! endif
+      enddo   ! is
 
-         do j = jlo, jhi
-         do i = ilo, ihi
-            d_afsd_wave(i,j,:,iblk) = c0
-            call icepack_step_wavefracture(dt = dt, nfreq = nfreq,                      &
-                                           aice        = aice           (i,j,    iblk), &
-                                           vice        = vice           (i,j,    iblk), &
-                                           aicen       = aicen          (i,j,:,  iblk), &
-                                           wave_spectrum = wave_spectrum(i,j,:,  iblk), &
-                                           wavefreq    = wavefreq       (:),            &
-                                           dwavefreq   = dwavefreq      (:),            &
-                                           trcrn       = trcrn          (i,j,:,:,iblk), &
-                                           d_afsd_wave = d_afsd_wave    (i,j,:,  iblk), &
-                                           wave_height = wave_sig_ht    (i,j,    iblk))
-
-            ! uncomment to print the location and ice state of the failing grid cell
-            ! if (icepack_warnings_aborted()) then
-            !    call diagnostic_abort(i, j, iblk, subname//' icepack_step_wavefracture aborted')
-            ! endif
-         end do ! i
-         end do ! j
-      end do    ! iblk
-      !$OMP END PARALLEL DO
+      call unpack_cat_from_slots(aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
+           dynMap(:,iblk), aicen(:,:,:,iblk))
+      call unpack_trc_from_slots(trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:), &
+           dynMap(:,iblk), trcrn(:,:,:,:,iblk))
 
       call icepack_warnings_flush(nu_diag)
       if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
@@ -1002,7 +1005,7 @@
       use ice_dyn_shared, only: kdyn
       use ice_flux, only: strocnxU, strocnyU, strocnxT_iavg, strocnyT_iavg
       use ice_flux, only: init_history_dyn
-      use ice_grid, only: grid_average_X2Y
+      use ice_grid, only: grid_average_X2Y, dynMap, dynOff
       use ice_state, only: aiU
       use ice_transport_driver, only: advection, transport_upwind, transport_remap
 
@@ -1015,7 +1018,7 @@
          this_block      ! block information for current block
 
       integer (kind=int_kind) :: &
-      ,   msl            ! block-local slot, 0 if none
+         msl,             & ! block-local slot, 0 if none
          ilo,ihi,jlo,jhi, & ! beginning and end of physical domain
          iblk,            & ! block index
          i, j,            & ! horizontal indices
@@ -1105,7 +1108,7 @@
           aparticn, krdgn, aredistn, vredistn, dardg1ndt, dardg2ndt, &
           dvirdgndt, araftn, vraftn, fsalt, Tf
       use ice_flux_bgc, only: flux_bio, faero_ocn, fiso_ocn
-      use ice_grid, only: tmask
+      use ice_grid, only: tmask, dynMap, dynOff
       use ice_state, only: trcrn, vsnon, aicen, vicen, &
           aice, aice0, trcr_depend, n_trcr_strata, &
           trcr_base, nt_strata
@@ -1127,6 +1130,8 @@
       integer (kind=int_kind) :: &
          ilo,ihi,jlo,jhi, & ! beginning and end of physical domain
          i, j,            & ! horizontal indices
+         msl,             & ! block-local slot of (i,j), 0 if none
+         ms,              & ! the same slot, task-global
          ntrcr,           & !
          nbtrcr             !
 
@@ -1152,6 +1157,13 @@
 
       do j = jlo, jhi
       do i = ilo, ihi
+
+         ! rdg_conv and rdg_shear live only in slots now.  Every tmask cell
+         ! owns one, so this cycle only skips cells the test below would have
+         ! skipped anyway -- it is here to keep the subscript in range.
+         msl = dynMap((j-1)*nx_block + i, iblk)
+         if (msl < 1) cycle
+         ms  = dynOff(iblk) + msl
 
 !echmod: this changes the answers, continue using tmask for now
 !      call aggregate_area (ncat, aicen(i,j,:,iblk), atmp, atmp0)
