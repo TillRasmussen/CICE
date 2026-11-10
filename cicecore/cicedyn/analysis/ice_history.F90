@@ -2207,7 +2207,7 @@
       use ice_grid, only: tmask, lmask_n, lmask_s, dxU, dyU, grid_ice, &
                           dynMap, dynOff, dynCnt, dynIJ, pack_to_slots, &
                           unpack_from_slots, &
-                          Nbr_Local, nbr_E, nbr_N, dynMaxCnt, &
+                          Nbr_Local, nbr_E, nbr_N, nbr_S, nbr_W, dynMaxCnt, &
           dynCnt, dynOff, dynIJ, skipPhys
       use ice_calendar, only: new_year, write_history, write_restart, &
                               write_ic, timesecs, histfreq, nstreams, mmonth, &
@@ -2229,7 +2229,8 @@
           stresspT_slot, stressmT_slot, stress12T_slot, &
           strength_slot, &
           dynMap, dynOff, dynCnt
-      use ice_dyn_shared, only: fmU_slot, fmN_slot, fmE_slot
+      use ice_dyn_shared, only: fmU_slot, fmN_slot, fmE_slot, &
+          uvel_slot, vvel_slot
       use ice_flux, only: fsw, flw, fsnow, frain, sst, sss, uocn, vocn, &
           frzmlt_init, scale_factor, fswabs, fswup, fswthru, alvdr, alvdf, alidr, alidf, &
           albice, albsno, albpnd, coszen, flat, fsens, flwout, evap, evaps, evapi, &
@@ -3088,6 +3089,9 @@
 
          if (f_sispeed(1:1) /= 'x') then
            worka(:,:) = c0
+           ! kdyn <= 0 leaves uvel_slot unallocated; the block velocities it
+           ! replaced are c0 there, so the zeroing above is the answer.
+           if (allocated(uvel_slot)) then
            do is = 1, dynCnt(iblk)
               msh = dynOff(iblk) + is
               if (skipPhys(msh)) cycle
@@ -3095,8 +3099,9 @@
               j  = (ij-1)/nx_block + 1
               i  = ij - (j-1)*nx_block
               worka(i,j) = aice_slot(msh) &
-                 * sqrt(uvel((j-1)*nx_block+i,iblk)*uvel((j-1)*nx_block+i,iblk)+vvel((j-1)*nx_block+i,iblk)*vvel((j-1)*nx_block+i,iblk))
+                 * sqrt(uvel_slot(msh)*uvel_slot(msh)+vvel_slot(msh)*vvel_slot(msh))
            enddo
+           endif
            call accum_hist_field(n_sispeed, iblk, worka(:,:), a2D)
          endif
 
@@ -3118,6 +3123,8 @@
 
          if (f_sidmasstranx(1:1) /= 'x') then
            worka(:,:) = c0
+           ! as sispeed above: no dynamics, no slot velocities, c0 either way
+           if (allocated(uvel_slot)) then
            do is = 1, dynCnt(iblk)
               msh = dynOff(iblk) + is
               if (skipPhys(msh)) cycle
@@ -3126,13 +3133,16 @@
               i  = ij - (j-1)*nx_block
               worka(i,j) = (rho_ice(i,j)*p5*(vice_slot(dynOff(iblk)+Nbr_Local(msh,nbr_E))+vice_slot(msh))*dyU((j-1)*nx_block+i,iblk) &
                          + rhos*p5*(vsno_slot(dynOff(iblk)+Nbr_Local(msh,nbr_E))+vsno_slot(msh))*dyU((j-1)*nx_block+i,iblk)) &
-                         *  p5*(uvel((j-1-1)*nx_block+i,iblk)+uvel((j-1)*nx_block+i,iblk))
+                         *  p5*(uvel_slot(dynOff(iblk)+Nbr_Local(msh,nbr_S))+uvel_slot(msh))
            enddo
+           endif
            call accum_hist_field(n_sidmasstranx, iblk, worka(:,:), a2D)
          endif
 
          if (f_sidmasstrany(1:1) /= 'x') then
            worka(:,:) = c0
+           ! as sispeed above: no dynamics, no slot velocities, c0 either way
+           if (allocated(vvel_slot)) then
            do is = 1, dynCnt(iblk)
               msh = dynOff(iblk) + is
               if (skipPhys(msh)) cycle
@@ -3141,8 +3151,9 @@
               i  = ij - (j-1)*nx_block
               worka(i,j) = (rho_ice(i,j)*p5*(vice_slot(dynOff(iblk)+Nbr_Local(msh,nbr_N))+vice_slot(msh))*dxU((j-1)*nx_block+i,iblk) &
                          + rhos*p5*(vsno_slot(dynOff(iblk)+Nbr_Local(msh,nbr_N))+vsno_slot(msh))*dxU((j-1)*nx_block+i,iblk)) &
-                         *  p5*(vvel((j-1)*nx_block+i-1,iblk)+vvel((j-1)*nx_block+i,iblk))
+                         *  p5*(vvel_slot(dynOff(iblk)+Nbr_Local(msh,nbr_W))+vvel_slot(msh))
            enddo
+           endif
            call accum_hist_field(n_sidmasstrany, iblk, worka(:,:), a2D)
          endif
 

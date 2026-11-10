@@ -820,15 +820,16 @@
       use ice_domain_size, only: ncat, max_blocks
       use ice_state, only: aice0, aice0_slot, aicen, vicen, vsnon, trcrn, &
            aicen_slot, vicen_slot, vsnon_slot, trcrn_slot, &
-          uvel, vvel, trcr_depend, trcr_base, &
+          trcr_depend, trcr_base, &
           n_trcr_strata, nt_strata, uvelE, vvelN
       use ice_bound_state, only: bound_state
       use ice_flux, only: Tf
       use ice_grid, only: tmask, grid_ice, &
-          dynMap, dynOff, dynCnt, Nbr_Local, dynTot, &
+          dynMap, dynOff, dynCnt, Nbr_Local, dynTot, dynIJ, &
           skipEdgeE, skipEdgeN, skipPhys, &
           HTE_slot, HTN_slot, tarea_slot, pack_to_slots, &
               unpack_cat_from_slots, unpack_trc_from_slots
+      use ice_dyn_shared, only: uvel_slot, vvel_slot, NbrS_Task, NbrW_Task
       use ice_timers, only: ice_timer_start, ice_timer_stop, &
           timer_bound, timer_advect
 
@@ -843,6 +844,8 @@
 
       integer (kind=int_kind) :: &
          i, j, iblk     , & ! horizontal indices
+         is             , & ! block-local slot
+         ij             , & ! block-flat cell index of a slot
          ms             , & ! slot of a cell
          nc             , & ! number of slots this block holds
          ilo,ihi,jlo,jhi    ! beginning and end of physical domain
@@ -925,26 +928,33 @@
          uee(:) = c0
          vnn(:) = c0
 
-         !$OMP PARALLEL DO PRIVATE(iblk,i,j,ms) SCHEDULE(runtime)
-         do iblk = 1, nblocks
-
-            do j = 2, ny_block          ! uee needs uvel one row south
-            do i = 1, nx_block
-               ms = dynMap((j-1)*nx_block + i, iblk)
-               if (ms < 1) cycle
-               uee(dynOff(iblk)+ms) = p5*(uvel((j-1)*nx_block+i,iblk) + uvel((j-1-1)*nx_block+i,iblk))
+         ! Compressed.  Every solver leaves uvel_slot/vvel_slot holding what
+         ! it unpacked into the block arrays, and the south/west neighbour is
+         ! NbrS_Task/NbrW_Task -- the dead slot where that neighbour has none,
+         ! which carries c0, exactly what the block array holds at the land
+         ! cell the old form read.  kdyn <= 0 means init_dyn_shared never ran
+         ! and the slot velocities do not exist; the block ones are identically
+         ! zero then, so the c0 above is already the answer.
+         !
+         ! The row and column the interpolation cannot reach are still skipped,
+         ! but by the slot's own cell index rather than by the loop bounds:
+         ! ij > nx_block is j >= 2, and mod(ij-1,nx_block) > 0 is i >= 2.
+         if (allocated(uvel_slot)) then
+            !$OMP PARALLEL DO PRIVATE(iblk,is,ij,ms) SCHEDULE(runtime)
+            do iblk = 1, nblocks
+               do is = 1, dynCnt(iblk)
+                  ms = dynOff(iblk) + is
+                  ij = dynIJ(ms)
+                  if (ij > nx_block) then
+                     uee(ms) = p5*(uvel_slot(ms) + uvel_slot(NbrS_Task(ms)))
+                  endif
+                  if (mod(ij-1,nx_block) > 0) then
+                     vnn(ms) = p5*(vvel_slot(ms) + vvel_slot(NbrW_Task(ms)))
+                  endif
+               enddo
             enddo
-            enddo
-
-            do j = 1, ny_block
-            do i = 2, nx_block          ! vnn needs vvel one column west
-               ms = dynMap((j-1)*nx_block + i, iblk)
-               if (ms < 1) cycle
-               vnn(dynOff(iblk)+ms) = p5*(vvel((j-1)*nx_block+i,iblk) + vvel((j-1)*nx_block+i-1,iblk))
-            enddo
-            enddo
-         enddo
-         !$OMP END PARALLEL DO
+            !$OMP END PARALLEL DO
+         endif
 
          call ice_timer_start(timer_bound)
          call ice_HaloExtrapolate2DR8_compressed(uee, distrb_info, &
