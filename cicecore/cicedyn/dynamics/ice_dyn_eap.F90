@@ -439,16 +439,11 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
       if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
          file=__FILE__, line=__LINE__)
 
-      ! strength_slot is filled HERE, ahead of the halo, because the halo is
-      ! now compressed.  The packs that used to run after it -- one per solver
-      ! branch -- would have re-packed block ghosts the compressed halo no
-      ! longer updates, straight over the haloed values.
-      !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
-      do iblk = 1, nblocks
-      enddo
-      !$OMP END PARALLEL DO
-
       call ice_timer_start(timer_bound)
+      ! strength_slot was filled in the block loop above, ahead of this halo
+      ! rather than after it, because the halo is compressed now.  The pack
+      ! that used to follow it would have re-packed block ghosts the
+      ! compressed halo no longer updates, straight over the haloed values.
       call ice_HaloUpdate2DR8_compressed (strength_slot,    halo_info,         &
                                           field_loc_center, field_type_scalar, &
                                           dynMap,           dynOff)

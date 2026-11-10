@@ -1904,13 +1904,26 @@ module ice_dyn_evp1d
      ! local variables
 
      integer(kind=int_kind) :: sd, s1, s2
+     logical(kind=log_kind) :: needs_s2
 
      character(len=*), parameter :: subname = '(halo_point)'
+
+     ! w is exactly c0 for every copying type -- cyclic, closed, the tripole
+     ! fold and zero_gradient -- or a ring distance of 1 or more for
+     ! linear_extrap.  It is never the result of arithmetic, so the exact
+     ! comparison is safe, and a zero w annihilates the w*(s1-s2) term below:
+     ! those entries never read s2, so a missing one is no obstacle.
+     !
+     ! ⚠ Getting this wrong is silent.  A w that was meant to be zero but
+     ! tested nonzero would take the return below and DROP the halo entry,
+     ! leaving the ghost cell unwritten -- the fault this routine exists to
+     ! avoid.
+     needs_s2 = (w /= c0)
 
      if (domark) then
         call mark_cell(id, jd)
         call mark_cell(i1, j1)
-        if (w /= c0) call mark_cell(i2, j2)
+        if (needs_s2) call mark_cell(i2, j2)
         return
      endif
 
@@ -1920,8 +1933,7 @@ module ice_dyn_evp1d
 
      s2 = ijslot(i2 + (j2 - 1) * nx)
      if (s2 == 0) then
-        ! w == 0 does not read s2, so a missing one is no obstacle
-        if (w /= c0) return
+        if (needs_s2) return
         s2 = s1
      endif
 
