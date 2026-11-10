@@ -1127,28 +1127,9 @@
 
          endif
 
-         ! stress tensor,  kg/s^2
-         stressp_1 (ij,iblk) = c0
-         stressp_2 (ij,iblk) = c0
-         stressp_3 (ij,iblk) = c0
-         stressp_4 (ij,iblk) = c0
-         stressm_1 (ij,iblk) = c0
-         stressm_2 (ij,iblk) = c0
-         stressm_3 (ij,iblk) = c0
-         stressm_4 (ij,iblk) = c0
-         stress12_1(ij,iblk) = c0
-         stress12_2(ij,iblk) = c0
-         stress12_3(ij,iblk) = c0
-         stress12_4(ij,iblk) = c0
-
-         if (grid_ice == 'CD' .or. grid_ice == 'C') then
-            stresspT  (ij,iblk) = c0
-            stressmT  (ij,iblk) = c0
-            stress12T (ij,iblk) = c0
-            stresspU  (ij,iblk) = c0
-            stressmU  (ij,iblk) = c0
-            stress12U (ij,iblk) = c0
-         endif
+         ! The stress tensor is NOT zeroed here.  alloc_flux already did it
+         ! with a whole-array assignment, which also covers the ghost rim
+         ! this loop does not reach, and nothing between the two touches it.
 
          if (kdyn == 1) then
             DminTarea(ij,iblk) = deltaminEVP*tarea((j-1)*nx_block+i,iblk)
