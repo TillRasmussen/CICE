@@ -249,6 +249,7 @@
           dxE, dxN, dxT, dxU, dyE, dyN, dyT, dyU, &
           tarear, uarear, earear, narear, grid_average_X2Y, uarea, &
           grid_ice, grid_atm_dynu, grid_atm_dynv, grid_ocn_dynu, grid_ocn_dynv
+      use ice_grid, only: skipPhys
       use ice_restoring, only: ice_restoring_halo, restore_ice
       use ice_state, only: aice, aiU, vice, vsno, aice_slot, aice0_slot, vice_slot, vsno_slot, uvel, vvel, uvelN, vvelN, &
           aicen_slot, vicen_slot, &
@@ -786,32 +787,42 @@
       if (maskhalo_dyn) then
          halomask = 0
          if (grid_ice == 'B') then
+            ! Slot-driven.  halomask itself stays block-shaped -- ice_HaloMask
+            ! builds communication structures from it -- but its SOURCE need
+            ! not be: every iceUmask cell owns a slot, since iceUmask is a
+            ! subset of umask and mask_any is tmask .or. umask.
             do iblk = 1, nblocks
-               do j = 1, ny_block
-               do i = 1, nx_block
-                  if (iceUmask((j-1)*nx_block+i,iblk)) halomask(i,j,iblk) = 1
-               enddo
+               do is = 1, dynCnt(iblk)
+                  ms = dynOff(iblk) + is
+                  if (.not. iceUmask_slot(ms)) cycle
+                  ij = dynIJ(ms)
+                  j  = (ij-1)/nx_block + 1
+                  i  = ij - (j-1)*nx_block
+                  halomask(i,j,iblk) = 1
                enddo
             enddo
          elseif (grid_ice == 'C' .or. grid_ice == 'CD') then
-            !$OMP PARALLEL DO PRIVATE(iblk,ilo,ihi,jlo,jhi,this_block,i,j,ij) SCHEDULE(runtime)
+            ! The same five-point test on the slots.  A cell reached here
+            ! always owns one: if it is iceTmask itself it is in mask_any,
+            ! and if a NEIGHBOUR is, the ring marking adds that neighbour's
+            ! whole 3x3 -- which contains this cell.  A neighbour outside the
+            ! stored set lands on the dead slot, .false. there, which is what
+            ! the block form read at the interior land it stands for.
+            !$OMP PARALLEL DO PRIVATE(iblk,is,ms,i,j,ij) SCHEDULE(runtime)
             do iblk = 1, nblocks
-               this_block = get_block(blocks_ice(iblk),iblk)
-               ilo = this_block%ilo
-               ihi = this_block%ihi
-               jlo = this_block%jlo
-               jhi = this_block%jhi
-               do j = jlo,jhi
-               do i = ilo,ihi
-                  ij = (j-1)*nx_block + i
-                  if (iceTmask(ij         ,iblk) .or. &
-                      iceTmask(ij-1       ,iblk) .or. &
-                      iceTmask(ij+1       ,iblk) .or. &
-                      iceTmask(ij-nx_block,iblk) .or. &
-                      iceTmask(ij+nx_block,iblk)) then
+               do is = 1, dynCnt(iblk)
+                  ms = dynOff(iblk) + is
+                  if (skipPhys(ms)) cycle
+                  if (iceTmask_slot(ms            ) .or. &
+                      iceTmask_slot(NbrW_Task(ms) ) .or. &
+                      iceTmask_slot(NbrE_Task(ms) ) .or. &
+                      iceTmask_slot(NbrS_Task(ms) ) .or. &
+                      iceTmask_slot(NbrN_Task(ms) )) then
+                     ij = dynIJ(ms)
+                     j  = (ij-1)/nx_block + 1
+                     i  = ij - (j-1)*nx_block
                      halomask(i,j,iblk) = 1
                   endif
-               enddo
                enddo
             enddo
             !$OMP END PARALLEL DO
