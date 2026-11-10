@@ -816,10 +816,11 @@ module ice_dyn_evp1d
 
      ! In standalone  distrb_info is an integer. Not needed anyway
      use ice_communicate, only : master_task
-     use ice_gather_scatter, only : gather_global, gather_globalR8_compressed
+     use ice_gather_scatter, only : gather_globalR8_compressed, &
+             gather_globalL1_compressed
      use ice_domain, only : distrb_info
-     use ice_grid, only: dyT, dxT, uarear, tmask, &
-             dynMap, dynOff, uarear_slot, dxT_slot, dyT_slot
+     use ice_grid, only: dyT, dxT, uarear, &
+             dynMap, dynOff, uarear_slot, dxT_slot, dyT_slot, tmask_slot
      use ice_dyn_shared, only: fcor_slot, DminTarea_slot
      implicit none
 
@@ -860,14 +861,20 @@ module ice_dyn_evp1d
      ! Coriolis is constant, so it is a static like the metrics above.  With it
      ! here, fmU and umassdti need not be gathered every timestep: dyn_prep2
      ! forms them as fcor*umass and umass/dt, so umass alone yields both.
-     ! ⚠ Tmask keeps the block gather: it is logical, where
-     ! gather_globalR8_compressed is real.  fcor no longer does -- it has a
-     ! slot form now, so it follows DminTarea above.  G_fcor is read only at
-     ! active cells, which own slots, and it is never scattered back, so the
-     ! ownership question that pins uvel/vvel does not arise here.
+     ! fcor has a slot form, so it follows DminTarea above.  G_fcor is read
+     ! only at active cells, which own slots, and it is never scattered
+     ! back, so the ownership question that pins uvel/vvel does not arise.
      call gather_globalR8_compressed(G_fcor, fcor_slot, dynMap, dynOff, &
                  master_task, distrb_info, c0, grid_ext=.true.)
-     call gather_global(G_Tmask , Tmask , master_task, distrb_info, grid_ext=.true.)
+     ! Tmask follows now that there is a logical compressed gather.  Exact,
+     ! not approximate: every cell either owns a slot -- mask_any is
+     ! tmask .or. umask, and the rim forcing takes every cell within
+     ! 2*nghost of a block edge unconditionally -- or has tmask .false.,
+     ! which is what the compressed gather leaves there.  So the two agree
+     ! cell for cell, which matters because G_tmask builds the evp1d active
+     ! list through calc_nActiveTU and calc_2d_indices_init.
+     call gather_globalL1_compressed(G_Tmask, tmask_slot, dynMap, dynOff, &
+                 master_task, distrb_info, grid_ext=.true.)
 
   end subroutine gather_static
 

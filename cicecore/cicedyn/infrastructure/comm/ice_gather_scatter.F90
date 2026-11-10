@@ -43,6 +43,7 @@
    public :: gather_global,      &
              scatter_global,     &
              gather_globalR8_compressed,  &
+             gather_globalL1_compressed,  &
              scatter_globalR8_compressed, &
              slot_gather_setup,  &
              slot_gather_filter, &
@@ -2776,6 +2777,76 @@
    deallocate(ARRAY_b)
 
  end subroutine gather_globalR8_compressed
+
+!***********************************************************************
+
+ subroutine gather_globalL1_compressed(ARRAY_G, ARRAY, map, off,       &
+                                       dst_task, src_dist, fillValue,  &
+                                       grid_ext)
+
+!  Gather a compressed (slot) LOGICAL field into a global block-shaped
+!  array.  The logical mirror of gather_globalR8_compressed, for the masks
+!  evp1d gathers; gather_globalR8_compressed is real-only, which is why
+!  those were the last block arrays in that interface.
+!
+!  Cells with no slot stay .false. -- they hold nothing the compressed
+!  producer wrote, and a mask is false where no cell is stored.
+
+   integer (int_kind), intent(in) :: &
+      dst_task        ! task to which array should be gathered
+
+   type (distrb), intent(in) :: &
+      src_dist        ! distribution of blocks in the source array
+
+   logical (log_kind), dimension(:), intent(in) :: &
+      ARRAY           ! compressed field, dimension(dynTot)
+
+   integer (int_kind), dimension(:,:), intent(in) :: &
+      map             ! block-local slot of each cell, 0 if not stored
+
+   integer (int_kind), dimension(:), intent(in) :: &
+      off             ! first slot of each block, minus one
+
+   logical (log_kind), intent(in), optional :: &
+      fillValue
+
+   logical (log_kind), intent(in), optional :: &
+      grid_ext
+
+   logical (log_kind), dimension(:,:), intent(inout) :: &
+      ARRAY_G         ! array containing global field on dst_task
+
+!-----------------------------------------------------------------------
+
+   logical (log_kind), dimension(:,:,:), allocatable :: &
+      ARRAY_b         ! block-shaped scratch, unpacked into then gathered
+
+   integer (int_kind) :: i, j, ij, iblk, ierr
+
+   character(len=*), parameter :: subname = '(gather_globalL1_compressed)'
+
+!-----------------------------------------------------------------------
+
+   allocate(ARRAY_b(nx_block,ny_block,size(map,dim=2)), stat=ierr)
+   if (ierr /= 0) call abort_ice(subname//' ERROR: out of memory')
+   ARRAY_b = .false.
+
+   do iblk = 1, size(map,dim=2)
+      do j = 1, ny_block
+      do i = 1, nx_block
+         ij = (j-1)*nx_block + i
+         if (map(ij,iblk) > 0) then
+            ARRAY_b(i,j,iblk) = ARRAY(off(iblk) + map(ij,iblk))
+         endif
+      enddo
+      enddo
+   enddo
+
+   call gather_globalL1(ARRAY_G, ARRAY_b, dst_task, src_dist, fillValue, grid_ext)
+
+   deallocate(ARRAY_b)
+
+ end subroutine gather_globalL1_compressed
 
 !***********************************************************************
 
