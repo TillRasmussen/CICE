@@ -353,6 +353,8 @@
                           skipPhys, tarear_slot,                          &
                           dxU_slot, dyU_slot, HTN_slot, HTE_slot,         &
                           HTNe_slot, HTEn_slot, pack_to_slots
+      use ice_dyn_shared, only: NbrW_Task , NbrSW_Task, NbrS_Task , NbrE_Task, &
+                                NbrNE_Task, NbrN_Task , NbrNW_Task, NbrSE_Task
       use ice_timers, only: ice_timer_start, ice_timer_stop, timer_bound
 
       real (kind=dbl_kind), intent(in) ::     &
@@ -423,9 +425,13 @@
       ! ⚠ nx_block*ny_block + 1, not nx_block*ny_block.  A block whose every
       ! cell is mapped has dynCnt = nx_block*ny_block -- boxislands with the
       ! full ghost rim does exactly that -- and the slice passed is
-      ! 1:dynCnt+1, because pack_to_slots zeroes the LAST element it is given
-      ! as the dead slot.  Sized to the cell count this overran by one.
-      real (kind=dbl_kind), dimension(nx_block*ny_block+1) ::  &
+      ! Task-global now, so departure_points can take them whole and index
+      ! by the slot.  Still packed PER BLOCK into its own lo..hi+1 slice --
+      ! reaching for the dynamics' uvel_slot/vvel_slot instead would assume a
+      ! producer kept them current, which is the assumption that cost
+      ! 797772a.  Each block writes a disjoint range, so this is SHARED
+      ! across threads rather than private, as str1..8 are in matvec.
+      real (kind=dbl_kind), dimension(dynTot) ::  &
          uvel_s, vvel_s
 
       ! Compressed, and they stay that way across the halo exchange: the
@@ -510,13 +516,15 @@
       ! Remap the open water area (without tracers).
       !-------------------------------------------------------------------
 
-      ! ⚠ nc, uvel_s and vvel_s are per-iteration state and MUST be PRIVATE.
+      ! ⚠ nc is per-iteration state and MUST be PRIVATE.  uvel_s and vvel_s
+      ! are NOT: they are task-global now and each block packs only its own
+      ! dynOff+1 .. dynOff+dynCnt+1 slice, so the ranges are disjoint.
       ! They are declared in this routine, not inside the region, so leaving
       ! them off the clause makes them shared and the packs race -- which is
       ! exactly how 8da46d2 reached boreas.  No compiler warns.
       !$OMP PARALLEL DO PRIVATE(iblk,ilo,ihi,jlo,jhi,this_block,n,   &
       !$OMP          mmask,tmask,istop,jstop,l_stop, &
-      !$OMP          nc,uvel_s,vvel_s) &
+      !$OMP          nc) &
       !$OMP SCHEDULE(runtime)
       do iblk = 1, nblocks
 
@@ -595,24 +603,23 @@
          ! producer kept them current, which is the assumption that cost
          ! 797772a.  The metrics already have slot forms in ice_grid.
          nc = dynCnt(iblk)
-         call pack_to_slots(uvel(:,iblk), dynMap(:,iblk), uvel_s(1:nc+1))
-         call pack_to_slots(vvel(:,iblk), dynMap(:,iblk), vvel_s(1:nc+1))
+         call pack_to_slots(uvel(:,iblk), dynMap(:,iblk), uvel_s(dynOff(iblk)+1:dynOff(iblk)+nc+1))
+         call pack_to_slots(vvel(:,iblk), dynMap(:,iblk), vvel_s(dynOff(iblk)+1:dynOff(iblk)+nc+1))
 
-         call departure_points(nc,                                            &
-                               skipRmp(dynOff(iblk)+1:dynOff(iblk)+nc),       &
-                               Nbr_Local (dynOff(iblk)+1:dynOff(iblk)+nc,:),     &
-                               dynIJ  (dynOff(iblk)+1:dynOff(iblk)+nc),       &
+         call departure_points(dynOff(iblk)+1,   dynOff(iblk)+nc,           &
+                               skipRmp,                                       &
+                               NbrW_Task,        NbrSW_Task,                  &
+                               NbrS_Task,        NbrE_Task,                   &
+                               NbrNE_Task,       NbrN_Task,                   &
+                               NbrNW_Task,       NbrSE_Task,                  &
+                               dynIJ,                                         &
                                nx_block,                                      &
                                dt,                                            &
-                               uvel_s(1:nc+1),   vvel_s(1:nc+1),              &
-                               dxU_slot(dynOff(iblk)+1:dynOff(iblk)+nc+1),    &
-                               dyU_slot(dynOff(iblk)+1:dynOff(iblk)+nc+1),    &
-                               HTN_slot(dynOff(iblk)+1:dynOff(iblk)+nc+1),    &
-                               HTE_slot(dynOff(iblk)+1:dynOff(iblk)+nc+1),    &
-                               HTNe_slot(dynOff(iblk)+1:dynOff(iblk)+nc+1),   &
-                               HTEn_slot(dynOff(iblk)+1:dynOff(iblk)+nc+1),   &
-                               dpx(dynOff(iblk)+1:dynOff(iblk)+nc+1),         &
-                               dpy(dynOff(iblk)+1:dynOff(iblk)+nc+1),         &
+                               uvel_s,           vvel_s,                      &
+                               dxU_slot,         dyU_slot,                    &
+                               HTN_slot,         HTE_slot,                    &
+                               HTNe_slot,        HTEn_slot,                   &
+                               dpx,              dpy,                         &
                                l_dp_midpt,       l_stop,                      &
                                istop,            jstop)
 
@@ -1550,8 +1557,13 @@
 !
 ! author William H. Lipscomb, LANL
 
-      subroutine departure_points (ncells,     skipme,   &
-                                   nbr,        ijslot,   &
+      subroutine departure_points (lo,         hi,       &
+                                   skipme,               &
+                                   nbrW,       nbrSW,    &
+                                   nbrS,       nbrE,     &
+                                   nbrNE,      nbrN,     &
+                                   nbrNW,      nbrSE,    &
+                                   ijslot,               &
                                    nx_block,             &
                                    dt,                   &
                                    uvel,       vvel,     &
@@ -1566,17 +1578,18 @@
                           nbr_NW, nbr_NE, nbr_SW, nbr_SE
 
       integer (kind=int_kind), intent(in) ::   &
-         ncells            , & ! slots held by this block
+         lo, hi            , & ! first and last slot of this block
          nx_block              ! only to turn ijslot into i and j for the abort
 
       ! .true. outside the remap loop range -- skipRmp, static geometry.
       logical (kind=log_kind), dimension(:), intent(in), contiguous ::   &
          skipme
 
-      ! (slot, direction) -> neighbour slot; a missing neighbour points at
-      ! the block's dead slot, which holds zero.
-      integer (kind=int_kind), dimension (:,:), intent(in) ::   &
-         nbr
+      ! Neighbour slot, task-global, one contiguous vector per direction as
+      ! the stress and stepu kernels take them.  A missing neighbour points
+      ! at the block's dead slot, which holds zero.
+      integer (kind=int_kind), dimension (:), intent(in), contiguous ::   &
+         nbrW, nbrSW, nbrS, nbrE, nbrNE, nbrN, nbrNW, nbrSE
 
       ! (j-1)*nx_block+i of the cell owning each slot, for the abort message
       integer (kind=int_kind), dimension (:), intent(in) ::   &
@@ -1585,7 +1598,8 @@
       real (kind=dbl_kind), intent(in) ::   &
          dt               ! time step (s)
 
-      ! compressed: this block's slice, 1-based, cells 1..ncells, dead slot last
+      ! compressed, WHOLE: indexed by the task-global slot, lo..hi for this
+      ! block, with the dead slot at hi+1.
       real (kind=dbl_kind), dimension (:), intent(in), contiguous ::   &
          uvel         , & ! x-component of velocity (m/s)
          vvel         , & ! y-component of velocity (m/s)
@@ -1639,11 +1653,15 @@
       ! afterwards; for nghost = 2 it reaches a layer into the ghosts.
       !-------------------------------------------------------------------
 
-      dpx(:) = c0
-      dpy(:) = c0
+      ! ⚠ THIS BLOCK'S RANGE ONLY.  As a per-block slice `dpx(:) = c0` cleared
+      ! one block; with the whole array passed, the unsubscripted form would
+      ! wipe every block already filled and leave only the last standing.
+      ! The dead slot at hi+1 is zeroed too -- a missing neighbour lands there.
+      dpx(lo:hi+1) = c0
+      dpy(lo:hi+1) = c0
       isstop = 0
 
-      do is = 1, ncells
+      do is = lo, hi
          if (skipme(is)) cycle
 
          dpx(is) = -dt*uvel(is)
@@ -1652,7 +1670,7 @@
          ! Check for values out of bounds (more than one grid cell away).
          !
          ! ⚠ HTNe and HTEn are the shifted lengths, precomputed in block
-         ! space.  Reading HTN at nbr(is,nbr_E) would give c0 wherever that
+         ! space.  Reading HTN at nbrE(is) would give c0 wherever that
          ! neighbour has no slot, and every positive dpx would then look out
          ! of bounds -- HTN is an edge length, nonzero over land.
          if ((dpx(is) > c0 .and. (dpx(is) < -HTN(is) .or. dpx(is) > HTNe(is))) .or.   &
@@ -1679,7 +1697,7 @@
 
       if (l_dp_midpt) then ! find dep pts using corrected midpt velocity
 
-         do is = 1, ncells
+         do is = lo, hi
             if (skipme(is)) cycle
             if (uvel(is)/=c0 .or. vvel(is)/=c0) then
 
@@ -1712,24 +1730,24 @@
 
                if (mpx >= c0 .and. mpy >= c0) then    ! cell (i+1,j+1)
                   isa  = is
-                  isb = nbr(is,nbr_E )
-                  isc  = nbr(is,nbr_NE); isd = nbr(is,nbr_N )
+                  isb = nbrE(is)
+                  isc  = nbrNE(is); isd = nbrN(is)
                   mpxt = mpx - p5
                   mpyt = mpy - p5
                elseif (mpx < c0 .and. mpy < c0) then  ! cell (i,j)
-                  isa  = nbr(is,nbr_SW); isb = nbr(is,nbr_S )
+                  isa  = nbrSW(is); isb = nbrS(is)
                   isc  = is
-                  isd = nbr(is,nbr_W )
+                  isd = nbrW(is)
                   mpxt = mpx + p5
                   mpyt = mpy + p5
                elseif (mpx >= c0 .and. mpy < c0) then ! cell (i+1,j)
-                  isa  = nbr(is,nbr_S ); isb = nbr(is,nbr_SE)
-                  isc  = nbr(is,nbr_E ); isd = is
+                  isa  = nbrS(is); isb = nbrSE(is)
+                  isc  = nbrE(is); isd = is
                   mpxt = mpx - p5
                   mpyt = mpy + p5
                elseif (mpx < c0 .and. mpy >= c0) then ! cell (i,j+1)
-                  isa  = nbr(is,nbr_W ); isb = is
-                  isc  = nbr(is,nbr_N ); isd = nbr(is,nbr_NW)
+                  isa  = nbrW(is); isb = is
+                  isc  = nbrN(is); isd = nbrNW(is)
                   mpxt = mpx + p5
                   mpyt = mpy - p5
                endif
