@@ -817,11 +817,12 @@
                                nghost,            edge,               &
                                icellsng(:,iblk),                      &
                                indxsng(:,:),                          &
-                               dpx(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),            &
-                               dpy(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), &
-                               dynIJ(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),  &
-                               dxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               dyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                                dynOff(iblk),      dynCnt(iblk)+1,     &
+                                dpx,                                   &
+                                dpy,               dynMap(:,iblk),     &
+                                dynIJ,                                 &
+                                dxU_slot,                              &
+                                dyU_slot,                              &
                                earea (:,  iblk),  narea (:,  iblk),   &
                                xp,                yp,                 &
                                iflux,             jflux,              &
@@ -879,11 +880,12 @@
                                nghost,            edge,               &
                                icellsng(:,iblk),                      &
                                indxsng(:,:),                          &
-                               dpx(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),            &
-                               dpy(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), &
-                               dynIJ(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1),  &
-                               dxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                               dyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                                dynOff(iblk),      dynCnt(iblk)+1,     &
+                                dpx,                                   &
+                                dpy,               dynMap(:,iblk),     &
+                                dynIJ,                                 &
+                                dxU_slot,                              &
+                                dyU_slot,                              &
                                earea (:,  iblk),  narea (:,  iblk),   &
                                xp,                yp,                 &
                                iflux,             jflux,              &
@@ -1812,6 +1814,7 @@
                                    nghost,       edge,       &
                                    icells,                   &
                                    indxs,                    &
+                                   off,          nslot,    &
                                    dpx,          dpy,  map,  &
                                    ijslot,                   &
                                    dxu,          dyu,        &
@@ -1822,6 +1825,8 @@
                                    triarea,      edgearea)
 
       integer (kind=int_kind), intent(in) ::   &
+         off               , & ! this block's dynOff: block-local + off = task-global
+         nslot             , & ! slots this block holds, dead slot included
          nx_block, ny_block, & ! block dimensions
          ilo,ihi,jlo,jhi   , & ! beginning and end of physical domain
          nghost                ! number of ghost cells
@@ -1829,8 +1834,13 @@
       character (len=char_len), intent(in) ::   &
          edge             ! 'north' or 'east'
 
-      ! dpx and dpy arrive COMPRESSED -- this block's slice, 1-based -- and
-      ! map turns a cell into its slot.  The loops below keep their (j,i)
+      ! dpx, dpy, dxu, dyu and ijslot arrive COMPRESSED and WHOLE, indexed by
+      ! the task-global slot.  map turns a cell into a BLOCK-LOCAL slot, so
+      ! every read of one of those five composes it: dpx(off+ms).  The
+      ! composition is written at the point of use on purpose -- it is the
+      ! only marker distinguishing the two index spaces, and everything else
+      ! in this routine (dx, dy, xp, yp, triarea, iflux, jflux, isflux,
+      ! edgearea, areafact) is block-local scratch indexed by ms directly.  The loops below keep their (j,i)
       ! order deliberately: the icellsd list they build is walked again by
       ! transport_integrals, and slot order is not (j,i) order, so iterating
       ! slots here would reorder floating-point sums downstream.
@@ -1922,8 +1932,11 @@
          indxid       , & ! compressed index in i-direction
          indxjd           ! compressed index in j-direction
 
-      ! The scaled departure points, compressed like dpx/dpy themselves.
-      real (kind=dbl_kind), dimension(size(dpx)) ::   &
+      ! The scaled departure points: BLOCK-LOCAL scratch, 1..nslot.  Sized
+      ! from nslot, not from size(dpx) -- dpx is the whole task now, and an
+      ! automatic that large would be a dynTot stack array per call per
+      ! thread.
+      real (kind=dbl_kind), dimension(nslot) ::   &
          dx, dy           ! scaled departure points
 
       ! ⚠ These two STAY BLOCK-SHAPED, deliberately, and the reason is
@@ -2189,9 +2202,10 @@
 
       ! ⚠ dynMap returns 0 for a cell with no slot, where Nbr_Local would have
       ! returned the dead slot.  Reading a slot array at 0 is out of bounds,
-      ! so resolve it here: the dead slot is the last element of the slice,
-      ! and it holds c0 -- which is what dpx carries at an unmapped cell.
-      mdead = size(dpx)
+      ! so resolve it here: this block's dead slot is its last, and it holds
+      ! c0 -- which is what dpx carries at an unmapped cell.  BLOCK-LOCAL,
+      ! so off+mdead reaches the right one in a task-global array.
+      mdead = nslot
 
       icellsd = 0
       if (trim(edge) == 'north') then
@@ -2201,9 +2215,9 @@
             if (ms < 1) ms = mdead
             mw = map((j-1)*nx_block + i-1)
             if (mw < 1) mw = mdead
-            if (dpx(mw)/=c0 .or. dpy(mw)/=c0   &
+            if (dpx(off+mw)/=c0 .or. dpy(off+mw)/=c0   &
                             .or.               &
-                dpx(ms)/=c0 .or. dpy(ms)/=c0) then
+                dpx(off+ms)/=c0 .or. dpy(off+ms)/=c0) then
                icellsd = icellsd + 1
                indxid(icellsd) = i
                indxjd(icellsd) = j
@@ -2223,9 +2237,9 @@
             if (ms < 1) ms = mdead
             mw = map((j-1-1)*nx_block + i)
             if (mw < 1) mw = mdead
-            if (dpx(mw)/=c0 .or. dpy(mw)/=c0   &
+            if (dpx(off+mw)/=c0 .or. dpy(off+mw)/=c0   &
                             .or.               &
-                dpx(ms)/=c0 .or. dpy(ms)/=c0) then
+                dpx(off+ms)/=c0 .or. dpy(off+ms)/=c0) then
                icellsd = icellsd + 1
                indxid(icellsd) = i
                indxjd(icellsd) = j
@@ -2259,8 +2273,8 @@
       do i = 1, ihi
          ms = map((j-1)*nx_block + i)
          if (ms > 0) then
-            dx(ms) = dpx(ms) / dxu(ms)
-            dy(ms) = dpy(ms) / dyu(ms)
+            dx(ms) = dpx(off+ms) / dxu(off+ms)
+            dy(ms) = dpy(off+ms) / dyu(off+ms)
          endif
       enddo
       enddo
@@ -3299,7 +3313,7 @@
             do nv = 1, nvert
                do ij = 1, icells(ng)
                   ms = indxs(ij,ng)
-                  ijb = ijslot(ms)
+                  ijb = ijslot(off+ms)
                   i = mod(ijb-1, nx_block) + 1
                   j = (ijb-1)/nx_block + 1
                   ishift = iflux(ms,ng) - i
@@ -3314,7 +3328,7 @@
             do nv = 1, nvert
                do ij = 1, icells(ng)
                   ms = indxs(ij,ng)
-                  ijb = ijslot(ms)
+                  ijb = ijslot(off+ms)
                   i = mod(ijb-1, nx_block) + 1
                   j = (ijb-1)/nx_block + 1
                   ishift = iflux(ms,ng) - i
