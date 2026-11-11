@@ -567,10 +567,10 @@
          call construct_fields(iblk,              ntrace,            &
                                tracer_type,       depend,            &
                                has_dependents,                       &
-                               mm(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,0),                     &
-                               mc(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,0),                     &
-                               mx(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,0),                     &
-                               my(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,0),                     &
+                               mm(:,0),                     &
+                               mc(:,0),                     &
+                               mx(:,0),                     &
+                               my(:,0),                     &
                                mmask(:,0) )
 
          ! ice categories
@@ -580,15 +580,15 @@
             call construct_fields(iblk,                ntrace,              &
                                   tracer_type,         depend,              &
                                   has_dependents,                          &
-                                  mm(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,n),                     &
-                                  mc(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,n),                     &
-                                  mx(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,n),                     &
-                                  my(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,n),                     &
+                                  mm(:,n),                     &
+                                  mc(:,n),                     &
+                                  mx(:,n),                     &
+                                  my(:,n),                     &
                                   mmask  (:,n),                            &
-                                  tm(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,n),                   &
-                                  tc(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,n),                   &
-                                  tx(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,n),                   &
-                                  ty(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,n),                   &
+                                  tm(:,:,n),                   &
+                                  tc(:,:,n),                   &
+                                  tx(:,:,n),                   &
+                                  ty(:,:,n),                   &
                                   tmask(:,:,n) )
 
          enddo                  ! n
@@ -1182,7 +1182,7 @@
          puny, &
          w2, w3, w7        ! work variables
 
-      integer (kind=int_kind) :: ncells, is
+      integer (kind=int_kind) :: ncells, is, off, nslot
 
       ! The compressed working set.  mm, mmask, tm and tmask are no longer
       ! here: they arrive compressed, so only the genuinely local vectors
@@ -1242,21 +1242,30 @@
       if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
          file=__FILE__, line=__LINE__)
 
-      mc(:) = c0
-      mx(:) = c0
-      my(:) = c0
+      mc(off+1:off+nslot) = c0
+      mx(off+1:off+nslot) = c0
+      my(off+1:off+nslot) = c0
 
       if (present(tm)) then
-         tc(:,:) = c0
-         tx(:,:) = c0
-         ty(:,:) = c0
+         tc(off+1:off+nslot,:) = c0
+         tx(off+1:off+nslot,:) = c0
+         ty(off+1:off+nslot,:) = c0
       endif
 
       ! limited gradient of mass field in each cell (except masked cells)
       ! Note: The gradient is computed in scaled coordinates with
       !       dxT = dyT = hte = htn = 1.
 
+      ! ⚠ TWO index spaces.  mm, mc, mx, my, tm, tc, tx and ty are whole
+      ! task-global arrays; everything else here -- tc_s, tx_s, ty_s,
+      ! mxav_s, myav_s, mtxav, mtyav, mmask, tmask, zero_s -- is the
+      ! caller's per-block scratch, 1-based.  is stays BLOCK-LOCAL and the
+      ! task-global reads compose: mc(off+is).  limited_gradient is handed
+      ! slices for the same reason -- it is also called with purely
+      ! block-local arrays and so cannot take the task-global form.
       ncells = dynCnt(iblk)
+      off    = dynOff(iblk)
+      nslot  = ncells + 1
 
       ! xav and yav are never assigned -- they are c0 for the whole routine,
       ! which is what the "echmod: grid arrays = 0" note below refers to --
@@ -1266,20 +1275,21 @@
       call limited_gradient (ncells,                                            &
                              skipRmp(dynOff(iblk)+1:dynOff(iblk)+ncells),       &
                              Nbr_Local (dynOff(iblk)+1:dynOff(iblk)+ncells,:),     &
-                             mm,       hm_slot(dynOff(iblk)+1:dynOff(iblk)+ncells+1), &
+                             mm(off+1:off+nslot),                                 &
+                             hm_slot(dynOff(iblk)+1:dynOff(iblk)+ncells+1),        &
                              zero_s,   zero_s,                                  &
-                             mx,     my)
+                             mx(off+1:off+nslot), my(off+1:off+nslot))
 
       ! ⚠ mmask is the indicator of the icells list: make_masks sets it to c1
       ! at exactly the cells it counted, mm > puny.  So testing it per slot
       ! selects the same cells the indxi/indxj loop did, and every such cell
       ! has a slot -- ice implies ocean implies tmask implies mask_any.
-      mc(:) = c0
+      mc(off+1:off+nslot) = c0
       do is = 1, ncells
          if (mmask(is) <= puny) cycle
 
          ! mass field at geometric center
-         mc(is) = mm(is)
+         mc(off+is) = mm(off+is)
 
       enddo                     ! is
 
@@ -1296,8 +1306,8 @@
 
             ! center of mass (mxav,myav) for each cell
 
-            mxav_s(is) = mx(is)*xxav / mm(is)
-            myav_s(is) = my(is)*yyav / mm(is)
+            mxav_s(is) = mx(off+is)*xxav / mm(off+is)
+            myav_s(is) = my(off+is)*yyav / mm(off+is)
 
          enddo
 
@@ -1316,7 +1326,7 @@
                call limited_gradient(ncells,                                      &
                                      skipRmp(dynOff(iblk)+1:dynOff(iblk)+ncells), &
                                      Nbr_Local (dynOff(iblk)+1:dynOff(iblk)+ncells,:),&
-                                     tm(:,nt), mmask,                             &
+                                     tm(off+1:off+nslot,nt), mmask,               &
                                      mxav_s,   myav_s,                            &
                                      tx_s,     ty_s)
 
@@ -1331,17 +1341,17 @@
                      if (mmask(is) <= puny) cycle
 
                      ! tracer value at geometric center
-                     tc_s(is) = tm(is,nt) - tx_s(is)*mxav_s(is)   &
+                     tc_s(is) = tm(off+is,nt) - tx_s(is)*mxav_s(is)   &
                                           - ty_s(is)*myav_s(is)
 
                      if (tmask(is,nt) > puny) then
 
                         ! center of area*tracer
-                        w2 = mc(is)*tx_s(is)   &
-                           + mx(is)*tc_s(is)
-                        w3 = mc(is)*ty_s(is)   &
-                           + my(is)*tc_s(is)
-                        w7 = c1 / (mm(is)*tm(is,nt))
+                        w2 = mc(off+is)*tx_s(is)   &
+                           + mx(off+is)*tc_s(is)
+                        w3 = mc(off+is)*ty_s(is)   &
+                           + my(off+is)*tc_s(is)
+                        w7 = c1 / (mm(off+is)*tm(off+is,nt))
                         ! echmod: grid arrays = 0
                         mtxav(is,nt) = w2*xxav *w7
                         mtyav(is,nt) = w3*yyav * w7
@@ -1356,7 +1366,7 @@
                      if (mmask(is) <= puny) cycle
 
                      ! tracer value at geometric center
-                     tc_s(is) = tm(is,nt) - tx_s(is)*mxav_s(is)   &
+                     tc_s(is) = tm(off+is,nt) - tx_s(is)*mxav_s(is)   &
                                           - ty_s(is)*myav_s(is)
                   enddo            ! is
 
@@ -1368,14 +1378,14 @@
                call limited_gradient(ncells,                                      &
                                      skipRmp(dynOff(iblk)+1:dynOff(iblk)+ncells), &
                                      Nbr_Local (dynOff(iblk)+1:dynOff(iblk)+ncells,:),&
-                                     tm(:,nt), tmask(:,nt1),                      &
+                                     tm(off+1:off+nslot,nt), tmask(:,nt1),        &
                                      mtxav(:,nt1), mtyav(:,nt1),                  &
                                      tx_s,     ty_s)
 
                tc_s(:) = c0
                do is = 1, ncells     ! ice is present
                   if (mmask(is) <= puny) cycle
-                  tc_s(is) = tm(is,nt)                       &
+                  tc_s(is) = tm(off+is,nt)                       &
                            - tx_s(is) * mtxav(is,nt1)        &
                            - ty_s(is) * mtyav(is,nt1)
                enddo               ! is
@@ -1386,14 +1396,14 @@
                do is = 1, ncells
                   if (mmask(is) <= puny) cycle
 
-                  tc_s(is) = tm(is,nt)
+                  tc_s(is) = tm(off+is,nt)
                enddo               ! is
 
             endif                  ! tracer_type
 
-            tc(:,nt) = tc_s(:)
-            tx(:,nt) = tx_s(:)
-            ty(:,nt) = ty_s(:)
+            tc(off+1:off+nslot,nt) = tc_s(:)
+            tx(off+1:off+nslot,nt) = tx_s(:)
+            ty(off+1:off+nslot,nt) = ty_s(:)
 
          enddo                    ! ntrace
 
