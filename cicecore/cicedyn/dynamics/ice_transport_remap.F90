@@ -928,18 +928,18 @@
          !-------------------------------------------------------------------
 
          ! open water
-         call update_fields (dynCnt(iblk),                                   &
-                             skipPhys(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                             Nbr_Local  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:), &
-                             dynIJ   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
+         call update_fields (dynOff(iblk),   dynCnt(iblk),                                   &
+                             skipPhys, &
+                             Nbr_Local, &
+                             dynIJ, &
                              nx_block,                              &
                              ntrace,                                &
                              tracer_type,        depend,            &
-                             tarear_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                             tarear_slot, &
                              l_stop,            &
                              istop,              jstop,             &
                              mflxe(:,0),       mflxn(:,0),      &
-                             mm(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,0))
+                             mm(:,0))
 
          if (l_stop) then
             call diagnostic_abort(istop,jstop,iblk,'negative area (open water)')
@@ -948,20 +948,20 @@
          ! ice categories
          do n = 1, ncat
 
-            call update_fields(dynCnt(iblk),                                   &
-                               skipPhys(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
-                               Nbr_Local  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk),:), &
-                               dynIJ   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)), &
+            call update_fields(dynOff(iblk),   dynCnt(iblk),                                   &
+                               skipPhys, &
+                               Nbr_Local, &
+                               dynIJ, &
                                nx_block,                               &
                                ntrace,                                 &
                                tracer_type,          depend,           &
-                               tarear_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                               tarear_slot, &
                                l_stop,                                 &
                                istop,                jstop,            &
                                mflxe (:,  n),      mflxn (:,  n),  &
-                               mm(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,n),      &
+                               mm(:,n),      &
                                mtflxe(:,:,n),      mtflxn(:,:,n),  &
-                               tm(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,n))
+                               tm(:,:,n))
 
             if (l_stop) then
                write (nu_diag,*) 'istep1, my_task, iblk, cat =',     &
@@ -3827,7 +3827,8 @@
 !
 ! author William H. Lipscomb, LANL
 
-      subroutine update_fields (ncells,      skipme,     &
+      subroutine update_fields (off,         ncells,     &
+                                skipme,                  &
                                 nbr,         ijslot,     &
                                 nx_block,                &
                                 ntrace,                  &
@@ -3842,7 +3843,14 @@
 
       use ice_grid, only: nbr_W, nbr_S
 
+      ! ⚠ TWO index spaces.  skipme, nbr, ijslot, tarear, mm and tm are whole
+      ! task-global arrays; mflxe, mflxn, mtflxe, mtflxn and the local mtold
+      ! are the caller's per-block scratch, 1-based.  is stays BLOCK-LOCAL
+      ! and the task-global reads compose: mm(off+is).  nbr composes the same
+      ! way but its VALUE stays block-local, which is what lets mflxe(mw)
+      ! keep working.
       integer (kind=int_kind), intent(in) ::   &
+         off               , & ! this block's dynOff
          ncells            , & ! number of slots this block holds
          nx_block          , & ! block width, to report (i,j) on abort
          ntrace                ! number of tracers in use
@@ -3920,22 +3928,22 @@
          do nt = 1, ntrace
             if (tracer_type(nt)==1) then ! does not depend on other tracers
                do is = 1, ncells
-                  if (skipme(is)) cycle
-                  mtold(is,nt) = mm(is) * tm(is,nt)
+                  if (skipme(off+is)) cycle
+                  mtold(is,nt) = mm(off+is) * tm(off+is,nt)
                enddo            ! is
             elseif (tracer_type(nt)==2) then  ! depends on another tracer
                nt1 = depend(nt)
                do is = 1, ncells
-                  if (skipme(is)) cycle
-                  mtold(is,nt) = mm(is) * tm(is,nt1) * tm(is,nt)
+                  if (skipme(off+is)) cycle
+                  mtold(is,nt) = mm(off+is) * tm(off+is,nt1) * tm(off+is,nt)
                enddo            ! is
             elseif (tracer_type(nt)==3) then  ! depends on two tracers
                nt1 = depend(nt)
                nt2 = depend(nt1)
                do is = 1, ncells
-                  if (skipme(is)) cycle
-                  mtold(is,nt) = mm(is)    &
-                            * tm(is,nt2) * tm(is,nt1) * tm(is,nt)
+                  if (skipme(off+is)) cycle
+                  mtold(is,nt) = mm(off+is)    &
+                            * tm(off+is,nt2) * tm(off+is,nt1) * tm(off+is,nt)
                enddo            ! is
             endif               ! depend(nt) = 0
          enddo                  ! nt
@@ -3948,37 +3956,37 @@
       isstop = 0
 
       do is = 1, ncells
-         if (skipme(is)) cycle
+         if (skipme(off+is)) cycle
 
-         mw   = nbr(is,nbr_W)
-         msth = nbr(is,nbr_S)
+         mw   = nbr(off+is,nbr_W)
+         msth = nbr(off+is,nbr_S)
          w1 = mflxe(is) - mflxe(mw)   &
             + mflxn(is) - mflxn(msth)
-         mm(is) = mm(is) - w1*tarear(is)
+         mm(off+is) = mm(off+is) - w1*tarear(off+is)
 
-         if (mm(is) < -puny) then    ! abort with negative value
+         if (mm(off+is) < -puny) then    ! abort with negative value
             l_stop = .true.
             isstop = is
-         elseif (mm(is) < c0) then   ! set to zero
-            mm(is) = c0
+         elseif (mm(off+is) < c0) then   ! set to zero
+            mm(off+is) = c0
          endif
 
       enddo
 
       if (l_stop) then
          is = isstop
-         ijb = ijslot(is)
+         ijb = ijslot(off+is)
          istop = mod(ijb-1, nx_block) + 1
          jstop = (ijb-1)/nx_block + 1
-         mw   = nbr(is,nbr_W)
-         msth = nbr(is,nbr_S)
+         mw   = nbr(off+is,nbr_W)
+         msth = nbr(off+is,nbr_S)
          w1 = mflxe(is) - mflxe(mw)   &
             + mflxn(is) - mflxn(msth)
          write (nu_diag,*) ' '
          write (nu_diag,*) 'New mass < 0, i, j =', istop, jstop
-         write (nu_diag,*) 'Old mass =', mm(is) + w1*tarear(is)
-         write (nu_diag,*) 'New mass =', mm(is)
-         write (nu_diag,*) 'Net transport =', -w1*tarear(is)
+         write (nu_diag,*) 'Old mass =', mm(off+is) + w1*tarear(off+is)
+         write (nu_diag,*) 'New mass =', mm(off+is)
+         write (nu_diag,*) 'Net transport =', -w1*tarear(off+is)
          return
       endif
 
@@ -3994,38 +4002,38 @@
          do nt = 1, ntrace
 
             do is = 1, ncells
-               if (skipme(is)) cycle
-               tm(is,nt) = c0
+               if (skipme(off+is)) cycle
+               tm(off+is,nt) = c0
             enddo
 
             if (tracer_type(nt)==1) then ! does not depend on other tracers
 
                do is = 1, ncells
-                  if (skipme(is)) cycle
-                  if (mm(is) <= c0) cycle
+                  if (skipme(off+is)) cycle
+                  if (mm(off+is) <= c0) cycle
 
-                  mw   = nbr(is,nbr_W)
-                  msth = nbr(is,nbr_S)
+                  mw   = nbr(off+is,nbr_W)
+                  msth = nbr(off+is,nbr_S)
                   w1  = mtflxe(is,nt) - mtflxe(mw,nt)   &
                       + mtflxn(is,nt) - mtflxn(msth,nt)
-                  tm(is,nt) = (mtold(is,nt) - w1*tarear(is))   &
-                                / mm(is)
+                  tm(off+is,nt) = (mtold(is,nt) - w1*tarear(off+is))   &
+                                / mm(off+is)
                enddo            ! is
 
             elseif (tracer_type(nt)==2) then ! depends on another tracer
                nt1 = depend(nt)
 
                do is = 1, ncells
-                  if (skipme(is)) cycle
-                  if (mm(is) <= c0) cycle
+                  if (skipme(off+is)) cycle
+                  if (mm(off+is) <= c0) cycle
 
-                  if (abs(tm(is,nt1)) > c0) then
-                     mw   = nbr(is,nbr_W)
-                     msth = nbr(is,nbr_S)
+                  if (abs(tm(off+is,nt1)) > c0) then
+                     mw   = nbr(off+is,nbr_W)
+                     msth = nbr(off+is,nbr_S)
                      w1  = mtflxe(is,nt) - mtflxe(mw,nt)   &
                          + mtflxn(is,nt) - mtflxn(msth,nt)
-                     tm(is,nt) = (mtold(is,nt) - w1*tarear(is))   &
-                                 / (mm(is) * tm(is,nt1))
+                     tm(off+is,nt) = (mtold(is,nt) - w1*tarear(off+is))   &
+                                 / (mm(off+is) * tm(off+is,nt1))
                   endif
 
                enddo            ! is
@@ -4035,17 +4043,17 @@
                nt2 = depend(nt1)
 
                do is = 1, ncells
-                  if (skipme(is)) cycle
-                  if (mm(is) <= c0) cycle
+                  if (skipme(off+is)) cycle
+                  if (mm(off+is) <= c0) cycle
 
-                  if (abs(tm(is,nt1)) > c0 .and.   &
-                      abs(tm(is,nt2)) > c0) then
-                     mw   = nbr(is,nbr_W)
-                     msth = nbr(is,nbr_S)
+                  if (abs(tm(off+is,nt1)) > c0 .and.   &
+                      abs(tm(off+is,nt2)) > c0) then
+                     mw   = nbr(off+is,nbr_W)
+                     msth = nbr(off+is,nbr_S)
                      w1  = mtflxe(is,nt) - mtflxe(mw,nt)   &
                          + mtflxn(is,nt) - mtflxn(msth,nt)
-                     tm(is,nt) = (mtold(is,nt) - w1*tarear(is))   &
-                              / (mm(is) * tm(is,nt2) * tm(is,nt1))
+                     tm(off+is,nt) = (mtold(is,nt) - w1*tarear(off+is))   &
+                              / (mm(off+is) * tm(off+is,nt2) * tm(off+is,nt1))
                   endif
                enddo            ! is
 
