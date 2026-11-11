@@ -504,12 +504,15 @@
             !  from being used in the monotonicity check.
             !-------------------------------------------------------------------
 
-            call make_masks (dynCnt(iblk),                                       &
+            ! aim and trm whole, task-global; the masks stay a slice, which
+            ! rebases to 1 at the assumed-shape dummy and so matches the
+            ! per-block scratch horizontal_remap hands in.
+            call make_masks (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk),          &
                              ntrace,                                             &
                              has_dependents,                                     &
-                             aim   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),   &
+                             aim,                                                &
                              aimask(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),   &
-                             trm   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:), &
+                             trm,                                                &
                              trmask(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:))
          enddo
          !$OMP END PARALLEL DO

@@ -549,12 +549,12 @@
          !  being used to compute tracer gradients.
          !-------------------------------------------------------------------
 
-         call make_masks (dynCnt(iblk),                                      &
+         call make_masks (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk),          &
                           ntrace,                                           &
                           has_dependents,                                   &
-                          mm(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
+                          mm,                                               &
                           mmask,                                            &
-                          tm(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:),&
+                          tm,                                               &
                           tmask)
 
          !-------------------------------------------------------------------
@@ -991,7 +991,7 @@
 !
 ! author William H. Lipscomb, LANL
 
-      subroutine make_masks (ncells,                   &
+      subroutine make_masks (lo,             hi,       &
                              ntrace,                   &
                              has_dependents,           &
                              mm,             mmask,    &
@@ -1007,14 +1007,19 @@
       ! cells the block loop did, minus the ones with no slot, and nothing
       ! reads a mask outside mask_any.
 
+      ! ⚠ hi is the last REAL cell, not the dead slot.  The loops below ran
+      ! 1..ncells before, which excluded it; including it would define a
+      ! mmask element the caller's scratch never had written and that
+      ! nothing reads.
       integer (kind=int_kind), intent(in) ::     &
-         ncells            , & ! number of slots this block holds
+         lo, hi            , & ! first and last real slot of this block
          ntrace                ! number of tracers in use
 
       logical (kind=log_kind), dimension (ntrace), intent(in) ::     &
          has_dependents        ! true if a tracer has dependent tracers
 
-      ! This block's slice of the compressed layout, category 0 upwards.
+      ! Compressed, WHOLE: indexed by the task-global slot, lo..hi for this
+      ! block.  Category 0 upwards in the second dimension.
       real (kind=dbl_kind), dimension (:,0:), intent(in) :: &
          mm                    ! mean ice area in each grid cell
 
@@ -1030,7 +1035,8 @@
       ! local variables
 
       integer (kind=int_kind) ::     &
-         ms                , & ! slot index
+         ms                , & ! task-global slot
+         is                , & ! the same cell in this block's scratch, 1-based
          n                 , & ! ice category index
          nt                    ! tracer index
 
@@ -1048,11 +1054,15 @@
       ! open water mask
       !-------------------------------------------------------------------
 
-      do ms = 1, ncells
+      ! ⚠ TWO index spaces.  mm and tm are task-global now; mmask and tmask
+      ! are per-block scratch the caller allocates at dynCnt(iblk)+1 inside
+      ! the loop, so they stay 1-based.  ms indexes the first, is the second.
+      do ms = lo, hi
+         is = ms - lo + 1
          if (mm(ms,0) > puny) then
-            mmask(ms,0) = c1
+            mmask(is,0) = c1
          else
-            mmask(ms,0) = c0
+            mmask(is,0) = c0
          endif
       enddo
 
@@ -1063,8 +1073,8 @@
          !-------------------------------------------------------------------
 
          mmask(:,n) = c0
-         do ms = 1, ncells
-            if (mm(ms,n) > puny) mmask(ms,n) = c1
+         do ms = lo, hi
+            if (mm(ms,n) > puny) mmask(ms-lo+1,n) = c1
          enddo
 
          !-------------------------------------------------------------------
@@ -1080,9 +1090,10 @@
             ! was redefined over the narrower range below.
             do nt = 1, ntrace
                if (has_dependents(nt)) then
-                  do ms = 1, ncells
-                     if (mmask(ms,n) > puny .and. abs(tm(ms,nt,n)) > puny) then
-                        tmask(ms,nt,n) = c1
+                  do ms = lo, hi
+                     is = ms - lo + 1
+                     if (mmask(is,n) > puny .and. abs(tm(ms,nt,n)) > puny) then
+                        tmask(is,nt,n) = c1
                      endif
                   enddo
                endif
