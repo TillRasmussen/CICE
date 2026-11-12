@@ -82,6 +82,7 @@
       ! them from the slots and expands at the write.
       use ice_state, only: aicen, vicen, vsnon, trcrn, uvel, vvel, &
                            uvelE, vvelE, uvelN, vvelN
+      use ice_state, only: aicen_slot, vicen_slot, vsnon_slot, trcrn_slot
 
       character(len=*), intent(in), optional :: filename_spec
 
@@ -100,6 +101,11 @@
       ! arrays are no longer the restart's source: see expand_vel below.
       real (kind=dbl_kind), dimension (nx_block*ny_block,max_blocks) :: &
          workf
+
+      ! The category state, likewise.  Heap, not stack: ncat times work1 is
+      ! enough to matter at production block sizes.
+      real (kind=dbl_kind), dimension (:,:,:,:), allocatable :: &
+         workcat
 
       character (len=3) :: nchar
 
@@ -139,28 +145,39 @@
       ! tracers are written to their own dump/restart binary files.
       !-----------------------------------------------------------------
 
-      call write_restart_field(nu_dump,0,aicen(:,:,:,:),'ruf8','aicen',ncat,diag)
-      call write_restart_field(nu_dump,0,vicen(:,:,:,:),'ruf8','vicen',ncat,diag)
-      call write_restart_field(nu_dump,0,vsnon(:,:,:,:),'ruf8','vsnon',ncat,diag)
-      call write_restart_field(nu_dump,0,trcrn(:,:,nt_Tsfc,:,:),'ruf8','Tsfcn',ncat,diag)
+      allocate(workcat(nx_block,ny_block,ncat,max_blocks))
+
+      call expand_cat(aicen_slot, aicen, workcat)
+      call write_restart_field(nu_dump,0,workcat,'ruf8','aicen',ncat,diag)
+      call expand_cat(vicen_slot, vicen, workcat)
+      call write_restart_field(nu_dump,0,workcat,'ruf8','vicen',ncat,diag)
+      call expand_cat(vsnon_slot, vsnon, workcat)
+      call write_restart_field(nu_dump,0,workcat,'ruf8','vsnon',ncat,diag)
+      call expand_trc(trcrn_slot, trcrn, nt_Tsfc, workcat)
+      call write_restart_field(nu_dump,0,workcat,'ruf8','Tsfcn',ncat,diag)
 
       do k=1,nilyr
          write(nchar,'(i3.3)') k
-         call write_restart_field(nu_dump,0,trcrn(:,:,nt_sice+k-1,:,:),'ruf8', &
+         call expand_trc(trcrn_slot, trcrn, nt_sice+k-1, workcat)
+         call write_restart_field(nu_dump,0,workcat,'ruf8', &
                                  'sice'//trim(nchar),ncat,diag)
       enddo
 
       do k=1,nilyr
          write(nchar,'(i3.3)') k
-         call write_restart_field(nu_dump,0,trcrn(:,:,nt_qice+k-1,:,:),'ruf8', &
+         call expand_trc(trcrn_slot, trcrn, nt_qice+k-1, workcat)
+         call write_restart_field(nu_dump,0,workcat,'ruf8', &
                                  'qice'//trim(nchar),ncat,diag)
       enddo
 
       do k=1,nslyr
          write(nchar,'(i3.3)') k
-         call write_restart_field(nu_dump,0,trcrn(:,:,nt_qsno+k-1,:,:),'ruf8', &
+         call expand_trc(trcrn_slot, trcrn, nt_qsno+k-1, workcat)
+         call write_restart_field(nu_dump,0,workcat,'ruf8', &
                                  'qsno'//trim(nchar),ncat,diag)
       enddo
+
+      deallocate(workcat)
 
       !-----------------------------------------------------------------
       ! velocity
@@ -359,6 +376,105 @@
       enddo
 
       end subroutine expand_vel
+
+!=======================================================================
+!
+! Expand the category state out of the slots for the restart write.
+!
+! ⚠ aicen, vicen and vsnon are NOT masked here, and trcrn is -- see
+! expand_trc.  The asymmetry is in the block path and predates the slots:
+! dumpfile zeroes trcrn over land before writing and leaves the category
+! areas and volumes alone.  Masking all four alike fails the gate at 55
+! land cells per category field, which is how the asymmetry was found.
+! Slotless cells need no fill beyond c0: measured on evpC with ktransport
+! = -1, all 22230 of them already hold c0 in the block form.
+
+      subroutine expand_cat(comp, blk, work)
+
+      use ice_blocks, only: nx_block, ny_block
+      use ice_domain, only: nblocks
+      use ice_domain_size, only: max_blocks, ncat
+      use ice_grid, only: dynMap, dynOff, dynCnt, unpack_cat_from_slots
+
+      ! ⚠ Absent when kdyn <= 0, exactly as in expand_vel.
+      real (kind=dbl_kind), dimension(:,:), intent(in), allocatable :: &
+         comp              ! the compressed field, whole, (slot,ncat)
+
+      real (kind=dbl_kind), dimension(nx_block,ny_block,ncat,max_blocks), intent(in) :: &
+         blk               ! the block form, for the no-dynamics case
+
+      real (kind=dbl_kind), dimension(nx_block,ny_block,ncat,max_blocks), intent(out) :: &
+         work
+
+      integer (kind=int_kind) :: iblk
+
+      character(len=*), parameter :: subname = '(expand_cat)'
+
+      if (.not. allocated(comp)) then
+         work(:,:,:,:) = blk(:,:,:,:)
+         return
+      endif
+
+      work(:,:,:,:) = c0
+      do iblk = 1, nblocks
+         call unpack_cat_from_slots(comp(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
+                                    dynMap(:,iblk), work(:,:,:,iblk))
+      enddo
+
+      end subroutine expand_cat
+
+!=======================================================================
+!
+! The same for one tracer of trcrn_slot.  Indexed in place rather than
+! passing trcrn_slot(:,it,:), which is a strided section and would build a
+! temporary at each of the sixteen calls.
+
+      subroutine expand_trc(comp, blk, it, work)
+
+      use ice_blocks, only: nx_block, ny_block
+      use ice_domain, only: nblocks
+      use ice_domain_size, only: max_blocks, ncat
+      use ice_grid, only: dynMap, dynOff, dynCnt
+
+      real (kind=dbl_kind), dimension(:,:,:), intent(in), allocatable :: &
+         comp              ! the compressed field, whole, (slot,ntrcr,ncat)
+
+      ! ⚠ The WHOLE 5-D trcrn, assumed shape.  Passing trcrn(:,:,it,:,:)
+      ! instead would be a strided section and so a temporary at each of the
+      ! sixteen calls; the tracer is selected inside.
+      real (kind=dbl_kind), dimension(:,:,:,:,:), intent(in) :: &
+         blk               ! the block form, for the no-dynamics case
+
+      integer (kind=int_kind), intent(in) :: &
+         it                ! which tracer
+
+      real (kind=dbl_kind), dimension(nx_block,ny_block,ncat,max_blocks), intent(out) :: &
+         work
+
+      integer (kind=int_kind) :: i, j, n, iblk, m
+
+      character(len=*), parameter :: subname = '(expand_trc)'
+
+      if (.not. allocated(comp)) then
+         work(:,:,:,:) = blk(:,:,it,:,:)
+         return
+      endif
+
+      work(:,:,:,:) = c0
+      do iblk = 1, nblocks
+         do n = 1, ncat
+         do j = 1, ny_block
+         do i = 1, nx_block
+            if (.not.tmask((j-1)*nx_block+i,iblk) .and. &
+                .not.opmask((j-1)*nx_block+i,iblk)) cycle
+            m = dynMap((j-1)*nx_block+i,iblk)
+            if (m > 0) work(i,j,n,iblk) = comp(dynOff(iblk)+m,it,n)
+         enddo
+         enddo
+         enddo
+      enddo
+
+      end subroutine expand_trc
 
 
 !=======================================================================
