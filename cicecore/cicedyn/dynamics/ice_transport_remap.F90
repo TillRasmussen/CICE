@@ -844,29 +844,29 @@
          !-------------------------------------------------------------------
 
          ! open water
-         call transport_integrals(                                     &
+         call transport_integrals(dynOff(iblk), dynCnt(iblk)+1,                                       &
                                   ntrace,          icellsng (:,iblk),  &
                                   indxsng(:,:),                        &
                                   tracer_type,     depend,             &
                                   integral_order,  triarea,            &
                                   isflux,                                &
                                   xp,              yp,                 &
-                                  mc(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,0),          mx(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,0),            &
-                                  my(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,0),  mflxe(:,0))
+                                  mc(:,0),          mx(:,0),            &
+                                  my(:,0),  mflxe(:,0))
 
          ! ice categories
          do n = 1, ncat
             call transport_integrals                                     &
-                               (ntrace,            icellsng (:,iblk),    &
+                               (dynOff(iblk), dynCnt(iblk)+1,  ntrace,            icellsng (:,iblk),    &
                                 indxsng(:,:),                        &
                                 tracer_type,       depend,               &
                                 integral_order,    triarea,              &
                                 isflux,                                    &
                                 xp,                yp,                   &
-                                mc(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,n),           mx(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,n),              &
-                                my(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,n),  mflxe (:,  n),      &
-                                tc(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,n),         tx(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,n),            &
-                                ty(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,n),  mtflxe(:,:,n))
+                                mc(:,n),           mx(:,n),              &
+                                my(:,n),  mflxe (:,  n),      &
+                                tc(:,:,n),         tx(:,:,n),            &
+                                ty(:,:,n),  mtflxe(:,:,n))
 
          enddo
 
@@ -897,29 +897,29 @@
                                     xp,              yp)
 
          ! open water
-         call transport_integrals(                                    &
+         call transport_integrals(dynOff(iblk), dynCnt(iblk)+1,                                      &
                                   ntrace,          icellsng (:,iblk), &
                                   indxsng(:,:),                        &
                                   tracer_type,     depend,            &
                                   integral_order,  triarea,           &
                                   isflux,                               &
                                   xp,              yp,                &
-                                  mc(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,0),          mx(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,0),            &
-                                  my(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,0),  mflxn(:,0))
+                                  mc(:,0),          mx(:,0),            &
+                                  my(:,0),  mflxn(:,0))
 
          ! ice categories
          do n = 1, ncat
             call transport_integrals                                     &
-                               (ntrace,            icellsng (:,iblk),    &
+                               (dynOff(iblk), dynCnt(iblk)+1,  ntrace,            icellsng (:,iblk),    &
                                 indxsng(:,:),                        &
                                 tracer_type,       depend,               &
                                 integral_order,    triarea,              &
                                 isflux,                                    &
                                 xp,                yp,                   &
-                                mc(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,n),           mx(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,n),              &
-                                my(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,n),  mflxn (:,  n),      &
-                                tc(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,n),         tx(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,n),            &
-                                ty(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,n),  mtflxn(:,:,n))
+                                mc(:,n),           mx(:,n),              &
+                                my(:,n),  mflxn (:,  n),      &
+                                tc(:,:,n),         tx(:,:,n),            &
+                                ty(:,:,n),  mtflxn(:,:,n))
 
          enddo                  ! n
 
@@ -3522,7 +3522,8 @@
 !
 ! author William H. Lipscomb, LANL
 
-      subroutine transport_integrals (ntrace,         icells,      &
+      subroutine transport_integrals (off,            nslot,       &
+                                      ntrace,         icells,      &
                                       indxs,                       &
                                       tracer_type,    depend,      &
                                       integral_order, triarea,     &
@@ -3533,7 +3534,14 @@
                                       tc,             tx,          &
                                       ty,             mtflx)
 
+      ! ⚠ TWO index spaces.  mc, mx, my, tc, tx and ty are whole task-global
+      ! arrays indexed by the DONOR slot is2, which isflux returns
+      ! block-local -- so those six compose: mc(off+is2).  Everything else
+      ! here (xp, yp, triarea, isflux, msum, mxsum, mtsum, mflx, mtflx) is
+      ! the caller's per-block scratch indexed by ms.
       integer (kind=int_kind), intent(in) ::   &
+         off                 , & ! this block's dynOff
+         nslot               , & ! slots this block holds, dead slot included
          ntrace              , & ! number of tracers in use
          integral_order   ! polynomial order for quadrature integrals
 
@@ -3591,11 +3599,11 @@
 
       ! Slot-indexed: each is written and read at the same edge cell, which
       ! already carries its slot, so they never needed the block rectangle.
-      real (kind=dbl_kind), dimension (size(mc)) ::   &
+      real (kind=dbl_kind), dimension (nslot) ::   &
          msum, mxsum, mysum     , & ! sum of mass, mass*x, and mass*y
          mxxsum, mxysum, myysum   ! sum of mass*x*x, mass*x*y, mass*y*y
 
-      real (kind=dbl_kind), dimension (size(mc), ntrace) ::   &
+      real (kind=dbl_kind), dimension (nslot, ntrace) ::   &
          mtsum            , & ! sum of mass*tracer
          mtxsum           , & ! sum of mass*tracer*x
          mtysum             ! sum of mass*tracer*y
@@ -3627,12 +3635,12 @@
 
                is2 = isflux(ms,ng)
 
-               if (is2 < 1) is2 = size(mc)
+               if (is2 < 1) is2 = nslot
 
                ! mass transports
 
-               m0 = mc(is2) + xp(ms,0,ng)*mx(is2)   &
-                              + yp(ms,0,ng)*my(is2)
+               m0 = mc(off+is2) + xp(ms,0,ng)*mx(off+is2)   &
+                              + yp(ms,0,ng)*my(off+is2)
                msum(ms) = m0
 
                mflx(ms) = mflx(ms) + triarea(ms,ng)*msum(ms)
@@ -3653,17 +3661,17 @@
 
                is2 = isflux(ms,ng)
 
-               if (is2 < 1) is2 = size(mc)
+               if (is2 < 1) is2 = nslot
 
                ! mass transports
                ! Weighting factor of 1/3 is incorporated into the ice
                ! area terms m1, m2, and m3.
-               m1 = p333 * (mc(is2) + xp(ms,1,ng)*mx(is2)   &
-                                      + yp(ms,1,ng)*my(is2))
-               m2 = p333 * (mc(is2) + xp(ms,2,ng)*mx(is2)   &
-                                      + yp(ms,2,ng)*my(is2))
-               m3 = p333 * (mc(is2) + xp(ms,3,ng)*mx(is2)   &
-                                      + yp(ms,3,ng)*my(is2))
+               m1 = p333 * (mc(off+is2) + xp(ms,1,ng)*mx(off+is2)   &
+                                      + yp(ms,1,ng)*my(off+is2))
+               m2 = p333 * (mc(off+is2) + xp(ms,2,ng)*mx(off+is2)   &
+                                      + yp(ms,2,ng)*my(off+is2))
+               m3 = p333 * (mc(off+is2) + xp(ms,3,ng)*mx(off+is2)   &
+                                      + yp(ms,3,ng)*my(off+is2))
                msum(ms) = m1 + m2 + m3
                mflx(ms) = mflx(ms) + triarea(ms,ng)*msum(ms)
 
@@ -3698,20 +3706,20 @@
 
                is2 = isflux(ms,ng)
 
-               if (is2 < 1) is2 = size(mc)
+               if (is2 < 1) is2 = nslot
 
                ! mass transports
 
                ! Weighting factors are incorporated into the
                ! terms m0, m1, m2, and m3.
-               m0 = p5625m * (mc(is2) + xp(ms,0,ng)*mx(is2)   &
-                                        + yp(ms,0,ng)*my(is2))
-               m1 = p52083 * (mc(is2) + xp(ms,1,ng)*mx(is2)   &
-                                        + yp(ms,1,ng)*my(is2))
-               m2 = p52083 * (mc(is2) + xp(ms,2,ng)*mx(is2)   &
-                                        + yp(ms,2,ng)*my(is2))
-               m3 = p52083 * (mc(is2) + xp(ms,3,ng)*mx(is2)   &
-                                        + yp(ms,3,ng)*my(is2))
+               m0 = p5625m * (mc(off+is2) + xp(ms,0,ng)*mx(off+is2)   &
+                                        + yp(ms,0,ng)*my(off+is2))
+               m1 = p52083 * (mc(off+is2) + xp(ms,1,ng)*mx(off+is2)   &
+                                        + yp(ms,1,ng)*my(off+is2))
+               m2 = p52083 * (mc(off+is2) + xp(ms,2,ng)*mx(off+is2)   &
+                                        + yp(ms,2,ng)*my(off+is2))
+               m3 = p52083 * (mc(off+is2) + xp(ms,3,ng)*mx(off+is2)   &
+                                        + yp(ms,3,ng)*my(off+is2))
                msum(ms) = m0 + m1 + m2 + m3
                mflx(ms) = mflx(ms) + triarea(ms,ng)*msum(ms)
 
@@ -3756,24 +3764,24 @@
 
                      is2 = isflux(ms,ng)
 
-                     if (is2 < 1) is2 = size(mc)
+                     if (is2 < 1) is2 = nslot
 
-                     mtsum(ms,nt) =  msum(ms) * tc(is2,nt)   &
-                                   + mxsum(ms) * tx(is2,nt)   &
-                                   + mysum(ms) * ty(is2,nt)
+                     mtsum(ms,nt) =  msum(ms) * tc(off+is2,nt)   &
+                                   + mxsum(ms) * tx(off+is2,nt)   &
+                                   + mysum(ms) * ty(off+is2,nt)
 
                      mtflx(ms,nt) = mtflx(ms,nt)   &
                                  + triarea(ms,ng) * mtsum(ms,nt)
 
                      ! quantities needed for dependent tracers
 
-                     mtxsum(ms,nt) =  mxsum(ms) * tc(is2,nt)   &
-                                    + mxxsum(ms) * tx(is2,nt)   &
-                                    + mxysum(ms) * ty(is2,nt)
+                     mtxsum(ms,nt) =  mxsum(ms) * tc(off+is2,nt)   &
+                                    + mxxsum(ms) * tx(off+is2,nt)   &
+                                    + mxysum(ms) * ty(off+is2,nt)
 
-                     mtysum(ms,nt) =  mysum(ms) * tc(is2,nt)   &
-                                    + mxysum(ms) * tx(is2,nt)   &
-                                    + myysum(ms) * ty(is2,nt)
+                     mtysum(ms,nt) =  mysum(ms) * tc(off+is2,nt)   &
+                                    + mxysum(ms) * tx(off+is2,nt)   &
+                                    + myysum(ms) * ty(off+is2,nt)
                   enddo         ! ij
 
                elseif (tracer_type(nt)==2) then ! depends on another tracer
@@ -3785,11 +3793,11 @@
 
                      is2 = isflux(ms,ng)
 
-                     if (is2 < 1) is2 = size(mc)
+                     if (is2 < 1) is2 = nslot
 
-                     mtsum(ms,nt) =  mtsum(ms,nt1) * tc(is2,nt)   &
-                                   + mtxsum(ms,nt1) * tx(is2,nt)   &
-                                   + mtysum(ms,nt1) * ty(is2,nt)
+                     mtsum(ms,nt) =  mtsum(ms,nt1) * tc(off+is2,nt)   &
+                                   + mtxsum(ms,nt1) * tx(off+is2,nt)   &
+                                   + mtysum(ms,nt1) * ty(off+is2,nt)
 
                      mtflx(ms,nt) = mtflx(ms,nt)   &
                                    + triarea(ms,ng) * mtsum(ms,nt)
@@ -3805,10 +3813,10 @@
 
                      is2 = isflux(ms,ng)
 
-                     if (is2 < 1) is2 = size(mc)
+                     if (is2 < 1) is2 = nslot
 
                      ! upwind approx (tx=ty=0) for type 3 tracers
-                     mtsum(ms,nt) =  mtsum(ms,nt1) * tc(is2,nt)
+                     mtsum(ms,nt) =  mtsum(ms,nt1) * tc(off+is2,nt)
 
                      mtflx(ms,nt) = mtflx(ms,nt)   &
                                    + triarea(ms,ng) * mtsum(ms,nt)
