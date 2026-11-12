@@ -990,47 +990,42 @@
 
          nc = dynCnt(iblk)
 
-         call state_to_work (nx_block,             ny_block,             &
-                             dynMap(:,iblk),                             &
+         call state_to_work (dynOff(iblk)+1,      dynOff(iblk)+nc,      &
                              ntrcr,                                      &
                              narr,                 trcr_depend,          &
-                             aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:), &
-                             vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
-                             aice0_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                             works (dynOff(iblk)+1:dynOff(iblk)+nc+1,:))
+                             aicen_slot,           trcrn_slot,           &
+                             vicen_slot,           vsnon_slot,           &
+                             aice0_slot,           works)
 
          !-----------------------------------------------------------------
          ! advect
          !-----------------------------------------------------------------
 
-         call upwind_field (nc,                                            &
-                            Nbr_Local  (dynOff(iblk)+1:dynOff(iblk)+nc,:),    &
-                            skipEdgeE(dynOff(iblk)+1:dynOff(iblk)+nc),     &
-                            skipEdgeN(dynOff(iblk)+1:dynOff(iblk)+nc),     &
-                            skipPhys (dynOff(iblk)+1:dynOff(iblk)+nc),     &
-                            dt,                                            &
-                            narr,                                          &
-                            works(dynOff(iblk)+1:dynOff(iblk)+nc+1,:),     &
-                            uee(dynOff(iblk)+1:dynOff(iblk)+nc+1),         &
-                            vnn(dynOff(iblk)+1:dynOff(iblk)+nc+1),         &
-                            HTE_slot(dynOff(iblk)+1:dynOff(iblk)+nc+1),    &
-                            HTN_slot(dynOff(iblk)+1:dynOff(iblk)+nc+1),    &
-                            tarea_slot(dynOff(iblk)+1:dynOff(iblk)+nc+1))
+         call upwind_field (dynOff(iblk), nc,        &
+                             Nbr_Local,                 &
+                             skipEdgeE,    skipEdgeN,   &
+                             skipPhys,                  &
+                             dt,                        &
+                             narr,         works,       &
+                             uee,          vnn,         &
+                             HTE_slot,     HTN_slot,    &
+                             tarea_slot)
 
          !-----------------------------------------------------------------
          ! convert work arrays back to state variables
          !-----------------------------------------------------------------
 
-         call work_to_state (nx_block,            ny_block,             &
+         call work_to_state (dynOff(iblk),                            &
+                             nx_block,            ny_block,             &
                              dynMap(:,iblk),                            &
                              ntrcr,               narr,                 &
                              trcr_depend(:),      trcr_base(:,:),       &
                              n_trcr_strata(:),    nt_strata(:,:),       &
                              tmask(:,      iblk), Tf    (:,:,iblk),     &
-                             aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:), &
-                             vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
-                             aice0(:,:,    iblk), aice0_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                             works(dynOff(iblk)+1:dynOff(iblk)+nc+1,:))
+                             aicen_slot,          trcrn_slot,           &
+                             vicen_slot,          vsnon_slot,           &
+                             aice0(:,:,    iblk), aice0_slot,           &
+                             works)
 
          ! ⚠ Same as the remap path: work_to_state writes the state in slot
          ! form, so the block copies it left behind are stale.  Refresh them
@@ -1701,8 +1696,7 @@
 !
 ! Fill work array with state variables in preparation for upwind transport
 
-      subroutine state_to_work (nx_block, ny_block,        &
-                                map,                       &
+      subroutine state_to_work (lo,       hi,               &
                                 ntrcr,                     &
                                 narr,     trcr_depend,     &
                                 aicen,    trcrn,           &
@@ -1711,18 +1705,15 @@
 
       use ice_domain_size, only: ncat
 
-      ! The state variables stay block-shaped -- they are model state, read
-      ! and written by I/O.  works is the transport work array, so it is
-      ! slots.  Every loop here runs over the whole block, so no range mask
-      ! is needed: a cell with no slot is simply dropped.
+      ! Slot to slot throughout: every array here is compressed, so the
+      ! traversal is a straight walk of this block's range and no block
+      ! shape or dynMap column is needed.
 
       integer (kind=int_kind), intent(in) ::     &
-         nx_block, ny_block, & ! block dimensions
+         lo                , & ! first slot of this block
+         hi                , & ! last real slot of this block (dead slot is hi+1)
          ntrcr             , & ! number of tracers in use
          narr                  ! number of 2D state variable arrays in works array
-
-      integer (kind=int_kind), dimension (:), intent(in) :: &
-         map         ! this block's dynMap column
 
       integer (kind=int_kind), dimension (ntrcr), intent(in) ::     &
          trcr_depend ! = 0 for aicen tracers, 1 for vicen, 2 for vsnon
@@ -1753,7 +1744,7 @@
          tr_pond_lvl, tr_pond_topo, tr_pond_sealvl
 
       integer (kind=int_kind) ::      &
-         i, j, n, it, & ! counting indices
+         n, it      , & ! counting indices
          ms         , & ! slot of this cell
          narrays        ! counter for number of state variable arrays
 
@@ -1777,15 +1768,15 @@
       ! The dead slot is never reached by the traversal below, and
       ! upwind_field reads it wherever a neighbour is missing, so it has to
       ! start at c0.
-      works(:,:) = c0
+      works(lo:hi+1,:) = c0
 
-      ! straight copy: slot order on both sides
-      works(1:size(aice0),1) = aice0(:)
+      ! straight copy: slot order on both sides, dead slot included
+      works(lo:hi+1,1) = aice0(lo:hi+1)
       narrays = 1
 
       do n=1, ncat
 
-         do ms = 1, size(works,dim=1) - 1
+         do ms = lo, hi
             works(ms,narrays+1) = aicen(ms,n)
             works(ms,narrays+2) = vicen(ms,n)
             works(ms,narrays+3) = vsnon(ms,n)
@@ -1794,40 +1785,40 @@
 
          do it = 1, ntrcr
             if (trcr_depend(it) == 0) then
-               do ms = 1, size(works,dim=1) - 1
+               do ms = lo, hi
                   works(ms,narrays+it) = aicen(ms,n)*trcrn(ms,it,n)
                enddo
             elseif (trcr_depend(it) == 1) then
-               do ms = 1, size(works,dim=1) - 1
+               do ms = lo, hi
                   works(ms,narrays+it) = vicen(ms,n)*trcrn(ms,it,n)
                enddo
             elseif (trcr_depend(it) == 2) then
-               do ms = 1, size(works,dim=1) - 1
+               do ms = lo, hi
                   works(ms,narrays+it) = vsnon(ms,n)*trcrn(ms,it,n)
                enddo
             elseif (trcr_depend(it) == 2+nt_alvl) then
-               do ms = 1, size(works,dim=1) - 1
+               do ms = lo, hi
                   works(ms,narrays+it) = aicen(ms,n) &
                                         * trcrn(ms,nt_alvl,n) &
                                         * trcrn(ms,it,n)
                enddo
             elseif (trcr_depend(it) == 2+nt_apnd .and. &
                     (tr_pond_topo .or. tr_pond_sealvl)) then
-               do ms = 1, size(works,dim=1) - 1
+               do ms = lo, hi
                   works(ms,narrays+it) = aicen(ms,n) &
                                         * trcrn(ms,nt_apnd,n) &
                                         * trcrn(ms,it,n)
                enddo
             elseif (trcr_depend(it) == 2+nt_apnd .and. &
                     tr_pond_lvl) then
-               do ms = 1, size(works,dim=1) - 1
+               do ms = lo, hi
                   works(ms,narrays+it) = aicen(ms,n) &
                                         * trcrn(ms,nt_alvl,n) &
                                         * trcrn(ms,nt_apnd,n) &
                                         * trcrn(ms,it,n)
                enddo
             elseif (trcr_depend(it) == 2+nt_fbri) then
-               do ms = 1, size(works,dim=1) - 1
+               do ms = lo, hi
                   works(ms,narrays+it) = vicen(ms,n) &
                                         * trcrn(ms,nt_fbri,n) &
                                         * trcrn(ms,it,n)
@@ -1847,7 +1838,8 @@
 !
 ! Convert work array back to state variables
 
-      subroutine work_to_state (nx_block,      ny_block, &
+      subroutine work_to_state (off,                     &
+                                nx_block,      ny_block, &
                                 map,                     &
                                 ntrcr,         narr,     &
                                 trcr_depend,             &
@@ -1862,6 +1854,7 @@
       use ice_domain_size, only: ncat
 
       integer (kind=int_kind), intent (in) :: &
+         off               , & ! first slot of this block, minus one
          nx_block, ny_block, & ! block dimensions
          ntrcr             , & ! number of tracers in use
          narr                  ! number of 2D state variable arrays in works array
@@ -1937,6 +1930,7 @@
       do i=1,nx_block
          ms = map((j-1)*nx_block + i)
          if (ms < 1) cycle
+         ms = ms + off
          aice0(i,j) = works(ms,1)
             aice0_s(ms)  = works(ms,1)
       enddo
@@ -1949,6 +1943,7 @@
          do i=1,nx_block
             ms = map((j-1)*nx_block + i)
             if (ms < 1) cycle
+            ms = ms + off
 
             aicen(ms,n) = works(ms,narrays+1)
             vicen(ms,n) = works(ms,narrays+2)
@@ -1987,7 +1982,8 @@
 !
 ! upwind transport algorithm
 
-      subroutine upwind_field (ncells,   nbr,        &
+      subroutine upwind_field (off,      ncells,     &
+                               nbr,                  &
                                skipE,    skipN,      &
                                skipme,               &
                                dt,                   &
@@ -1999,6 +1995,7 @@
       use ice_grid, only: nbr_W, nbr_E, nbr_N, nbr_S
 
       integer (kind=int_kind), intent (in) ::     &
+         off               , & ! first slot of this block, minus one
          ncells            , & ! number of slots this block holds
          narrays               ! number of 2D arrays to be transported
 
@@ -2039,7 +2036,11 @@
          is, n             , & ! standard indices
          isE, isN, isW, isS    ! neighbour slots
 
-      real (kind=dbl_kind), dimension (size(phi,1)) :: &
+      ! ⚠ block-local, and deliberately so: nbr values are block-local slot
+      ! numbers, so isW/isS index these directly.  +1 is the dead slot, which
+      ! the zeroing below leaves at c0 so a missing neighbour contributes
+      ! nothing.
+      real (kind=dbl_kind), dimension (ncells+1) :: &
          worka, workb
 
       character(len=*), parameter :: subname = '(upwind_field)'
@@ -2054,26 +2055,26 @@
          workb(:) = c0
 
          do is = 1, ncells
-            if (skipE(is)) cycle
-            isE = nbr(is,nbr_E)
-            worka(is) =     &
-               upwind(phi(is,n),phi(isE,n),uee(is),HTE(is),dt)
+            if (skipE(off+is)) cycle
+            isE = nbr(off+is,nbr_E)
+            worka(is) =                                                       &
+               upwind(phi(off+is,n),phi(off+isE,n),uee(off+is),HTE(off+is),dt)
          enddo
 
          do is = 1, ncells
-            if (skipN(is)) cycle
-            isN = nbr(is,nbr_N)
-            workb(is) =     &
-               upwind(phi(is,n),phi(isN,n),vnn(is),HTN(is),dt)
+            if (skipN(off+is)) cycle
+            isN = nbr(off+is,nbr_N)
+            workb(is) =                                                       &
+               upwind(phi(off+is,n),phi(off+isN,n),vnn(off+is),HTN(off+is),dt)
          enddo
 
          do is = 1, ncells
-            if (skipme(is)) cycle
-            isW = nbr(is,nbr_W)
-            isS = nbr(is,nbr_S)
-            phi(is,n) = phi(is,n) - ( worka(is)-worka(isW)    &
-                                    + workb(is)-workb(isS) )  &
-                                    / tarea(is)
+            if (skipme(off+is)) cycle
+            isW = nbr(off+is,nbr_W)
+            isS = nbr(off+is,nbr_S)
+            phi(off+is,n) = phi(off+is,n) - ( worka(is)-worka(isW)    &
+                                            + workb(is)-workb(isS) )  &
+                                            / tarea(off+is)
          enddo
 
       enddo                     ! narrays
