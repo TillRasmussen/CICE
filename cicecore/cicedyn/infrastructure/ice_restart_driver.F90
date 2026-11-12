@@ -74,6 +74,12 @@
       use ice_flux, only: scale_factor, swvdr, swvdf, swidr, swidf, &
           strocnxT_iavg, strocnyT_iavg, sst, frzmlt
       use ice_flux, only: coszen
+      use ice_grid, only: dynMap, dynOff, dynCnt, unpack_from_slots
+      use ice_dyn_shared, only: uvel_slot, vvel_slot, uvelE_slot, vvelE_slot, &
+                                uvelN_slot, vvelN_slot
+      ! The velocities are imported only as the no-dynamics fallback: with
+      ! kdyn <= 0 the slot forms do not exist.  Otherwise dumpfile sources
+      ! them from the slots and expands at the write.
       use ice_state, only: aicen, vicen, vsnon, trcrn, uvel, vvel, &
                            uvelE, vvelE, uvelN, vvelN
 
@@ -89,6 +95,11 @@
 
       real (kind=dbl_kind), dimension (nx_block,ny_block,max_blocks) :: &
          work1
+
+      ! The velocity expanded out of the slots for the write.  The block
+      ! arrays are no longer the restart's source: see expand_vel below.
+      real (kind=dbl_kind), dimension (nx_block*ny_block,max_blocks) :: &
+         workf
 
       character (len=3) :: nchar
 
@@ -154,19 +165,36 @@
       !-----------------------------------------------------------------
       ! velocity
       !-----------------------------------------------------------------
-      call write_restart_field(nu_dump,0,uvel,'ruf8','uvel',1,diag)
-      call write_restart_field(nu_dump,0,vvel,'ruf8','vvel',1,diag)
+      ! ⚠ Sourced from the SLOTS, not from the block arrays.  The file keeps
+      ! its two-dimensional shape -- that is the constraint -- but the array
+      ! inside the model need not, so the expansion happens here, once per
+      ! field, exactly as expand_a2D does for history.
+      !
+      ! Measured equal to the block form on gx3 (B, tripole), evpC and rmapC
+      ! (C): zero cells differing in value AND zero differing only in the
+      ! sign of zero.  The -0 words a restart does contain sit at cells that
+      ! own a slot, so the slot form carries them faithfully.
+      call expand_vel(uvel_slot, uvel, workf)
+      call write_restart_field(nu_dump,0,workf,'ruf8','uvel',1,diag)
+      call expand_vel(vvel_slot, vvel, workf)
+      call write_restart_field(nu_dump,0,workf,'ruf8','vvel',1,diag)
 
       if (grid_ice == 'CD') then
-         call write_restart_field(nu_dump,0,uvelE,'ruf8','uvelE',1,diag)
-         call write_restart_field(nu_dump,0,vvelE,'ruf8','vvelE',1,diag)
-         call write_restart_field(nu_dump,0,uvelN,'ruf8','uvelN',1,diag)
-         call write_restart_field(nu_dump,0,vvelN,'ruf8','vvelN',1,diag)
+         call expand_vel(uvelE_slot, uvelE, workf)
+         call write_restart_field(nu_dump,0,workf,'ruf8','uvelE',1,diag)
+         call expand_vel(vvelE_slot, vvelE, workf)
+         call write_restart_field(nu_dump,0,workf,'ruf8','vvelE',1,diag)
+         call expand_vel(uvelN_slot, uvelN, workf)
+         call write_restart_field(nu_dump,0,workf,'ruf8','uvelN',1,diag)
+         call expand_vel(vvelN_slot, vvelN, workf)
+         call write_restart_field(nu_dump,0,workf,'ruf8','vvelN',1,diag)
       endif
 
       if (grid_ice == 'C') then
-         call write_restart_field(nu_dump,0,uvelE,'ruf8','uvelE',1,diag)
-         call write_restart_field(nu_dump,0,vvelN,'ruf8','vvelN',1,diag)
+         call expand_vel(uvelE_slot, uvelE, workf)
+         call write_restart_field(nu_dump,0,workf,'ruf8','uvelE',1,diag)
+         call expand_vel(vvelN_slot, vvelN, workf)
+         call write_restart_field(nu_dump,0,workf,'ruf8','vvelN',1,diag)
       endif
 
       !-----------------------------------------------------------------
@@ -279,6 +307,59 @@
       endif
 
       end subroutine dumpfile
+
+!=======================================================================
+! Expand one compressed velocity field to the block layout for the restart
+! write.  The counterpart of expand_a2D in ice_history_shared: the FILE
+! keeps its two-dimensional shape, the array inside the model does not, and
+! this is the single place the two meet for the velocities.
+!
+! ⚠ The zero fill is load-bearing.  unpack_from_slots writes only cells that
+! own a slot; everything else -- interior land outside mask_any -- must read
+! as zero, which is what the block form holds there.  Verified equal cell by
+! cell, signed zero included, on B and C grids.
+
+      subroutine expand_vel(comp, blk, work)
+
+      use ice_blocks, only: nx_block, ny_block
+      use ice_domain, only: nblocks
+      use ice_domain_size, only: max_blocks
+      use ice_grid, only: dynMap, dynOff, dynCnt, unpack_from_slots
+
+      ! ⚠ kdyn <= 0 means init_dyn_shared never ran and comp does NOT exist.
+      ! The block form does, allocated at c0 and never updated, so it is the
+      ! correct answer there -- and the only one that can be read.
+      real (kind=dbl_kind), dimension(:), intent(in), allocatable :: &
+         comp              ! the compressed field, whole
+
+      ! ⚠ EXPLICIT shape, not assumed.  uvel and vvel are flat
+      ! (nx_block*ny_block, max_blocks) while uvelE/N and vvelE/N are
+      ! (nx_block, ny_block, max_blocks) -- the two block spellings -- and
+      ! sequence association is what lets one dummy take both.
+      real (kind=dbl_kind), dimension(nx_block*ny_block,max_blocks), intent(in) :: &
+         blk               ! the block form, for the no-dynamics case
+
+      ! (ij, block), i and j flattened -- the shape write_restart_field takes
+      real (kind=dbl_kind), dimension(:,:), intent(out) :: &
+         work
+
+      integer (kind=int_kind) :: iblk
+
+      character(len=*), parameter :: subname = '(expand_vel)'
+
+      if (.not. allocated(comp)) then
+         work(:,:) = blk(:,:)
+         return
+      endif
+
+      work(:,:) = c0
+      do iblk = 1, nblocks
+         call unpack_from_slots(comp(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+                                dynMap(:,iblk), work(:,iblk))
+      enddo
+
+      end subroutine expand_vel
+
 
 !=======================================================================
 ! Write one COMPRESSED field to the restart.
