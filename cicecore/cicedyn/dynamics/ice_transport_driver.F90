@@ -410,12 +410,12 @@
       ! Fill arrays with fields to be remapped.
       !-------------------------------------------------------------------
 
-         call state_to_tracers(ntrcr,               ntrace,              &
-                               aice0_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
-                               trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:),                      &
-                               vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
-                               aim(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),  &
-                               trm(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:))
+         call state_to_tracers(dynOff(iblk)+1,      dynOff(iblk)+dynCnt(iblk), &
+                               ntrcr,               ntrace,              &
+                               aice0_slot,          aicen_slot,          &
+                               trcrn_slot,                               &
+                               vicen_slot,          vsnon_slot,          &
+                               aim,                 trm)
 
       enddo
       !$OMP END PARALLEL DO
@@ -605,14 +605,15 @@
       !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
       do iblk = 1, nblocks
 
-         call tracers_to_state (nx_block,            ny_block,            &
+         call tracers_to_state (dynOff(iblk),        dynCnt(iblk),        &
+                                nx_block,            ny_block,            &
                                 dynMap(:,iblk),                           &
                                 ntrcr,               ntrace,              &
-                                aim(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),  &
-                                trm(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:),&
-                               aice0(:,:,    iblk), aice0_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
-                                trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:),                      &
-                                vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
+                                aim,                 trm,                 &
+                                aice0(:,:,    iblk), aice0_slot,          &
+                                aicen_slot,                               &
+                                trcrn_slot,                               &
+                                vicen_slot,          vsnon_slot)
 
          ! ⚠ Transport writes the state in slot form, so the block copies it
          ! left behind are stale.  Refresh them here: restart, history,
@@ -1073,7 +1074,8 @@
 !
 ! author William H. Lipscomb, LANL
 
-      subroutine state_to_tracers (ntrcr,    ntrace,     &
+      subroutine state_to_tracers (lo,       hi,         &
+                                   ntrcr,    ntrace,     &
                                    aice0,    aicen,      &
                                    trcrn,                &
                                    vicen,    vsnon,      &
@@ -1087,6 +1089,8 @@
       ! nothing downstream reads one.
 
       integer (kind=int_kind), intent(in) ::     &
+         lo                , & ! first slot of this block
+         hi                , & ! last real slot of this block (dead slot is hi+1)
          ntrcr             , & ! number of tracers in use
          ntrace                ! number of tracers in use incl. hi, hs
 
@@ -1119,7 +1123,7 @@
 
       integer (kind=int_kind) ::     &
          nt_qsno , & !
-         i, j, n , & ! standard indices
+         n       , & ! standard index
          ms      , & ! slot of this cell
          it, kt      ! tracer indices
 
@@ -1142,19 +1146,19 @@
       ! and a stencil that lands on it must read c0.
       ! A straight copy now: slot order on both sides, dead slot included,
       ! so the block walk and its map lookup are gone.
-      aim(:,0) = c0
-      aim(1:size(aice0),0) = aice0(:)
+      aim(lo:hi+1,0) = c0
+      aim(lo:hi+1,0) = aice0(lo:hi+1)
 
       do n = 1, ncat
 
-         trm(:,:,n) = c0
-         aim(:,n)   = c0
+         trm(lo:hi+1,:,n) = c0
+         aim(lo:hi+1,n)   = c0
 
          !-------------------------------------------------------------------
          ! Find grid cells where ice is present and fill area array.
          !-------------------------------------------------------------------
 
-         do ms = 1, size(aim,dim=1) - 1
+         do ms = lo, hi
             aim(ms,n) = aicen(ms,n)
          enddo
 
@@ -1170,7 +1174,7 @@
 
          kt = 2
 
-         do ms = 1, size(aim,dim=1) - 1
+         do ms = lo, hi
             if (aim(ms,n) <= puny) cycle
 
             w1 = c1 / aim(ms,n)
@@ -1195,7 +1199,8 @@
 !
 ! author William H. Lipscomb, LANL
 
-      subroutine tracers_to_state (nx_block, ny_block,   &
+      subroutine tracers_to_state (off,      ncells,     &
+                                   nx_block, ny_block,   &
                                    map,                  &
                                    ntrcr,    ntrace,     &
                                    aim,      trm,        &
@@ -1206,6 +1211,8 @@
       use ice_domain_size, only: ncat, nslyr
 
       integer (kind=int_kind), intent(in) ::     &
+         off               , & ! first slot of this block, minus one
+         ncells            , & ! number of real slots this block holds
          nx_block, ny_block, & ! block dimensions
          ntrcr             , & ! number of tracers in use
          ntrace                ! number of tracers in use incl. hi, hs
@@ -1270,6 +1277,7 @@
       do i = 1, nx_block
          ms = map((j-1)*nx_block + i)
          if (ms < 1) cycle
+         ms = ms + off
          aice0(i,j)  = aim(ms,0)
          aice0_s(ms) = aim(ms,0)
       enddo
@@ -1286,7 +1294,7 @@
 
          kt = 2
 
-         do ms = 1, size(aim,dim=1) - 1
+         do ms = off+1, off+ncells
             if (aim(ms,n) <= c0) then
                ! set to zero if no ice left in cell, rather than leaving the
                ! previous step's value standing

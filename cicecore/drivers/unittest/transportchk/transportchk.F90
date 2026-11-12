@@ -135,7 +135,7 @@
 
       aim = fillval
       trm = fillval
-      call state_to_tracers (ntrcr, ntrace, &
+      call state_to_tracers (off+1, off+nc, ntrcr, ntrace, &
                              aice0, aicen, trcrn, vicen, vsnon, aim, trm)
 
       if (any(aim(:,0) /= aice0)) errorflag(1) = failflag
@@ -175,7 +175,7 @@
       vsnonr = fillval
       trcrnr = fillval
       aice0b = fillval
-      call tracers_to_state (nx_block, ny_block, dynMap(:,1), ntrcr, ntrace, &
+      call tracers_to_state (off, nc, nx_block, ny_block, dynMap(:,1), ntrcr, ntrace, &
                              aim, trm, aice0b, aice0r, aicenr, trcrnr, vicenr, vsnonr)
 
       if (any(aice0r(1:nc) /= aice0(1:nc))) errorflag(2) = failflag
@@ -261,7 +261,7 @@
       vicenr = vicen
       vsnonr = vsnon
       trcrnr = trcrn
-      call tracers_to_state (nx_block, ny_block, dynMap(:,1), ntrcr, ntrace, &
+      call tracers_to_state (off, nc, nx_block, ny_block, dynMap(:,1), ntrcr, ntrace, &
                              aim, trm, aice0b, aice0r, aicenr, trcrnr, vicenr, vsnonr)
 
       cnt = 0
@@ -312,7 +312,7 @@
       aice0 = c1
       aim = fillval
       trm = fillval
-      call state_to_tracers (ntrcr, ntrace, &
+      call state_to_tracers (off+1, off+nc, ntrcr, ntrace, &
                              aice0, aicen, trcrn, vicen, vsnon, aim, trm)
       if (any(aim(:,0) /= c1) .or. any(aim(1:nc,1:ncat) /= c0)) errorflag(7) = failflag
       if (any(trm /= c0)) errorflag(7) = failflag
@@ -322,7 +322,7 @@
       vicenr = fillval
       vsnonr = fillval
       trcrnr = trcrn
-      call tracers_to_state (nx_block, ny_block, dynMap(:,1), ntrcr, ntrace, &
+      call tracers_to_state (off, nc, nx_block, ny_block, dynMap(:,1), ntrcr, ntrace, &
                              aim, trm, aice0b, aice0r, aicenr, trcrnr, vicenr, vsnonr)
       if (any(aice0r(1:nc) /= c1)) errorflag(7) = failflag
       if (any(aicenr(1:nc,:) /= c0) .or. any(vicenr(1:nc,:) /= c0) &
