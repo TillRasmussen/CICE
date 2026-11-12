@@ -857,7 +857,7 @@
             select case (trim(dir))
 
             case('N')
-               isN = off + Nbr_Local(is,nbr_N)
+               isN = NbrN_Task(is)
                wtmp = wsum(is)
                if (wtmp /= c0) &
                work2(is) = (work1(is )*wght1(is )  &
@@ -865,7 +865,7 @@
                           / wtmp
 
             case('E')
-               isE = off + Nbr_Local(is,nbr_E)
+               isE = NbrE_Task(is)
                wtmp = wsum(is)
                if (wtmp /= c0) &
                work2(is) = (work1(is )*wght1(is )  &
@@ -873,9 +873,9 @@
                           / wtmp
 
             case('NW')
-               isW  = off + Nbr_Local(is,nbr_W )
-               isNW = off + Nbr_Local(is,nbr_NW)
-               isN  = off + Nbr_Local(is,nbr_N )
+               isW  = NbrW_Task(is)
+               isNW = NbrNW_Task(is)
+               isN  = NbrN_Task(is)
                wtmp = wsum(is)
                if (wtmp /= c0) &
                work2(is) = (work1(isW )*wght1(isW )  &
@@ -885,9 +885,9 @@
                           / wtmp
 
             case('SE')
-               isS  = off + Nbr_Local(is,nbr_S )
-               isSE = off + Nbr_Local(is,nbr_SE)
-               isE  = off + Nbr_Local(is,nbr_E )
+               isS  = NbrS_Task(is)
+               isSE = NbrSE_Task(is)
+               isE  = NbrE_Task(is)
                wtmp = wsum(is)
                if (wtmp /= c0) &
                work2(is) = (work1(isS )*wght1(isS )  &
@@ -960,9 +960,9 @@
             m   = dynMap(ijb,iblk)
             if (m == 0) cycle
             is   = off + m
-            isE  = off + Nbr_Local(is,nbr_E )
-            isN  = off + Nbr_Local(is,nbr_N )
-            isNE = off + Nbr_Local(is,nbr_NE)
+            isE  = NbrE_Task(is)
+            isN  = NbrN_Task(is)
+            isNE = NbrNE_Task(is)
 
             wtmp = wsum(is)
             if (wtmp /= c0) &

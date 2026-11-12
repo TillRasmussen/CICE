@@ -2207,7 +2207,8 @@
       use ice_grid, only: tmask, lmask_n, lmask_s, dxU, dyU, grid_ice, &
                           dynMap, dynOff, dynCnt, dynIJ, pack_to_slots, &
                           unpack_from_slots, &
-                          Nbr_Local, nbr_E, nbr_N, nbr_S, nbr_W, dynMaxCnt, &
+                          NbrE_Task, NbrN_Task, NbrS_Task, NbrW_Task,      &
+                          dynMaxCnt,                                     &
           dynCnt, dynOff, dynIJ, skipPhys
       use ice_calendar, only: new_year, write_history, write_restart, &
                               write_ic, timesecs, histfreq, nstreams, mmonth, &
@@ -3114,9 +3115,9 @@
               ij = dynIJ(msh)
               j  = (ij-1)/nx_block + 1
               i  = ij - (j-1)*nx_block
-              worka(i,j) = (rho_ice(i,j)*p5*(vice_slot(dynOff(iblk)+Nbr_Local(msh,nbr_E))+vice_slot(msh))*dyU((j-1)*nx_block+i,iblk) &
-                         + rhos*p5*(vsno_slot(dynOff(iblk)+Nbr_Local(msh,nbr_E))+vsno_slot(msh))*dyU((j-1)*nx_block+i,iblk)) &
-                         *  p5*(uvel_slot(dynOff(iblk)+Nbr_Local(msh,nbr_S))+uvel_slot(msh))
+              worka(i,j) = (rho_ice(i,j)*p5*(vice_slot(NbrE_Task(msh))+vice_slot(msh))*dyU((j-1)*nx_block+i,iblk) &
+                         + rhos*p5*(vsno_slot(NbrE_Task(msh))+vsno_slot(msh))*dyU((j-1)*nx_block+i,iblk)) &
+                         *  p5*(uvel_slot(NbrS_Task(msh))+uvel_slot(msh))
            enddo
            endif
            call accum_hist_field(n_sidmasstranx, iblk, worka(:,:), a2D)
@@ -3132,9 +3133,9 @@
               ij = dynIJ(msh)
               j  = (ij-1)/nx_block + 1
               i  = ij - (j-1)*nx_block
-              worka(i,j) = (rho_ice(i,j)*p5*(vice_slot(dynOff(iblk)+Nbr_Local(msh,nbr_N))+vice_slot(msh))*dxU((j-1)*nx_block+i,iblk) &
-                         + rhos*p5*(vsno_slot(dynOff(iblk)+Nbr_Local(msh,nbr_N))+vsno_slot(msh))*dxU((j-1)*nx_block+i,iblk)) &
-                         *  p5*(vvel_slot(dynOff(iblk)+Nbr_Local(msh,nbr_W))+vvel_slot(msh))
+              worka(i,j) = (rho_ice(i,j)*p5*(vice_slot(NbrN_Task(msh))+vice_slot(msh))*dxU((j-1)*nx_block+i,iblk) &
+                         + rhos*p5*(vsno_slot(NbrN_Task(msh))+vsno_slot(msh))*dxU((j-1)*nx_block+i,iblk)) &
+                         *  p5*(vvel_slot(NbrW_Task(msh))+vvel_slot(msh))
            enddo
            endif
            call accum_hist_field(n_sidmasstrany, iblk, worka(:,:), a2D)
