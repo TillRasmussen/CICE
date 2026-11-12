@@ -592,9 +592,9 @@
                do m = 1, ntrace
                do j = jlo, jhi
                do i = ilo, ihi
-                  if (tc(i,j,m,n,iblk) /= c0) halomask(i,j,iblk) = 1
-                  if (tx(i,j,m,n,iblk) /= c0) halomask(i,j,iblk) = 1
-                  if (ty(i,j,m,n,iblk) /= c0) halomask(i,j,iblk) = 1
+                  if (abs(tc(i,j,m,n,iblk)) > c0) halomask(i,j,iblk) = 1
+                  if (abs(tx(i,j,m,n,iblk)) > c0) halomask(i,j,iblk) = 1
+                  if (abs(ty(i,j,m,n,iblk)) > c0) halomask(i,j,iblk) = 1
                enddo
                enddo
                enddo
@@ -1562,7 +1562,7 @@
 
          do j = jlo-nghost+1, jhi+nghost-1
          do i = ilo-nghost+1, ihi+nghost-1
-            if (uvel(i,j)/=c0 .or. vvel(i,j)/=c0) then
+            if (abs(uvel(i,j)) > c0 .or. abs(vvel(i,j)) > c0) then
 
                !-------------------------------------------------------------------
                ! Scale departure points to coordinate system in which grid cells
@@ -1954,9 +1954,9 @@
       if (trim(edge) == 'north') then
          do j = jlo-1, jhi
          do i = ilo, ihi
-            if (dpx(i-1,j)/=c0 .or. dpy(i-1,j)/=c0   &
+            if (abs(dpx(i-1,j)) > c0 .or. abs(dpy(i-1,j)) > c0   &
                                .or.                  &
-                  dpx(i,j)/=c0 .or.   dpy(i,j)/=c0) then
+                  abs(dpx(i,j)) > c0 .or.   abs(dpy(i,j)) > c0) then
                icellsd = icellsd + 1
                indxid(icellsd) = i
                indxjd(icellsd) = j
@@ -1972,9 +1972,9 @@
       else       ! east edge
          do j = jlo, jhi
          do i = ilo-1, ihi
-            if (dpx(i,j-1)/=c0 .or. dpy(i,j-1)/=c0   &
+            if (abs(dpx(i,j-1)) > c0 .or. abs(dpy(i,j-1)) > c0   &
                                .or.                  &
-                  dpx(i,j)/=c0 .or.   dpy(i,j)/=c0) then
+                  abs(dpx(i,j)) > c0 .or.   abs(dpy(i,j)) > c0) then
                icellsd = icellsd + 1
                indxid(icellsd) = i
                indxjd(icellsd) = j

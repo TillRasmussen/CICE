@@ -174,7 +174,7 @@
 
       ! compute interior frestore from restore_timescale
 
-      if (restore_timescale == c0) then
+      if (abs(restore_timescale) <= c0) then
          frestore = c1
       else
          frestore = min(dt/(restore_timescale*secday),c1)

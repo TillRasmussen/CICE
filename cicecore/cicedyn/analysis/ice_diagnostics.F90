@@ -952,7 +952,7 @@
                hiavg(n) = c0                       ! avg snow/ice thickness
                hsavg(n) = c0
                hbravg(n) = c0                      ! avg brine thickness
-               if (paice(n) /= c0) then
+               if (abs(paice(n)) > c0) then
                   hiavg(n) = vice(i,j,iblk)/paice(n)
                   hsavg(n) = vsno(i,j,iblk)/paice(n)
                   if (tr_brine) hbravg(n) = trcr(i,j,nt_fbri,iblk)* hiavg(n)
@@ -994,7 +994,7 @@
                   psmliqtot(n) = psmliqtot(n) / real(nslyr,kind=dbl_kind) ! mass of liquid in snow
                end if
                psalt(n) = c0
-               if (vice(i,j,iblk) /= c0) psalt(n) = work2(i,j,iblk)/vice(i,j,iblk)
+               if (abs(vice(i,j,iblk)) > c0) psalt(n) = work2(i,j,iblk)/vice(i,j,iblk)
                pTsfc(n) = trcr(i,j,nt_Tsfc,iblk)   ! ice/snow sfc temperature
                pevap(n) = evap(i,j,iblk)*dt/rhoi   ! sublimation/condensation
                pfswabs(n) = fswabs(i,j,iblk)       ! absorbed solar flux

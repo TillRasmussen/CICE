@@ -3577,7 +3577,7 @@
 
             ! TLON in radians East
             TLON(i,j,iblk) = c0
-            if (tx /= c0 .or. ty /= c0) TLON(i,j,iblk) = atan2(ty,tx)
+            if (abs(tx) > c0 .or. abs(ty) > c0) TLON(i,j,iblk) = atan2(ty,tx)
 
             ! TLAT in radians North
             TLAT(i,j,iblk) = asin(tz)
@@ -3709,7 +3709,7 @@
 
             ! NLON in radians East
             NLON(i,j,iblk) = c0
-            if (tx /= c0 .or. ty /= c0) NLON(i,j,iblk) = atan2(ty,tx)
+            if (abs(tx) > c0 .or. abs(ty) > c0) NLON(i,j,iblk) = atan2(ty,tx)
 
             ! NLAT in radians North
             NLAT(i,j,iblk) = asin(tz)
@@ -3727,7 +3727,7 @@
 
             ! ELON in radians East
             ELON(i,j,iblk) = c0
-            if (tx /= c0 .or. ty /= c0) ELON(i,j,iblk) = atan2(ty,tx)
+            if (abs(tx) > c0 .or. abs(ty) > c0) ELON(i,j,iblk) = atan2(ty,tx)
 
             ! ELAT in radians North
             ELAT(i,j,iblk) = asin(tz)
@@ -4217,7 +4217,7 @@
                         + mask1(i+1,j  ,iblk)*wght1(i+1,j  ,iblk)  &
                         + mask1(i  ,j+1,iblk)*wght1(i  ,j+1,iblk)  &
                         + mask1(i+1,j+1,iblk)*wght1(i+1,j+1,iblk))
-                  if (wtmp /= c0) &
+                  if (abs(wtmp) > c0) &
                   work2(i,j,iblk) = (mask1(i  ,j  ,iblk)*work1(i  ,j  ,iblk)*wght1(i  ,j  ,iblk)  &
                                    + mask1(i+1,j  ,iblk)*work1(i+1,j  ,iblk)*wght1(i+1,j  ,iblk)  &
                                    + mask1(i  ,j+1,iblk)*work1(i  ,j+1,iblk)*wght1(i  ,j+1,iblk)  &
@@ -4242,7 +4242,7 @@
                         + mask1(i-1,j  ,iblk)*wght1(i-1,j  ,iblk)  &
                         + mask1(i  ,j-1,iblk)*wght1(i  ,j-1,iblk)  &
                         + mask1(i-1,j-1,iblk)*wght1(i-1,j-1,iblk))
-                  if (wtmp /= c0) &
+                  if (abs(wtmp) > c0) &
                   work2(i,j,iblk) = (mask1(i  ,j  ,iblk)*work1(i  ,j  ,iblk)*wght1(i  ,j  ,iblk)  &
                                    + mask1(i-1,j  ,iblk)*work1(i-1,j  ,iblk)*wght1(i-1,j  ,iblk)  &
                                    + mask1(i  ,j-1,iblk)*work1(i  ,j-1,iblk)*wght1(i  ,j-1,iblk)  &
@@ -4267,7 +4267,7 @@
                         + mask1(i  ,j  ,iblk)*wght1(i  ,j  ,iblk)  &
                         + mask1(i-1,j+1,iblk)*wght1(i-1,j+1,iblk)  &
                         + mask1(i  ,j+1,iblk)*wght1(i  ,j+1,iblk))
-                  if (wtmp /= c0) &
+                  if (abs(wtmp) > c0) &
                   work2(i,j,iblk) = (mask1(i-1,j  ,iblk)*work1(i-1,j  ,iblk)*wght1(i-1,j  ,iblk)  &
                                    + mask1(i  ,j  ,iblk)*work1(i  ,j  ,iblk)*wght1(i  ,j  ,iblk)  &
                                    + mask1(i-1,j+1,iblk)*work1(i-1,j+1,iblk)*wght1(i-1,j+1,iblk)  &
@@ -4292,7 +4292,7 @@
                         + mask1(i+1,j-1,iblk)*wght1(i+1,j-1,iblk)  &
                         + mask1(i  ,j  ,iblk)*wght1(i  ,j  ,iblk)  &
                         + mask1(i+1,j  ,iblk)*wght1(i+1,j  ,iblk))
-                  if (wtmp /= c0) &
+                  if (abs(wtmp) > c0) &
                   work2(i,j,iblk) = (mask1(i  ,j-1,iblk)*work1(i  ,j-1,iblk)*wght1(i  ,j-1,iblk)  &
                                    + mask1(i+1,j-1,iblk)*work1(i+1,j-1,iblk)*wght1(i+1,j-1,iblk)  &
                                    + mask1(i  ,j  ,iblk)*work1(i  ,j  ,iblk)*wght1(i  ,j  ,iblk)  &
@@ -4315,7 +4315,7 @@
                do i = ilo, ihi
                   wtmp = (mask1(i  ,j,iblk)*wght1(i  ,j,iblk)  &
                         + mask1(i+1,j,iblk)*wght1(i+1,j,iblk))
-                  if (wtmp /= c0) &
+                  if (abs(wtmp) > c0) &
                   work2(i,j,iblk) = (mask1(i  ,j,iblk)*work1(i  ,j,iblk)*wght1(i  ,j,iblk)  &
                                    + mask1(i+1,j,iblk)*work1(i+1,j,iblk)*wght1(i+1,j,iblk)) &
                                    / wtmp
@@ -4336,7 +4336,7 @@
                do i = ilo, ihi
                   wtmp = (mask1(i-1,j,iblk)*wght1(i-1,j,iblk)  &
                         + mask1(i  ,j,iblk)*wght1(i  ,j,iblk))
-                  if (wtmp /= c0) &
+                  if (abs(wtmp) > c0) &
                   work2(i,j,iblk) = (mask1(i-1,j,iblk)*work1(i-1,j,iblk)*wght1(i-1,j,iblk)  &
                                    + mask1(i  ,j,iblk)*work1(i  ,j,iblk)*wght1(i  ,j,iblk)) &
                                    / wtmp
@@ -4357,7 +4357,7 @@
                do i = ilo, ihi
                   wtmp = (mask1(i,j  ,iblk)*wght1(i,j  ,iblk)  &
                         + mask1(i,j+1,iblk)*wght1(i,j+1,iblk))
-                  if (wtmp /= c0) &
+                  if (abs(wtmp) > c0) &
                   work2(i,j,iblk) = (mask1(i,j  ,iblk)*work1(i,j  ,iblk)*wght1(i,j  ,iblk)  &
                                    + mask1(i,j+1,iblk)*work1(i,j+1,iblk)*wght1(i,j+1,iblk)) &
                                    / wtmp
@@ -4378,7 +4378,7 @@
                do i = ilo, ihi
                   wtmp = (mask1(i,j-1,iblk)*wght1(i,j-1,iblk)  &
                         + mask1(i,j  ,iblk)*wght1(i,j  ,iblk))
-                  if (wtmp /= c0) &
+                  if (abs(wtmp) > c0) &
                   work2(i,j,iblk) = (mask1(i,j-1,iblk)*work1(i,j-1,iblk)*wght1(i,j-1,iblk)  &
                                    + mask1(i,j  ,iblk)*work1(i,j  ,iblk)*wght1(i,j  ,iblk)) &
                                    / wtmp
@@ -4445,7 +4445,7 @@
                         + wght1(i+1,j  ,iblk)  &
                         + wght1(i  ,j+1,iblk)  &
                         + wght1(i+1,j+1,iblk))
-                  if (wtmp /= c0) &
+                  if (abs(wtmp) > c0) &
                   work2(i,j,iblk) = (work1(i  ,j  ,iblk)*wght1(i  ,j  ,iblk)  &
                                    + work1(i+1,j  ,iblk)*wght1(i+1,j  ,iblk)  &
                                    + work1(i  ,j+1,iblk)*wght1(i  ,j+1,iblk)  &
@@ -4470,7 +4470,7 @@
                         + wght1(i-1,j  ,iblk)  &
                         + wght1(i  ,j-1,iblk)  &
                         + wght1(i-1,j-1,iblk))
-                  if (wtmp /= c0) &
+                  if (abs(wtmp) > c0) &
                   work2(i,j,iblk) = (work1(i  ,j  ,iblk)*wght1(i  ,j  ,iblk)  &
                                    + work1(i-1,j  ,iblk)*wght1(i-1,j  ,iblk)  &
                                    + work1(i  ,j-1,iblk)*wght1(i  ,j-1,iblk)  &
@@ -4495,7 +4495,7 @@
                         + wght1(i  ,j  ,iblk)  &
                         + wght1(i-1,j+1,iblk)  &
                         + wght1(i  ,j+1,iblk))
-                  if (wtmp /= c0) &
+                  if (abs(wtmp) > c0) &
                   work2(i,j,iblk) = (work1(i-1,j  ,iblk)*wght1(i-1,j  ,iblk)  &
                                    + work1(i  ,j  ,iblk)*wght1(i  ,j  ,iblk)  &
                                    + work1(i-1,j+1,iblk)*wght1(i-1,j+1,iblk)  &
@@ -4520,7 +4520,7 @@
                         + wght1(i+1,j-1,iblk)  &
                         + wght1(i  ,j  ,iblk)  &
                         + wght1(i+1,j  ,iblk))
-                  if (wtmp /= c0) &
+                  if (abs(wtmp) > c0) &
                   work2(i,j,iblk) = (work1(i  ,j-1,iblk)*wght1(i  ,j-1,iblk)  &
                                    + work1(i+1,j-1,iblk)*wght1(i+1,j-1,iblk)  &
                                    + work1(i  ,j  ,iblk)*wght1(i  ,j  ,iblk)  &
@@ -4543,7 +4543,7 @@
                do i = ilo, ihi
                   wtmp = (wght1(i  ,j,iblk)  &
                         + wght1(i+1,j,iblk))
-                  if (wtmp /= c0) &
+                  if (abs(wtmp) > c0) &
                   work2(i,j,iblk) = (work1(i  ,j,iblk)*wght1(i  ,j,iblk)  &
                                    + work1(i+1,j,iblk)*wght1(i+1,j,iblk)) &
                                    / wtmp
@@ -4564,7 +4564,7 @@
                do i = ilo, ihi
                   wtmp = (wght1(i-1,j,iblk)  &
                         + wght1(i  ,j,iblk))
-                  if (wtmp /= c0) &
+                  if (abs(wtmp) > c0) &
                   work2(i,j,iblk) = (work1(i-1,j,iblk)*wght1(i-1,j,iblk)  &
                                    + work1(i  ,j,iblk)*wght1(i  ,j,iblk)) &
                                    / wtmp
@@ -4585,7 +4585,7 @@
                do i = ilo, ihi
                   wtmp = (wght1(i,j  ,iblk)  &
                         + wght1(i,j+1,iblk))
-                  if (wtmp /= c0) &
+                  if (abs(wtmp) > c0) &
                   work2(i,j,iblk) = (work1(i,j  ,iblk)*wght1(i,j  ,iblk)  &
                                    + work1(i,j+1,iblk)*wght1(i,j+1,iblk)) &
                                    / wtmp
@@ -4606,7 +4606,7 @@
                do i = ilo, ihi
                   wtmp = (wght1(i,j-1,iblk)  &
                         + wght1(i,j  ,iblk))
-                  if (wtmp /= c0) &
+                  if (abs(wtmp) > c0) &
                   work2(i,j,iblk) = (work1(i,j-1,iblk)*wght1(i,j-1,iblk)  &
                                    + work1(i,j  ,iblk)*wght1(i,j  ,iblk)) &
                                    / wtmp
@@ -4876,7 +4876,7 @@
                         + mask1a(i+1,j  ,iblk)*wght1a(i+1,j  ,iblk)  &
                         + mask1b(i  ,j  ,iblk)*wght1b(i  ,j  ,iblk)  &
                         + mask1b(i  ,j+1,iblk)*wght1b(i  ,j+1,iblk))
-                  if (wtmp /= c0) &
+                  if (abs(wtmp) > c0) &
                   work2(i,j,iblk) = (mask1a(i  ,j  ,iblk)*work1a(i  ,j  ,iblk)*wght1a(i  ,j  ,iblk)  &
                                    + mask1a(i+1,j  ,iblk)*work1a(i+1,j  ,iblk)*wght1a(i+1,j  ,iblk)  &
                                    + mask1b(i  ,j  ,iblk)*work1b(i  ,j  ,iblk)*wght1b(i  ,j  ,iblk)  &
@@ -4901,7 +4901,7 @@
                         + mask1a(i  ,j  ,iblk)*wght1a(i  ,j  ,iblk)  &
                         + mask1b(i-1,j  ,iblk)*wght1b(i-1,j  ,iblk)  &
                         + mask1b(i  ,j  ,iblk)*wght1b(i  ,j  ,iblk))
-                  if (wtmp /= c0) &
+                  if (abs(wtmp) > c0) &
                   work2(i,j,iblk) = (mask1a(i  ,j-1,iblk)*work1a(i  ,j-1,iblk)*wght1a(i  ,j-1,iblk)  &
                                    + mask1a(i  ,j  ,iblk)*work1a(i  ,j  ,iblk)*wght1a(i  ,j  ,iblk)  &
                                    + mask1b(i-1,j  ,iblk)*work1b(i-1,j  ,iblk)*wght1b(i-1,j  ,iblk)  &
@@ -4926,7 +4926,7 @@
                         + wght1a(i+1,j  ,iblk)  &
                         + wght1b(i  ,j  ,iblk)  &
                         + wght1b(i  ,j+1,iblk))
-                  if (wtmp /= c0) &
+                  if (abs(wtmp) > c0) &
                   work2(i,j,iblk) = (work1a(i  ,j  ,iblk)*wght1a(i  ,j  ,iblk)  &
                                    + work1a(i+1,j  ,iblk)*wght1a(i+1,j  ,iblk)  &
                                    + work1b(i  ,j  ,iblk)*wght1b(i  ,j  ,iblk)  &
@@ -4951,7 +4951,7 @@
                         + wght1a(i  ,j  ,iblk)  &
                         + wght1b(i-1,j  ,iblk)  &
                         + wght1b(i  ,j  ,iblk))
-                  if (wtmp /= c0) &
+                  if (abs(wtmp) > c0) &
                   work2(i,j,iblk) = (work1a(i  ,j-1,iblk)*wght1a(i  ,j-1,iblk)  &
                                    + work1a(i  ,j  ,iblk)*wght1a(i  ,j  ,iblk)  &
                                    + work1b(i-1,j  ,iblk)*wght1b(i-1,j  ,iblk)  &

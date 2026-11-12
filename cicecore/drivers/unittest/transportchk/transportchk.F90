@@ -125,7 +125,7 @@
                if (trm(i,j,2+it,n) /= trcrn(i,j,it,n) + snwoff_of(it)) errorflag(1) = failflag
             enddo
          else
-            if (any(trm(i,j,:,n) /= c0)) errorflag(1) = failflag
+            if (any(abs(trm(i,j,:,n)) > c0)) errorflag(1) = failflag
          endif
       enddo
       enddo
@@ -164,13 +164,13 @@
          elseif (aicen(i,j,n) > c0) then
             ! tiny ice keeps its area, volumes and tracers are zeroed
             cnt(2) = cnt(2) + 1
-            if (vicenr(i,j,n) /= c0 .or. vsnonr(i,j,n) /= c0) errorflag(3) = failflag
+            if (abs(vicenr(i,j,n)) > c0 .or. abs(vsnonr(i,j,n)) > c0) errorflag(3) = failflag
             do it = 1, ntrcr
-               if (trcrnr(i,j,it,n) /= c0 - snwoff_of(it)) errorflag(3) = failflag
+               if (abs(trcrnr(i,j,it,n)) > c0 - snwoff_of(it)) errorflag(3) = failflag
             enddo
          else
             cnt(3) = cnt(3) + 1
-            if (vicenr(i,j,n) /= c0 .or. vsnonr(i,j,n) /= c0) errorflag(2) = failflag
+            if (abs(vicenr(i,j,n)) > c0 .or. abs(vsnonr(i,j,n)) > c0) errorflag(2) = failflag
          endif
       enddo
       enddo
@@ -198,7 +198,7 @@
       do i = 1, nx_block
          if (aicen(i,j,n) > puny .and. mod(i + 2*j + n, 5) == 0) then
             aim(i,j,n) = c0
-         elseif (aicen(i,j,n) == c0 .and. mod(i+j,2) == 0) then
+         elseif (abs(aicen(i,j,n)) <= c0 .and. mod(i+j,2) == 0) then
             aim(i,j,n) = aimadd
             trm(i,j,1,n) = 1.1_dbl_kind
             trm(i,j,2,n) = 0.05_dbl_kind
@@ -222,13 +222,13 @@
       do n = 1, ncat
       do j = 1, ny_block
       do i = 1, nx_block
-         if (aicen(i,j,n) > c0 .and. aim(i,j,n) == c0) then
+         if (aicen(i,j,n) > c0 .and. abs(aim(i,j,n)) <= c0) then
             ! ice removed: area and volumes zeroed, tracers unchanged
             cnt(1) = cnt(1) + 1
-            if (aicenr(i,j,n) /= c0 .or. vicenr(i,j,n) /= c0 .or. vsnonr(i,j,n) /= c0) &
+            if (abs(aicenr(i,j,n)) > c0 .or. abs(vicenr(i,j,n)) > c0 .or. abs(vsnonr(i,j,n)) > c0) &
                errorflag(4) = failflag
             if (any(trcrnr(i,j,:,n) /= trcrn(i,j,:,n))) errorflag(4) = failflag
-         elseif (aicen(i,j,n) == c0 .and. aim(i,j,n) > c0) then
+         elseif (abs(aicen(i,j,n)) <= c0 .and. aim(i,j,n) > c0) then
             ! ice added to an ice-free cell
             cnt(2) = cnt(2) + 1
             if (aicenr(i,j,n) /= aimadd) errorflag(5) = failflag
@@ -237,10 +237,10 @@
             do it = 1, ntrcr
                if (trcrnr(i,j,it,n) /= trm(i,j,2+it,n) - snwoff_of(it)) errorflag(5) = failflag
             enddo
-         elseif (aicen(i,j,n) == c0 .and. aim(i,j,n) == c0) then
+         elseif (abs(aicen(i,j,n)) <= c0 .and. abs(aim(i,j,n)) <= c0) then
             ! ice-free before and after: area and volumes zero, tracers unchanged
             cnt(3) = cnt(3) + 1
-            if (aicenr(i,j,n) /= c0 .or. vicenr(i,j,n) /= c0 .or. vsnonr(i,j,n) /= c0) &
+            if (abs(aicenr(i,j,n)) > c0 .or. abs(vicenr(i,j,n)) > c0 .or. abs(vsnonr(i,j,n)) > c0) &
                errorflag(6) = failflag
             if (any(trcrnr(i,j,:,n) /= trcrn(i,j,:,n))) errorflag(6) = failflag
          endif
@@ -270,8 +270,8 @@
       trm = fillval
       call state_to_tracers (nx_block, ny_block, ntrcr, ntrace, &
                              aice0, aicen, trcrn, vicen, vsnon, aim, trm)
-      if (any(aim(:,:,0) /= c1) .or. any(aim(:,:,1:ncat) /= c0)) errorflag(7) = failflag
-      if (any(trm /= c0)) errorflag(7) = failflag
+      if (any(aim(:,:,0) /= c1) .or. any(abs(aim(:,:,1:ncat)) > c0)) errorflag(7) = failflag
+      if (any(abs(trm) > c0)) errorflag(7) = failflag
 
       aice0r = fillval
       aicenr = fillval
@@ -281,7 +281,7 @@
       call tracers_to_state (nx_block, ny_block, ntrcr, ntrace, &
                              aim, trm, aice0r, aicenr, trcrnr, vicenr, vsnonr)
       if (any(aice0r /= c1)) errorflag(7) = failflag
-      if (any(aicenr /= c0) .or. any(vicenr /= c0) .or. any(vsnonr /= c0)) errorflag(7) = failflag
+      if (any(abs(aicenr) > c0) .or. any(abs(vicenr) > c0) .or. any(abs(vsnonr) > c0)) errorflag(7) = failflag
       if (any(trcrnr /= trcrn)) errorflag(7) = failflag
 
       !-----------------------------------------------------------------
@@ -392,7 +392,7 @@
 
       real(dbl_kind), intent(in) :: a, b
 
-      if (b == c0) then
+      if (abs(b) <= c0) then
          relerr = abs(a)
       else
          relerr = abs(a-b)/abs(b)

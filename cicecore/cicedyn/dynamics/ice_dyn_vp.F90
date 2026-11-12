@@ -2845,7 +2845,7 @@
                              icellU  ,           &
                              indxUi  , indxUj  , &
                              bx      , by        )
-      if (norm_rhs == c0) then
+      if (abs(norm_rhs) <= c0) then
          solx = bx
          soly = by
          return

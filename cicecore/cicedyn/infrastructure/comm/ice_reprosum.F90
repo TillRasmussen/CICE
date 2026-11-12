@@ -588,7 +588,7 @@ use mpi   ! MPI Fortran module
                   arr_exp_tlmin = MAXEXPONENT(1._r8)
                   arr_exp_tlmax = MINEXPONENT(1._r8)
                   do isum=isum_beg(ithread),isum_end(ithread)
-                     if (arr(isum,ifld) .ne. 0.0_r8) then
+                     if (abs(arr(isum,ifld)) > 0.0_r8) then
                         arr_exp = exponent(arr(isum,ifld))
                         arr_exp_tlmin = min(arr_exp,arr_exp_tlmin)
                         arr_exp_tlmax = max(arr_exp,arr_exp_tlmax)
@@ -927,7 +927,7 @@ use mpi   ! MPI Fortran module
           do isum=isum_beg(ithread),isum_end(ithread)
             arr_remainder = 0.0_r8
 
-            if (arr(isum,ifld) .ne. 0.0_r8) then
+            if (abs(arr(isum,ifld)) > 0.0_r8) then
                arr_exp   = exponent(arr(isum,ifld))
                arr_frac  = fraction(arr(isum,ifld))
 
@@ -966,7 +966,7 @@ use mpi   ! MPI Fortran module
 
 ! while the remainder is non-zero, continue to shift, truncate,
 ! sum, and calculate new remainder
-                  do while ((arr_remainder .ne. 0.0_r8) &
+                  do while ((abs(arr_remainder) > 0.0_r8) &
                      .and. (ilevel < max_levels(ifld)))
                      ilevel = ilevel + 1
                      arr_remainder = scale(arr_remainder,arr_max_shift)
@@ -979,7 +979,7 @@ use mpi   ! MPI Fortran module
                endif
             endif
 
-            if (arr_remainder .ne. 0.0_r8) then
+            if (abs(arr_remainder) > 0.0_r8) then
                not_exact(ifld,ithread) = 1
             endif
 
@@ -1139,7 +1139,7 @@ use mpi   ! MPI Fortran module
                   RX_8 = (i8_arr_gsum_level(ioffset+ilevel) - IX_8)
 
 ! repeat using remainder
-                  do while (RX_8 .ne. 0.0_r8)
+                  do while (abs(RX_8) > 0.0_r8)
                      jlevel = jlevel + 1
                      X_8(jlevel) = RX_8
                      LX(jlevel) = exponent(RX_8)

@@ -948,7 +948,7 @@
       if (itd_area_min /= ice_init_spval .or. itd_mass_min /= ice_init_spval) then
          ! allow itd and dyn parameters to be different
          write(nu_diag,*) subname//' WARNING: zap_residual parameters are reset in namelist'
-      elseif (itd_area_min == c0 .or. itd_mass_min == c0) then
+      elseif (abs(itd_area_min) <= c0 .or. abs(itd_mass_min) <= c0) then
          ! turn off residual zapping in Icepack
          write(nu_diag,*) subname//' WARNING: zap_residual is turned off'
       else

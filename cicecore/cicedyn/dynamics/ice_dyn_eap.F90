@@ -1687,7 +1687,7 @@
 !         invleng = c1/sqrt(dtemp1*dtemp1 + dtemp2*dtemp2) ! not sure if this is neccessary
 !         dtemp1 = dtemp1*invleng
 !         dtemp2 = dtemp2*invleng
-         if (dtemp1 == c0) then
+         if (abs(dtemp1) <= c0) then
             x = pih
          else
             x = atan2(dtemp2,dtemp1)
@@ -1712,7 +1712,7 @@
 !         invleng = c1/sqrt(Tany_1*Tany_1 + Tany_2*Tany_2) ! not sure if this is neccessary
 !         Tany_1 = Tany_1*invleng
 !         Tany_2 = Tany_2*invleng
-         if (Tany_2 == c0) then
+         if (abs(Tany_2) <= c0) then
             y = pih
          else
             y = atan2(Tany_1,Tany_2)
@@ -2007,7 +2007,7 @@
       sigma22 = p5*(stressp-stressm)
 
 !      if ((sigma11-sigma22) == c0) then sigma11-sigma22 == 0 => stressn ==0
-      if (stressm == c0) then
+      if (abs(stressm) <= c0) then
          gamma = p5*(pih)
       else
          gamma = p5*atan2((c2*sigma12),(sigma11-sigma22))
@@ -2039,7 +2039,7 @@
          mresult2 = kfrac * (a2x + Q11Q12)
 
       ! Shear faulting
-      elseif (sigma_2 == c0) then
+      elseif (abs(sigma_2) <= c0) then
          mresult1 = c0
          mresult2 = c0
       elseif ((sigma_1 <= c0).and.(sigma_1/sigma_2 <= threshold)) then

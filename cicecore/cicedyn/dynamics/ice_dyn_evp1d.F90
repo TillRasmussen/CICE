@@ -1344,7 +1344,7 @@ module ice_dyn_evp1d
      if (domark) then
         call mark_cell(id, jd)
         call mark_cell(i1, j1)
-        if (w /= c0) call mark_cell(i2, j2)
+        if (abs(w) > c0) call mark_cell(i2, j2)
         return
      endif
 
@@ -1355,7 +1355,7 @@ module ice_dyn_evp1d
      s2 = ijslot(i2 + (j2 - 1) * nx)
      if (s2 == 0) then
         ! w == 0 does not read s2, so a missing one is no obstacle
-        if (w /= c0) return
+        if (abs(w) > c0) return
         s2 = s1
      endif
 

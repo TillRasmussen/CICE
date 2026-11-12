@@ -1473,7 +1473,7 @@
                           trcrn(i,j,nt_qsno+k-1,n,iblk) = qsn(k)
                        enddo               ! nslyr
                     enddo       ! n
-                 endif          ! qice == c0
+                 endif          ! abs(qice) <= c0
               endif             ! aice_o vs aice_m or tmask
            enddo                ! j
            enddo                ! i

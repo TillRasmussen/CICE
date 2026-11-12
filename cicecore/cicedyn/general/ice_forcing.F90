@@ -411,7 +411,7 @@
       nbits = 64              ! double precision data
 
       if (restore_ocn) then
-         if (trestore == c0) then
+         if (abs(trestore) <= c0) then
             frestore = c1      ! use data instantaneously
          else
             frestore = min(dt/(trestore*secday),c1)

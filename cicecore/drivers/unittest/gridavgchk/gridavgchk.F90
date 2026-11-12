@@ -293,10 +293,10 @@
                iglob = this_block%i_glob(i)
                array3x(i,j,iblock) = (array2x(i,j,iblock) - testconst)/testconst
                ! if array2 is c0, then there are no valid surrounding points and ignore it
-               if (array2x(i,j,iblock) == c0) array3x(i,j,iblock) = c0
+               if (abs(array2x(i,j,iblock)) <= c0) array3x(i,j,iblock) = c0
                errx = abs(array3x(i,j,iblock))
                ! flag points that are active and error numerically
-               if (dmask(i,j,iblock,n) .and. errx > errtol .and. array2x(i,j,iblock) /= c0) then
+               if (dmask(i,j,iblock,n) .and. errx > errtol .and. abs(array2x(i,j,iblock)) > c0) then
                   errorflag(testcnt) = failflag
                   errorflag0         = failflag
                   write(100+my_task,*) ''
@@ -453,11 +453,11 @@
                deltay = deltay0
                array3x(i,j,iblock) = array2x(i,j,iblock)-array1x(i,j,iblock)-deltax
                ! if array2 is c0, then there are no valid surrounding points and ignore it
-               if (array2x(i,j,iblock) == c0) array3x(i,j,iblock) = c0
+               if (abs(array2x(i,j,iblock)) <= c0) array3x(i,j,iblock) = c0
                errx = abs(array3x(i,j,iblock))
                array3y(i,j,iblock) = array2y(i,j,iblock)-array1y(i,j,iblock)-deltay
                ! if array2 is c0, then there are no valid surrounding points and ignore it
-               if (array2y(i,j,iblock) == c0) array3y(i,j,iblock) = c0
+               if (abs(array2y(i,j,iblock)) <= c0) array3y(i,j,iblock) = c0
                erry = abs(array3y(i,j,iblock))
                ! flag points that are active and error numerically
                if (dmask(i,j,iblock,n) .and. (errx > errtol .or. erry > errtol)) then
@@ -643,7 +643,7 @@
                iglob = this_block%i_glob(i)
                array3x(i,j,iblock) = array2x(i,j,iblock)/array2y(i,j,iblock) - c1
                ! if array2 is c0, then there are no valid surrounding points and ignore it
-               if (array2x(i,j,iblock) == c0) array3x(i,j,iblock) = c0
+               if (abs(array2x(i,j,iblock)) <= c0) array3x(i,j,iblock) = c0
                errx = abs(array3x(i,j,iblock))
                ! flag points that are active and error numerically
                if (dmask(i,j,iblock,n) .and. errx > errtolarea(n)) then

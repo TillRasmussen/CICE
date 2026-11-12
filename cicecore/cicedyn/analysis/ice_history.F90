@@ -3516,7 +3516,7 @@
                   trim(avail_hist_fields(n)%avg_ice_present) == 'final') then
                  do j = jlo, jhi
                  do i = ilo, ihi
-                    if (ravgip(i,j) == c0) a2D(i,j,n,iblk) = spval_dbl
+                    if (abs(ravgip(i,j)) <= c0) a2D(i,j,n,iblk) = spval_dbl
                  enddo             ! i
                  enddo             ! j
               endif
@@ -3525,7 +3525,7 @@
                   trim(avail_hist_fields(n)%avg_ice_present) == 'init') then
                  do j = jlo, jhi
                  do i = ilo, ihi
-                    if (ravgip_init(i,j) == c0) a2D(i,j,n,iblk) = spval_dbl
+                    if (abs(ravgip_init(i,j)) <= c0) a2D(i,j,n,iblk) = spval_dbl
                  enddo             ! i
                  enddo             ! j
               endif

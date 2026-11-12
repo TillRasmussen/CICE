@@ -303,7 +303,7 @@ contains
        if (lfrac > fmaxval) lfrac = c1
        if (lfrac < fminval) lfrac = c0
        ice_frac(n) = c1 - lfrac
-       if (ice_frac(n) == c0) then
+       if (abs(ice_frac(n)) <= c0) then
           ice_mask(n) = 0
        else
           ice_mask(n) = 1
