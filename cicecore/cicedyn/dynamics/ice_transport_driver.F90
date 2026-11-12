@@ -855,6 +855,17 @@
       ! Compressed.  uee and vnn are the only per-timestep users of
       ! ice_HaloExtrapolate; every other caller is one-time grid setup in
       ! ice_grid on block-shaped metrics, which must stay block-shaped.
+      ! ⚠ Jacobi staging, not a cache.  upwind_field computes every edge
+      ! flux from the PRE-UPDATE phi and only then updates, so these cannot
+      ! be recomputed inside the update loop: phi(isW) would already have
+      ! moved when isW precedes is, which is Gauss-Seidel and neither
+      ! bit-for-bit nor conservative.  They are task-global because
+      ! upwind_field reads them at a NEIGHBOUR slot, and rank 1, so the
+      ! promotion costs two dynTot vectors and no ntrace or ncat.
+      ! Each block writes a disjoint range, so SHARED, like uvel_s in remap.
+      real (kind=dbl_kind), dimension(dynTot) :: &
+         worka, workb
+
       real (kind=dbl_kind), dimension (dynTot) :: &
          uee, vnn           ! cell edge velocities
 
@@ -1003,7 +1014,7 @@
          !-----------------------------------------------------------------
 
          call upwind_field (dynOff(iblk), nc,        &
-                             Nbr_Local,                 &
+                             worka,        workb,       &
                              skipEdgeE,    skipEdgeN,   &
                              skipPhys,                  &
                              dt,                        &
@@ -1991,7 +2002,7 @@
 ! upwind transport algorithm
 
       subroutine upwind_field (off,      ncells,     &
-                               nbr,                  &
+                               worka,    workb,      &
                                skipE,    skipN,      &
                                skipme,               &
                                dt,                   &
@@ -2000,15 +2011,20 @@
                                HTE,      HTN,        &
                                tarea)
 
-      use ice_grid, only: nbr_W, nbr_E, nbr_N, nbr_S
+      use ice_grid, only: NbrW_Task, NbrE_Task, NbrN_Task, NbrS_Task
 
       integer (kind=int_kind), intent (in) ::     &
          off               , & ! first slot of this block, minus one
          ncells            , & ! number of slots this block holds
          narrays               ! number of 2D arrays to be transported
 
-      integer (kind=int_kind), dimension (:,:), intent(in) ::   &
-         nbr                   ! neighbour slot in each compass direction
+      ! ⚠ Task-global staging, owned by the caller.  Every edge flux is
+      ! computed from the pre-update phi in the first two loops and only
+      ! then applied, so these cannot collapse into scalars: the third loop
+      ! reads them at a NEIGHBOUR slot, which by then would carry an
+      ! already-updated value.
+      real (kind=dbl_kind), dimension (:), intent(inout) ::   &
+         worka, workb
 
       ! ⚠ Three ranges, three masks.  The block form computed worka and
       ! workb together over 1..ihi x 1..jhi, which is a SUPERSET of what it
@@ -2041,15 +2057,8 @@
       ! local variables
 
       integer (kind=int_kind) :: &
-         is, n             , & ! standard indices
+         ms, n             , & ! task-global slot, array counter
          isE, isN, isW, isS    ! neighbour slots
-
-      ! ⚠ block-local, and deliberately so: nbr values are block-local slot
-      ! numbers, so isW/isS index these directly.  +1 is the dead slot, which
-      ! the zeroing below leaves at c0 so a missing neighbour contributes
-      ! nothing.
-      real (kind=dbl_kind), dimension (ncells+1) :: &
-         worka, workb
 
       character(len=*), parameter :: subname = '(upwind_field)'
 
@@ -2059,30 +2068,28 @@
 
       do n = 1, narrays
 
-         worka(:) = c0
-         workb(:) = c0
+         worka(off+1:off+ncells+1) = c0
+         workb(off+1:off+ncells+1) = c0
 
-         do is = 1, ncells
-            if (skipE(off+is)) cycle
-            isE = nbr(off+is,nbr_E)
-            worka(is) =                                                       &
-               upwind(phi(off+is,n),phi(off+isE,n),uee(off+is),HTE(off+is),dt)
+         do ms = off+1, off+ncells
+            if (skipE(ms)) cycle
+            isE = NbrE_Task(ms)
+            worka(ms) = upwind(phi(ms,n),phi(isE,n),uee(ms),HTE(ms),dt)
          enddo
 
-         do is = 1, ncells
-            if (skipN(off+is)) cycle
-            isN = nbr(off+is,nbr_N)
-            workb(is) =                                                       &
-               upwind(phi(off+is,n),phi(off+isN,n),vnn(off+is),HTN(off+is),dt)
+         do ms = off+1, off+ncells
+            if (skipN(ms)) cycle
+            isN = NbrN_Task(ms)
+            workb(ms) = upwind(phi(ms,n),phi(isN,n),vnn(ms),HTN(ms),dt)
          enddo
 
-         do is = 1, ncells
-            if (skipme(off+is)) cycle
-            isW = nbr(off+is,nbr_W)
-            isS = nbr(off+is,nbr_S)
-            phi(off+is,n) = phi(off+is,n) - ( worka(is)-worka(isW)    &
-                                            + workb(is)-workb(isS) )  &
-                                            / tarea(off+is)
+         do ms = off+1, off+ncells
+            if (skipme(ms)) cycle
+            isW = NbrW_Task(ms)
+            isS = NbrS_Task(ms)
+            phi(ms,n) = phi(ms,n) - ( worka(ms)-worka(isW)    &
+                                    + workb(ms)-workb(isS) )  &
+                                    / tarea(ms)
          enddo
 
       enddo                     ! narrays
