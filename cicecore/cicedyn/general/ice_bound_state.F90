@@ -215,6 +215,9 @@
           aicen_slot, vicen_slot, vsnon_slot, trcrn_slot, &
           aice, vice, vsno, aice0, trcr, &
           aice_slot, vice_slot, vsno_slot, aice0_slot, trcr_slot
+      use ice_state, only: uvel, vvel, uvelE, vvelE, uvelN, vvelN
+      use ice_dyn_shared, only: uvel_slot, vvel_slot, &
+          uvelE_slot, vvelE_slot, uvelN_slot, vvelN_slot
 
       integer (kind=int_kind) :: iblk
 
@@ -244,6 +247,30 @@
               aice0_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
          call pack_cat_to_slots(trcr(:,:,:,iblk), dynMap(:,iblk), &
               trcr_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
+
+         ! ⚠ The velocities too.  Every producer of uvel_slot is inside a
+         ! solver, so on a continue run nothing has packed them when the
+         ! initial-condition history is written and accum_hist -- which
+         ! takes n_uvel and n_vvel from the slots -- records zero.
+         ! allocated() covers kdyn <= 0, where init_dyn_shared never ran.
+         if (allocated(uvel_slot)) then
+            call pack_to_slots(uvel(:,iblk), dynMap(:,iblk), &
+                 uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            call pack_to_slots(vvel(:,iblk), dynMap(:,iblk), &
+                 vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         endif
+
+         ! Allocated for grid_ice C and CD only.
+         if (allocated(uvelE_slot)) then
+            call pack_to_slots(uvelE(:,:,iblk), dynMap(:,iblk), &
+                 uvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            call pack_to_slots(vvelE(:,:,iblk), dynMap(:,iblk), &
+                 vvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            call pack_to_slots(uvelN(:,:,iblk), dynMap(:,iblk), &
+                 uvelN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            call pack_to_slots(vvelN(:,:,iblk), dynMap(:,iblk), &
+                 vvelN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         endif
       enddo
       !$OMP END PARALLEL DO
 
