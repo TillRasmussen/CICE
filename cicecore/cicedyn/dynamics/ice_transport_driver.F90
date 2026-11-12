@@ -827,7 +827,7 @@
       use ice_bound_state, only: bound_state
       use ice_flux, only: Tf
       use ice_grid, only: tmask, grid_ice, &
-          dynMap, dynOff, dynCnt, Nbr_Local, dynTot, dynIJ, &
+          dynMap, dynOff, dynCnt, dynTot, dynIJ, &
           skipEdgeE, skipEdgeN, skipPhys, &
           HTE_slot, HTN_slot, tarea_slot, pack_to_slots, &
               unpack_cat_from_slots, unpack_trc_from_slots

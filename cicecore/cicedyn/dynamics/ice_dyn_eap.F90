@@ -130,7 +130,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
           calc_seabed_stress_slot, calc_strint_slot, &
           str1_slot, str2_slot, str3_slot, str4_slot, &
           str5_slot, str6_slot, str7_slot, str8_slot, &
-          denom1, uvel_init, vvel_init, dynOff, dynCnt, dynTot, dynMap, Nbr_Local, &
+          denom1, uvel_init, vvel_init, dynOff, dynCnt, dynTot, dynMap, &
           NbrW_Task , NbrSW_Task, NbrS_Task , NbrE_Task , &
           NbrE_Task, NbrNE_Task, NbrN_Task, &
         NbrNE_Task, NbrN_Task , NbrNW_Task, NbrSE_Task, &

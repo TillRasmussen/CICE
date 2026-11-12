@@ -349,7 +349,7 @@
                               ice_HaloUpdate3DR8_compressed
       use ice_grid, only: HTE, HTN, dxu, dyu,       &
                           earea, narea,       &
-                          dynMap, dynOff, dynCnt, Nbr_Local, dynIJ, dynTot, skipRmp, &
+                          dynMap, dynOff, dynCnt, dynIJ, dynTot, skipRmp, &
                           skipPhys, tarear_slot,                          &
                           dxU_slot, dyU_slot, HTN_slot, HTE_slot,         &
                           HTNe_slot, HTEn_slot, pack_to_slots
@@ -451,9 +451,9 @@
       ! Compressed and TASK-GLOBAL, like uvel_s above: each block writes a
       ! disjoint range, so one shared copy rather than one per thread.
       ! They were per-block while limited_gradient reached them through
-      ! Nbr_Local, which is block-local; reaching them through Nbr*_Task
+      ! which is block-local; reaching them through Nbr*_Task
       ! means they must span the task.  The cost is nblocks/nthreads times
-      ! the memory; what it buys is the retirement of Nbr_Local, and with
+      ! the memory; what it buys is the retirement of and with
       ! it the per-block dead slot.
       real (kind=dbl_kind), dimension(dynTot,0:ncat) :: &
          massmask           ! = 1. where mass is present, = 0. where not
@@ -471,11 +471,19 @@
       real (kind=dbl_kind), dimension (dynTot,ntrace,ncat) ::     &
          trcmask            ! = 1. where this tracer is present, = 0. where not
 
-      ! Compressed: (slot, category) and (slot, tracer, category).
-      real (kind=dbl_kind), dimension (:,:), allocatable ::     &
+      ! Compressed and TASK-GLOBAL: update_fields reads these at a
+      ! NEIGHBOUR slot -- mflxe(mw) is the flux into this cell from the west
+      ! -- and with Nbr*_Task that neighbour is a task-global index.  They
+      ! are stage outputs of the triangle integrals, not loop temporaries,
+      ! so unlike trcmask they cannot be recomputed where they are used.
+      ! ⚠ This is the memory the dead-slot unification costs: one shared
+      ! copy instead of one per thread, so nblocks/nthreads times, and
+      ! mtflxe/mtflxn carry ntrace and ncat.  Nothing else in the chain
+      ! needs it, which is why it is paid here and nowhere else.
+      real (kind=dbl_kind), dimension (dynTot,0:ncat) ::     &
          mflxe, mflxn       ! mass transports across E and N cell edges
 
-      real (kind=dbl_kind), dimension (:,:,:), allocatable :: &
+      real (kind=dbl_kind), dimension (dynTot,ntrace,ncat) :: &
          mtflxe, mtflxn     ! mass*tracer transports across E and N cell edges
 
       ! Slot-indexed now: (slot, group) and (slot, vertex, group).
@@ -720,8 +728,8 @@
       ! TILL I can trigger the same with ifort (IFORT) 18.0.0 20170811
       !$OMP PARALLEL DO PRIVATE(iblk,i,j,ms,ilo,ihi,jlo,jhi,this_block,n,  &
       !$OMP                     edgearea_e,edgearea_n,edge,iflux,jflux,isflux, &
-      !$OMP                     xp,yp,indxsng,mflxe,mflxn, &
-      !$OMP                     mtflxe,mtflxn,triarea,istop,jstop,l_stop) &
+      !$OMP                     xp,yp,indxsng, &
+      !$OMP                     triarea,istop,jstop,l_stop) &
       !$OMP SCHEDULE(runtime)
       do iblk = 1, nblocks
 
@@ -730,10 +738,6 @@
          ! against the triangle geometry costs nothing.
          allocate(edgearea_e(dynCnt(iblk)+1),                     &
                   edgearea_n(dynCnt(iblk)+1),                     &
-                  mflxe (dynCnt(iblk)+1,0:ncat),                  &
-                  mflxn (dynCnt(iblk)+1,0:ncat),                  &
-                  mtflxe(dynCnt(iblk)+1,ntrace,ncat),             &
-                  mtflxn(dynCnt(iblk)+1,ntrace,ncat),             &
                   triarea(dynCnt(iblk)+1,ngroups),                &
                   xp(dynCnt(iblk)+1,0:nvert,ngroups),             &
                   yp(dynCnt(iblk)+1,0:nvert,ngroups),             &
@@ -930,7 +934,6 @@
          ! open water
          call update_fields (dynOff(iblk),   dynCnt(iblk),                                   &
                              skipPhys, &
-                             Nbr_Local, &
                              dynIJ, &
                              nx_block,                              &
                              ntrace,                                &
@@ -950,7 +953,6 @@
 
             call update_fields(dynOff(iblk),   dynCnt(iblk),                                   &
                                skipPhys, &
-                               Nbr_Local, &
                                dynIJ, &
                                nx_block,                               &
                                ntrace,                                 &
@@ -970,7 +972,7 @@
             endif
          enddo                  ! n
 
-         deallocate(edgearea_e, edgearea_n, mflxe, mflxn, mtflxe, mtflxn, &
+         deallocate(edgearea_e, edgearea_n, &
                     triarea, xp, yp, iflux, jflux, isflux, indxsng)
 
       enddo                     ! iblk
@@ -1120,7 +1122,7 @@
                                    tx,             ty,         &
                                    trcmask)
 
-      use ice_grid, only: dynMap, dynOff, dynCnt, Nbr_Local, skipRmp, &
+      use ice_grid, only: dynMap, dynOff, dynCnt, skipRmp, &
                           pack_to_slots, hm_slot
 
       integer (kind=int_kind), intent(in) ::   &
@@ -3621,10 +3623,10 @@
       ! Initialize
       !-------------------------------------------------------------------
 
-      mflx(:) = c0
+      mflx(off+1:off+nslot) = c0
       if (present(mtflx)) then
          do nt = 1, ntrace
-            mtflx(:,nt) = c0
+            mtflx(off+1:off+nslot,nt) = c0
          enddo
       endif
 
@@ -3650,7 +3652,7 @@
                               + yp(ms,0,ng)*my(off+is2)
                msum(ms) = m0
 
-               mflx(ms) = mflx(ms) + triarea(ms,ng)*msum(ms)
+               mflx(off+ms) = mflx(off+ms) + triarea(ms,ng)*msum(ms)
 
                ! quantities needed for tracer transports
                mxsum(ms)  =         m0*xp(ms,0,ng)
@@ -3680,7 +3682,7 @@
                m3 = p333 * (mc(off+is2) + xp(ms,3,ng)*mx(off+is2)   &
                                       + yp(ms,3,ng)*my(off+is2))
                msum(ms) = m1 + m2 + m3
-               mflx(ms) = mflx(ms) + triarea(ms,ng)*msum(ms)
+               mflx(off+ms) = mflx(off+ms) + triarea(ms,ng)*msum(ms)
 
                ! quantities needed for mass_tracer transports
                w1 = m1 * xp(ms,1,ng)
@@ -3728,7 +3730,7 @@
                m3 = p52083 * (mc(off+is2) + xp(ms,3,ng)*mx(off+is2)   &
                                         + yp(ms,3,ng)*my(off+is2))
                msum(ms) = m0 + m1 + m2 + m3
-               mflx(ms) = mflx(ms) + triarea(ms,ng)*msum(ms)
+               mflx(off+ms) = mflx(off+ms) + triarea(ms,ng)*msum(ms)
 
                ! quantities needed for tracer transports
                w0 = m0 * xp(ms,0,ng)
@@ -3777,7 +3779,7 @@
                                    + mxsum(ms) * tx(off+is2,nt)   &
                                    + mysum(ms) * ty(off+is2,nt)
 
-                     mtflx(ms,nt) = mtflx(ms,nt)   &
+                     mtflx(off+ms,nt) = mtflx(off+ms,nt)   &
                                  + triarea(ms,ng) * mtsum(ms,nt)
 
                      ! quantities needed for dependent tracers
@@ -3806,7 +3808,7 @@
                                    + mtxsum(ms,nt1) * tx(off+is2,nt)   &
                                    + mtysum(ms,nt1) * ty(off+is2,nt)
 
-                     mtflx(ms,nt) = mtflx(ms,nt)   &
+                     mtflx(off+ms,nt) = mtflx(off+ms,nt)   &
                                    + triarea(ms,ng) * mtsum(ms,nt)
                   enddo         ! ij
 
@@ -3825,7 +3827,7 @@
                      ! upwind approx (tx=ty=0) for type 3 tracers
                      mtsum(ms,nt) =  mtsum(ms,nt1) * tc(off+is2,nt)
 
-                     mtflx(ms,nt) = mtflx(ms,nt)   &
+                     mtflx(off+ms,nt) = mtflx(off+ms,nt)   &
                                    + triarea(ms,ng) * mtsum(ms,nt)
                   enddo         ! ij
 
@@ -3844,7 +3846,7 @@
 
       subroutine update_fields (off,         ncells,     &
                                 skipme,                  &
-                                nbr,         ijslot,     &
+                                ijslot,                  &
                                 nx_block,                &
                                 ntrace,                  &
                                 tracer_type, depend,     &
@@ -3856,7 +3858,7 @@
                                 mtflxe,      mtflxn,     &
                                 tm)
 
-      use ice_grid, only: nbr_W, nbr_S
+      use ice_grid, only: NbrW_Task, NbrS_Task
 
       ! ⚠ TWO index spaces.  skipme, nbr, ijslot, tarear, mm and tm are whole
       ! task-global arrays; mflxe, mflxn, mtflxe, mtflxn and the local mtold
@@ -3880,8 +3882,6 @@
       ! ⚠ Nbr_Local resolves a missing neighbour to the DEAD SLOT, which holds
       ! c0, so it already does what the "if (mw < 1) mw = mdead" guard did
       ! around the old map lookup.
-      integer (kind=int_kind), dimension (:,:), intent(in) ::   &
-         nbr                   ! neighbour slot in each compass direction
 
       integer (kind=int_kind), dimension (:), intent(in) ::   &
          ijslot                ! flattened (i,j) of each slot, to report an abort
@@ -3973,10 +3973,10 @@
       do is = 1, ncells
          if (skipme(off+is)) cycle
 
-         mw   = nbr(off+is,nbr_W)
-         msth = nbr(off+is,nbr_S)
-         w1 = mflxe(is) - mflxe(mw)   &
-            + mflxn(is) - mflxn(msth)
+         mw   = NbrW_Task(off+is)
+         msth = NbrS_Task(off+is)
+         w1 = mflxe(off+is) - mflxe(mw)   &
+            + mflxn(off+is) - mflxn(msth)
          mm(off+is) = mm(off+is) - w1*tarear(off+is)
 
          if (mm(off+is) < -puny) then    ! abort with negative value
@@ -3993,10 +3993,10 @@
          ijb = ijslot(off+is)
          istop = mod(ijb-1, nx_block) + 1
          jstop = (ijb-1)/nx_block + 1
-         mw   = nbr(off+is,nbr_W)
-         msth = nbr(off+is,nbr_S)
-         w1 = mflxe(is) - mflxe(mw)   &
-            + mflxn(is) - mflxn(msth)
+         mw   = NbrW_Task(off+is)
+         msth = NbrS_Task(off+is)
+         w1 = mflxe(off+is) - mflxe(mw)   &
+            + mflxn(off+is) - mflxn(msth)
          write (nu_diag,*) ' '
          write (nu_diag,*) 'New mass < 0, i, j =', istop, jstop
          write (nu_diag,*) 'Old mass =', mm(off+is) + w1*tarear(off+is)
@@ -4027,10 +4027,10 @@
                   if (skipme(off+is)) cycle
                   if (mm(off+is) <= c0) cycle
 
-                  mw   = nbr(off+is,nbr_W)
-                  msth = nbr(off+is,nbr_S)
-                  w1  = mtflxe(is,nt) - mtflxe(mw,nt)   &
-                      + mtflxn(is,nt) - mtflxn(msth,nt)
+                  mw   = NbrW_Task(off+is)
+                  msth = NbrS_Task(off+is)
+                  w1  = mtflxe(off+is,nt) - mtflxe(mw,nt)   &
+                      + mtflxn(off+is,nt) - mtflxn(msth,nt)
                   tm(off+is,nt) = (mtold(is,nt) - w1*tarear(off+is))   &
                                 / mm(off+is)
                enddo            ! is
@@ -4043,10 +4043,10 @@
                   if (mm(off+is) <= c0) cycle
 
                   if (abs(tm(off+is,nt1)) > c0) then
-                     mw   = nbr(off+is,nbr_W)
-                     msth = nbr(off+is,nbr_S)
-                     w1  = mtflxe(is,nt) - mtflxe(mw,nt)   &
-                         + mtflxn(is,nt) - mtflxn(msth,nt)
+                     mw   = NbrW_Task(off+is)
+                     msth = NbrS_Task(off+is)
+                     w1  = mtflxe(off+is,nt) - mtflxe(mw,nt)   &
+                         + mtflxn(off+is,nt) - mtflxn(msth,nt)
                      tm(off+is,nt) = (mtold(is,nt) - w1*tarear(off+is))   &
                                  / (mm(off+is) * tm(off+is,nt1))
                   endif
@@ -4063,10 +4063,10 @@
 
                   if (abs(tm(off+is,nt1)) > c0 .and.   &
                       abs(tm(off+is,nt2)) > c0) then
-                     mw   = nbr(off+is,nbr_W)
-                     msth = nbr(off+is,nbr_S)
-                     w1  = mtflxe(is,nt) - mtflxe(mw,nt)   &
-                         + mtflxn(is,nt) - mtflxn(msth,nt)
+                     mw   = NbrW_Task(off+is)
+                     msth = NbrS_Task(off+is)
+                     w1  = mtflxe(off+is,nt) - mtflxe(mw,nt)   &
+                         + mtflxn(off+is,nt) - mtflxn(msth,nt)
                      tm(off+is,nt) = (mtold(is,nt) - w1*tarear(off+is))   &
                               / (mm(off+is) * tm(off+is,nt2) * tm(off+is,nt1))
                   endif

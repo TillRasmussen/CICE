@@ -49,7 +49,7 @@
           dyn_prep1, dyn_prep2, dyn_finish, &
           ndte, yield_curve, ecci, denom1, arlx1i, &
           uvel_init, vvel_init, uvelE_init, vvelE_init, uvelN_init, vvelN_init, &
-          dynOff, dynCnt, dynMap, Nbr_Local, &
+          dynOff, dynCnt, dynMap, &
         NbrW_Task , NbrSW_Task, NbrS_Task , NbrE_Task , &
         NbrE_Task, NbrNE_Task, NbrN_Task, &
         NbrNE_Task, NbrN_Task , NbrNW_Task, NbrSE_Task, &
@@ -258,7 +258,7 @@
           iceTmask, iceUmask, iceEmask, iceNmask, &
           dyn_haloUpdate, fld2, fld3, fld4, fld2c
       ! the compressed layout, and the C/CD slot arrays the subcycle runs on
-      use ice_dyn_shared, only: dynMap, dynOff, dynCnt, dynTot, Nbr_Local, &
+      use ice_dyn_shared, only: dynMap, dynOff, dynCnt, dynTot, &
                                NbrW_Task , NbrSW_Task, NbrS_Task , NbrE_Task , &
                                NbrNE_Task, NbrN_Task , NbrNW_Task, NbrSE_Task
       ! strint* and taub* are diagnostics: history is their only consumer,

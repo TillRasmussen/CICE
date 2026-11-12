@@ -48,7 +48,7 @@
       use ice_dyn_shared, only: dyn_prep1, dyn_prep2, dyn_finish, &
           cosw, sinw, uvel_init, vvel_init, dynOff, dynCnt, dynMap, dynIJ, dynMaxCnt, iceTmask_slot, iceUmask_slot, &
           dynTot, pack_to_slots, unpack_from_slots, calc_seabed_stress_slot, &
-          Nbr_Local, nbr_W, nbr_S, nbr_SW, nbr_E, nbr_N, nbr_NE, uarear_slot, &
+          nbr_W, nbr_S, nbr_SW, nbr_E, nbr_N, nbr_NE, uarear_slot, &
           NbrW_Task, NbrSW_Task, NbrS_Task, &
           NbrE_Task, NbrN_Task, NbrNE_Task, &
           dxT_slot, dyT_slot, dxhy_slot, dyhx_slot, cxp_slot, cyp_slot, &

@@ -24,7 +24,7 @@
       ! solvers that import it from ice_dyn_shared are unchanged.
       use ice_grid, only: grid_ice,                                   &
                           dynOff, dynCnt, dynTot, dynMaxCnt,          &
-                          dynMap, Nbr_Local, dynIJ,                       &
+                          dynMap, dynIJ,                       &
                         NbrW_Task , NbrSW_Task, NbrS_Task , NbrE_Task , &
                         NbrNE_Task, NbrN_Task , NbrNW_Task, NbrSE_Task, &
                           set_ragged_layout, set_neighbours,          &
@@ -46,7 +46,7 @@
       private
 
       ! re-exported from ice_grid, which owns the ragged layout
-      public :: dynOff, dynCnt, dynTot, dynMaxCnt, dynMap, Nbr_Local, dynIJ
+      public :: dynOff, dynCnt, dynTot, dynMaxCnt, dynMap, dynIJ
       public :: NbrW_Task , NbrSW_Task, NbrS_Task , NbrE_Task
       public :: NbrNE_Task, NbrN_Task , NbrNW_Task, NbrSE_Task
       public :: nbr_W, nbr_SW, nbr_S, nbr_E, nbr_NE, nbr_N, nbr_NW, nbr_SE
@@ -796,7 +796,7 @@
 !   N2EA  SE   vvelN -> vvelE            area     (X2YA)
 !
 ! They live here rather than in ice_grid because they need dynMap, dynOff and
-! Nbr_Local, and ice_dyn_shared already uses ice_grid -- the other way round
+! and ice_dyn_shared already uses ice_grid -- the other way round
 ! would be circular.
 !
 ! The block loop is kept rather than iterating slots: the originals run over

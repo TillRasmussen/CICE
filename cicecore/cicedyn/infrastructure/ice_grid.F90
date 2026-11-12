@@ -299,7 +299,7 @@
          dynOff, dynCnt, dynCntA, dynIJ, dynBlk
 
       integer (kind=int_kind), dimension(:,:), allocatable, public :: &
-         dynMap, Nbr_Local
+         dynMap
 
       ! Neighbour slots, one contiguous vector per compass direction, as
       ! evp1d has carried them all along (nbrW, nbrSW, ... there).  The
@@ -7143,7 +7143,7 @@
 ! why the layout includes the ghost ring; a halo update refreshes them
 ! between subcycles exactly as it does in the block layout.
 
-      subroutine set_neighbours(map, off, cnt, nbr, nbrG)
+      subroutine set_neighbours(map, off, cnt, nbrG)
 
       use ice_domain, only: nblocks
 
@@ -7156,7 +7156,6 @@
          cnt                ! number of slots held by each block
 
       integer (kind=int_kind), dimension(:,:), intent(out) :: &
-         nbr            , & ! (slot, direction) -> neighbour slot, BLOCK-LOCAL
          nbrG               ! the same neighbour as a GLOBAL slot index
 
       ! local variables
@@ -7191,7 +7190,6 @@
       di(nbr_SE) = +1
       dj(nbr_SE) = -1
 
-      nbr (:,:) = 0   ! overwritten per stored cell below
       nbrG(:,:) = 0
 
       do iblk = 1, nblocks
@@ -7204,7 +7202,6 @@
 
             ! default every direction to this block's dead slot, so a missing
             ! neighbour reads zero with no branch in the kernels
-            nbr (is,:) =             cnt(iblk) + 1
             nbrG(is,:) = off(iblk) + cnt(iblk) + 1
 
             do d = 1, nbr_num
@@ -7217,7 +7214,6 @@
                ! available from the same lookup: block-local composes with the
                ! per-block slices the old kernels take, global is what the
                ! task-wide ones take directly
-               nbr (is,d) =             map((jj-1)*nx_block + ii, iblk)
                nbrG(is,d) = off(iblk) + map((jj-1)*nx_block + ii, iblk)
             enddo
          enddo
@@ -7649,9 +7645,9 @@
       deallocate(mask_any, mask_act)
       dynMaxCnt = max(maxval(dynCnt), 1)
 
-      allocate(Nbr_Local(dynTot,nbr_num), Nbr_Task(dynTot,nbr_num), stat=ierr)
+      allocate(Nbr_Task(dynTot,nbr_num), stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
-      call set_neighbours(dynMap, dynOff, dynCnt, Nbr_Local, Nbr_Task)
+      call set_neighbours(dynMap, dynOff, dynCnt, Nbr_Task)
 
       ! Split the global form into one vector per direction and drop the
       ! rank-2 original; the builder keeps its d loop, the kernels get
