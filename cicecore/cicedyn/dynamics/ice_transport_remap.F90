@@ -415,8 +415,6 @@
          tc             , & ! tracer values at geometric center of cell
          tx, ty             ! limited derivative of tracer wrt x and y
 
-      real (kind=dbl_kind), dimension (nx_block,ny_block,ntrace,ncat) ::     &
-         tmask              ! = 1. if tracer is present, = 0. otherwise
 
       real (kind=dbl_kind), dimension (nx_block,ny_block,0:ncat) ::     &
          mflxe, mflxn       ! mass transports across E and N cell edges
@@ -466,7 +464,7 @@
       !-------------------------------------------------------------------
 
       !$OMP PARALLEL DO PRIVATE(iblk,ilo,ihi,jlo,jhi,this_block,n,   &
-      !$OMP          indxinc,indxjnc,mmask,tmask,istop,jstop,l_stop) &
+      !$OMP          indxinc,indxjnc,mmask,istop,jstop,l_stop) &
       !$OMP SCHEDULE(runtime)
       do iblk = 1, nblocks
 
@@ -491,8 +489,7 @@
                           nghost,             ntrace,                &
                           has_dependents,     icellsnc(:,iblk),      &
                           indxinc(:,:),       indxjnc(:,:),          &
-                          mm  (:,:,:,iblk),   mmask(:,:,:),          &
-                          tm(:,:,:,:,iblk),   tmask(:,:,:,:))
+                          mm  (:,:,:,iblk),   mmask(:,:,:))
 
          !-------------------------------------------------------------------
          ! Construct linear fields, limiting gradients to preserve monotonicity.
@@ -527,8 +524,7 @@
                                   mx     (:,:,n,iblk),  my  (:,:,n,iblk),    &
                                   mmask  (:,:,n),                            &
                                   tm   (:,:,:,n,iblk),  tc(:,:,:,n,iblk),    &
-                                  tx   (:,:,:,n,iblk),  ty(:,:,:,n,iblk),    &
-                                  tmask(:,:,:,n) )
+                                  tx   (:,:,:,n,iblk),  ty(:,:,:,n,iblk) )
 
          enddo                  ! n
 
@@ -1035,8 +1031,7 @@
                                    mx,             my,         &
                                    mmask,                      &
                                    tm,             tc,         &
-                                   tx,             ty,         &
-                                   tmask)
+                                   tx,             ty)
 
       integer (kind=int_kind), intent(in) ::   &
          nx_block, ny_block, & ! block dimensions
@@ -1064,8 +1059,7 @@
          mmask                 ! = 1. if ice is present, = 0. otherwise
 
       real (kind=dbl_kind), dimension (nx_block,ny_block,ntrace), intent(in), optional ::   &
-         tm                , & ! mean tracer
-         tmask                 ! = 1. if tracer is present, = 0. otherwise
+         tm                    ! mean tracer
 
       real (kind=dbl_kind), dimension (nx_block,ny_block), intent(out) ::   &
          mc                , & ! mass value at geometric center of cell
@@ -1086,7 +1080,8 @@
          xav               , & ! mean T-cell values of x
          yav               , & ! mean T-cell values of y
          mxav              , & ! x coordinate of center of mass
-         myav                  ! y coordinate of center of mass
+         myav              , & ! y coordinate of center of mass
+         tmask1                ! tracer-present mask, the one column in use
 
       real (kind=dbl_kind), parameter :: xxav=c1/c12 ! mean T-cell values of xx
       real (kind=dbl_kind), parameter :: yyav=c1/c12 ! mean T-cell values of yy
@@ -1237,7 +1232,16 @@
                      tc(i,j,nt) = tm(i,j,nt) - tx(i,j,nt)*mxav(i,j)   &
                                              - ty(i,j,nt)*myav(i,j)
 
-                     if (tmask(i,j,nt) > puny) then
+                     ! ⚠ mmask, not just the comparison.  make_masks built
+                     ! the tracer mask over the mass-present list and THEN
+                     ! redefined icells for the ghost layers, so the list
+                     ! this loop walks is not the one the mask was built on.
+                     ! mmask is what still records the original list, and
+                     ! tmask was c1 exactly where mmask is c1 and the tracer
+                     ! is non-zero.  Dropping mmask here differs at the
+                     ! cells between the two lists -- measured as 661 bytes
+                     ! of a restart, with diagnostics and history identical.
+                     if (mmask(i,j) > puny .and. abs(tm(i,j,nt)) > puny) then
 
                         ! center of area*tracer
                         w2 = mc(i,j)*tx(i,j,nt)   &
@@ -1248,7 +1252,7 @@
                         ! echmod: grid arrays = 0
                         mtxav(i,j,nt) = w2*xxav *w7
                         mtyav(i,j,nt) = w3*yyav * w7
-                     endif         ! tmask
+                     endif         ! tracer present
 
                   enddo            ! ij
 
@@ -1268,10 +1272,23 @@
             elseif (tracer_type(nt)==2) then   ! tracer nt depends on nt1
                nt1 = depend(nt)
 
+               ! limited_gradient reads the mask at the eight NEIGHBOURS,
+               ! so unlike the home-cell test above it does need an array --
+               ! but only this one column, for nt1.  Carrying all of them as
+               ! (nx_block,ny_block,ntrace,ncat), per OMP thread, to hold a
+               ! value recomputable from tm was the cost being paid.
+               ! Built over the whole block from mmask rather than over
+               ! icells, for the same reason: mmask still carries the list
+               ! the original mask was built on, and limited_gradient reads
+               ! this at neighbours that icells no longer covers.
+               tmask1(:,:) = c0
+               where (mmask(:,:) > puny .and. abs(tm(:,:,nt1)) > puny) &
+                  tmask1(:,:) = c1
+
                call limited_gradient(nx_block,       ny_block,         &
                                      ilo, ihi,       jlo, jhi,         &
                                      nghost,                           &
-                                     tm   (:,:,nt),  tmask(:,:,nt1),   &
+                                     tm   (:,:,nt),  tmask1(:,:),      &
                                      mtxav(:,:,nt1), mtyav(:,:,nt1),   &
                                      tx   (:,:,nt),  ty   (:,:,nt))
 
