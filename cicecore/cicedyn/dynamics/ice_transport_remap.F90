@@ -448,11 +448,16 @@
          mc             , & ! mass at geometric center of cell
          mx, my             ! limited derivative of mass wrt x and y
 
-      ! Compressed, one block at a time, so allocated inside the loop like
-      ! the rest of the per-block working set -- at dynTot they would be a
-      ! per-thread stack array.
-      real (kind=dbl_kind), dimension(:,:), allocatable :: &
-         mmask              ! = 1. if mass is present, = 0. otherwise
+      ! Compressed and TASK-GLOBAL, like uvel_s above: each block writes a
+      ! disjoint range, so one shared copy rather than one per thread.
+      ! They were per-block while limited_gradient reached them through
+      ! Nbr_Local, which is block-local; reaching them through Nbr*_Task
+      ! means they must span the task.  The cost is nblocks/nthreads times
+      ! the memory; what it buys is the retirement of Nbr_Local, and with
+      ! it the per-block dead slot.
+      real (kind=dbl_kind), dimension(dynTot,0:ncat) :: &
+         massmask           ! = 1. where mass is present, = 0. where not
+
 
       ! ⚠ TARGET so the halo call below can alias (slot,ntrace,ncat) to the
       ! rank 2 (slot, bundle) the compressed halo takes -- the same pointer
@@ -463,8 +468,8 @@
          tc             , & ! tracer values at geometric center of cell
          tx, ty             ! limited derivative of tracer wrt x and y
 
-      real (kind=dbl_kind), dimension (:,:,:), allocatable ::     &
-         tmask              ! = 1. if tracer is present, = 0. otherwise
+      real (kind=dbl_kind), dimension (dynTot,ntrace,ncat) ::     &
+         trcmask            ! = 1. where this tracer is present, = 0. where not
 
       ! Compressed: (slot, category) and (slot, tracer, category).
       real (kind=dbl_kind), dimension (:,:), allocatable ::     &
@@ -523,15 +528,11 @@
       ! them off the clause makes them shared and the packs race -- which is
       ! exactly how 8da46d2 reached boreas.  No compiler warns.
       !$OMP PARALLEL DO PRIVATE(iblk,ilo,ihi,jlo,jhi,this_block,n,   &
-      !$OMP          mmask,tmask,istop,jstop,l_stop, &
+      !$OMP          istop,jstop,l_stop, &
       !$OMP          nc) &
       !$OMP SCHEDULE(runtime)
       do iblk = 1, nblocks
 
-         ! PRIVATE, so each thread allocates its own -- see the second block
-         ! loop below for why these are not stack arrays.
-         allocate(mmask(dynCnt(iblk)+1,0:ncat),         &
-                  tmask(dynCnt(iblk)+1,ntrace,ncat))
 
          l_stop = .false.
          istop = 0
@@ -553,9 +554,9 @@
                           ntrace,                                           &
                           has_dependents,                                   &
                           mm,                                               &
-                          mmask,                                            &
+                          massmask,                                            &
                           tm,                                               &
-                          tmask)
+                          trcmask)
 
          !-------------------------------------------------------------------
          ! Construct linear fields, limiting gradients to preserve monotonicity.
@@ -571,7 +572,7 @@
                                mc(:,0),                     &
                                mx(:,0),                     &
                                my(:,0),                     &
-                               mmask(:,0) )
+                               massmask(:,0) )
 
          ! ice categories
 
@@ -584,12 +585,12 @@
                                   mc(:,n),                     &
                                   mx(:,n),                     &
                                   my(:,n),                     &
-                                  mmask  (:,n),                            &
+                                  massmask  (:,n),                            &
                                   tm(:,:,n),                   &
                                   tc(:,:,n),                   &
                                   tx(:,:,n),                   &
                                   ty(:,:,n),                   &
-                                  tmask(:,:,n) )
+                                  trcmask(:,:,n) )
 
          enddo                  ! n
 
@@ -627,7 +628,6 @@
             call diagnostic_abort(istop,jstop,iblk,'bad departure points')
          endif
 
-         deallocate(mmask, tmask)
 
       enddo                     ! iblk
       !$OMP END PARALLEL DO
@@ -996,12 +996,12 @@
       subroutine make_masks (lo,             hi,       &
                              ntrace,                   &
                              has_dependents,           &
-                             mm,             mmask,    &
-                             tm,             tmask)
+                             mm,             massmask,    &
+                             tm,             trcmask)
 
       ! The index lists this used to return -- icells, indxi, indxj -- are
       ! gone.  construct_fields was their only consumer and it now tests the
-      ! mmask per slot instead, so they were being built, redefined over a
+      ! massmask per slot instead, so they were being built, redefined over a
       ! second range, and never read.
       !
       ! Every loop here ran over the WHOLE block, 1..nx_block x 1..ny_block,
@@ -1011,7 +1011,7 @@
 
       ! ⚠ hi is the last REAL cell, not the dead slot.  The loops below ran
       ! 1..ncells before, which excluded it; including it would define a
-      ! mmask element the caller's scratch never had written and that
+      ! massmask element the caller's scratch never had written and that
       ! nothing reads.
       integer (kind=int_kind), intent(in) ::     &
          lo, hi            , & ! first and last real slot of this block
@@ -1026,19 +1026,18 @@
          mm                    ! mean ice area in each grid cell
 
       real (kind=dbl_kind), dimension (:,0:), intent(out) :: &
-         mmask                 ! = 1. if ice is present, else = 0.
+         massmask                 ! = 1. if ice is present, else = 0.
 
       real (kind=dbl_kind), dimension (:,:,:), intent(in), optional :: &
          tm                    ! mean tracer values in each grid cell
 
       real (kind=dbl_kind), dimension (:,:,:), intent(out), optional :: &
-         tmask                 ! = 1. if tracer is present, else = 0.
+         trcmask                 ! = 1. if tracer is present, else = 0.
 
       ! local variables
 
       integer (kind=int_kind) ::     &
          ms                , & ! task-global slot
-         is                , & ! the same cell in this block's scratch, 1-based
          n                 , & ! ice category index
          nt                    ! tracer index
 
@@ -1056,15 +1055,13 @@
       ! open water mask
       !-------------------------------------------------------------------
 
-      ! ⚠ TWO index spaces.  mm and tm are task-global now; mmask and tmask
-      ! are per-block scratch the caller allocates at dynCnt(iblk)+1 inside
-      ! the loop, so they stay 1-based.  ms indexes the first, is the second.
+      ! ONE index space now: massmask and trcmask are task-global like mm and
+      ! tm, so ms indexes all four and the rebasing to 1 is gone.
       do ms = lo, hi
-         is = ms - lo + 1
          if (mm(ms,0) > puny) then
-            mmask(is,0) = c1
+            massmask(ms,0) = c1
          else
-            mmask(is,0) = c0
+            massmask(ms,0) = c0
          endif
       enddo
 
@@ -1074,9 +1071,9 @@
          ! ice area mask: grid cells where ice is present
          !-------------------------------------------------------------------
 
-         mmask(:,n) = c0
+         massmask(lo:hi+1,n) = c0
          do ms = lo, hi
-            if (mm(ms,n) > puny) mmask(ms-lo+1,n) = c1
+            if (mm(ms,n) > puny) massmask(ms,n) = c1
          enddo
 
          !-------------------------------------------------------------------
@@ -1085,7 +1082,7 @@
 
          if (present(tm)) then
 
-            tmask(:,:,n) = c0
+            trcmask(lo:hi+1,:,n) = c0
 
             ! Same cells the ice-area mask just marked, which is what the
             ! icells list carried: mm > puny over the WHOLE block, before it
@@ -1093,9 +1090,8 @@
             do nt = 1, ntrace
                if (has_dependents(nt)) then
                   do ms = lo, hi
-                     is = ms - lo + 1
-                     if (mmask(is,n) > puny .and. abs(tm(ms,nt,n)) > puny) then
-                        tmask(is,nt,n) = c1
+                     if (massmask(ms,n) > puny .and. abs(tm(ms,nt,n)) > puny) then
+                        trcmask(ms,nt,n) = c1
                      endif
                   enddo
                endif
@@ -1119,10 +1115,10 @@
                                    has_dependents,             &
                                    mm,             mc,         &
                                    mx,             my,         &
-                                   mmask,                      &
+                                   massmask,                   &
                                    tm,             tc,         &
                                    tx,             ty,         &
-                                   tmask)
+                                   trcmask)
 
       use ice_grid, only: dynMap, dynOff, dynCnt, Nbr_Local, skipRmp, &
                           pack_to_slots, hm_slot
@@ -1146,11 +1142,11 @@
       ! in the slot layout, so the packs this routine used to do are gone.
       real (kind=dbl_kind), dimension (:), intent(in), contiguous ::   &
          mm                , & ! mean value of mass field
-         mmask                 ! = 1. if ice is present, = 0. otherwise
+         massmask                 ! = 1. if ice is present, = 0. otherwise
 
       real (kind=dbl_kind), dimension (:,:), intent(in), optional, contiguous ::   &
          tm                , & ! mean tracer            (slot, tracer)
-         tmask                 ! = 1. if tracer is present, = 0. otherwise
+         trcmask                 ! = 1. if tracer is present, = 0. otherwise
 
       ! Compressed, written straight out.
       real (kind=dbl_kind), dimension (:), intent(out), contiguous ::   &
@@ -1170,13 +1166,6 @@
       real (kind=dbl_kind), parameter :: xxav=c1/c12 ! mean T-cell values of xx
       real (kind=dbl_kind), parameter :: yyav=c1/c12 ! mean T-cell values of yy
 
-      ! (slot, tracer), this block only -- so the same size the block form
-      ! carried, not dynTot x ntrace.  Read at a DIFFERENT tracer than the
-      ! one being computed (nt1 = depend(nt)), which is why they are rank 2
-      ! while the rest of the working set is rank 1.
-      real (kind=dbl_kind), dimension (dynCnt(iblk)+1,ntrace) ::  &
-         mtxav             , & ! x coordinate of center of mass*tracer
-         mtyav                 ! y coordinate of center of mass*tracer
 
       real (kind=dbl_kind) ::   &
          puny, &
@@ -1184,13 +1173,24 @@
 
       integer (kind=int_kind) :: ncells, is, off, nslot
 
-      ! The compressed working set.  mm, mmask, tm and tmask are no longer
+      ! The compressed working set.  mm, massmask, tm and trcmask are no longer
       ! here: they arrive compressed, so only the genuinely local vectors
       ! remain.
+      ! ⚠ Per-block, and deliberately.  Only the arrays limited_gradient
+      ! reads at a NEIGHBOUR index have to span the task -- phi and phimask.
+      ! These reach it as cnx, cny, gx and gy, which it touches at the home
+      ! cell only, so they stay the size of one block.  That matters most
+      ! for mtxav and mtyav: ntrace can be large, and a (dynTot,ntrace) pair
+      ! is the one shape worth not allocating.
       real (kind=dbl_kind), dimension (dynCnt(iblk)+1) :: &
-         zero_s, &
-         mxav_s, myav_s, &
-         tc_s, tx_s, ty_s
+         zero_s         , & ! identically zero -- the no-centroid case
+         mxav_s, myav_s , & ! mass centroid of this field
+         tc_s           , & ! tracer at the geometric centre
+         tx_s,   ty_s       ! limited tracer gradient
+
+      real (kind=dbl_kind), dimension (dynCnt(iblk)+1,ntrace) :: &
+         mtxav          , & ! x coordinate of centre of mass*tracer
+         mtyav              ! y coordinate of centre of mass*tracer
 
       character(len=*), parameter :: subname = '(construct_fields)'
 
@@ -1242,6 +1242,16 @@
       if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
          file=__FILE__, line=__LINE__)
 
+      ! ⚠ BEFORE the zeroing below, which indexes with them.  They used to
+      ! sit further down, next to the comment about the two index spaces,
+      ! and the zeroing read them uninitialised -- benign under gfortran,
+      ! which happened to leave a usable value on the stack, and caught by
+      ! ifx only once an unrelated change to this routine's locals moved
+      ! the stack around: "Subscript #1 of MC has value -285250143".
+      ncells = dynCnt(iblk)
+      off    = dynOff(iblk)
+      nslot  = ncells + 1
+
       mc(off+1:off+nslot) = c0
       mx(off+1:off+nslot) = c0
       my(off+1:off+nslot) = c0
@@ -1258,35 +1268,32 @@
 
       ! ⚠ TWO index spaces.  mm, mc, mx, my, tm, tc, tx and ty are whole
       ! task-global arrays; everything else here -- tc_s, tx_s, ty_s,
-      ! mxav_s, myav_s, mtxav, mtyav, mmask, tmask, zero_s -- is the
+      ! mxav_s, myav_s, mtxav, mtyav, massmask, trcmask, zero_s -- is the
       ! caller's per-block scratch, 1-based.  is stays BLOCK-LOCAL and the
       ! task-global reads compose: mc(off+is).  limited_gradient is handed
       ! slices for the same reason -- it is also called with purely
       ! block-local arrays and so cannot take the task-global form.
-      ncells = dynCnt(iblk)
-      off    = dynOff(iblk)
-      nslot  = ncells + 1
 
       ! xav and yav are never assigned -- they are c0 for the whole routine,
       ! which is what the "echmod: grid arrays = 0" note below refers to --
       ! so they are passed as a zero vector.
       zero_s(:) = c0
 
-      call limited_gradient (ncells,                                            &
-                             skipRmp(dynOff(iblk)+1:dynOff(iblk)+ncells),       &
-                             Nbr_Local (dynOff(iblk)+1:dynOff(iblk)+ncells,:),     &
-                             mm(off+1:off+nslot),                                 &
-                             hm_slot(dynOff(iblk)+1:dynOff(iblk)+ncells+1),        &
-                             zero_s,   zero_s,                                  &
+      ! ⚠ phi and phimask whole -- they are read at neighbour slots.  gx and
+      ! gy are written at the home cell only, so they go in as this block's
+      ! slice, like zero_s beside them.
+      call limited_gradient (off,      ncells,                       &
+                             skipRmp,  mm,       hm_slot,            &
+                             zero_s,   zero_s,                       &
                              mx(off+1:off+nslot), my(off+1:off+nslot))
 
-      ! ⚠ mmask is the indicator of the icells list: make_masks sets it to c1
+      ! ⚠ massmask is the indicator of the icells list: make_masks sets it to c1
       ! at exactly the cells it counted, mm > puny.  So testing it per slot
       ! selects the same cells the indxi/indxj loop did, and every such cell
-      ! has a slot -- ice implies ocean implies tmask implies mask_any.
+      ! has a slot -- ice implies ocean implies trcmask implies mask_any.
       mc(off+1:off+nslot) = c0
       do is = 1, ncells
-         if (mmask(is) <= puny) cycle
+         if (massmask(off+is) <= puny) cycle
 
          ! mass field at geometric center
          mc(off+is) = mm(off+is)
@@ -1302,7 +1309,7 @@
          mxav_s(:) = c0
          myav_s(:) = c0
          do is = 1, ncells       ! cells with mass
-            if (mmask(is) <= puny) cycle
+            if (massmask(off+is) <= puny) cycle
 
             ! center of mass (mxav,myav) for each cell
 
@@ -1323,11 +1330,9 @@
 
             if (tracer_type(nt)==1) then ! independent of other tracers
 
-               call limited_gradient(ncells,                                      &
-                                     skipRmp(dynOff(iblk)+1:dynOff(iblk)+ncells), &
-                                     Nbr_Local (dynOff(iblk)+1:dynOff(iblk)+ncells,:),&
-                                     tm(off+1:off+nslot,nt), mmask,               &
-                                     mxav_s,   myav_s,                            &
+               call limited_gradient(off,      ncells,                       &
+                                     skipRmp,  tm(:,nt), massmask,           &
+                                     mxav_s,   myav_s,                       &
                                      tx_s,     ty_s)
 
                if (has_dependents(nt)) then   ! need center of area*tracer
@@ -1338,13 +1343,13 @@
                   tc_s(:) = c0
                   do is = 1, ncells  ! Note: no tx or ty in ghost cells
                                      ! (bound calls are later)
-                     if (mmask(is) <= puny) cycle
+                     if (massmask(off+is) <= puny) cycle
 
                      ! tracer value at geometric center
                      tc_s(is) = tm(off+is,nt) - tx_s(is)*mxav_s(is)   &
                                           - ty_s(is)*myav_s(is)
 
-                     if (tmask(is,nt) > puny) then
+                     if (trcmask(off+is,nt) > puny) then
 
                         ! center of area*tracer
                         w2 = mc(off+is)*tx_s(is)   &
@@ -1355,7 +1360,7 @@
                         ! echmod: grid arrays = 0
                         mtxav(is,nt) = w2*xxav *w7
                         mtyav(is,nt) = w3*yyav * w7
-                     endif         ! tmask
+                     endif         ! trcmask
 
                   enddo            ! is
 
@@ -1363,7 +1368,7 @@
 
                   tc_s(:) = c0
                   do is = 1, ncells      ! mass is present
-                     if (mmask(is) <= puny) cycle
+                     if (massmask(off+is) <= puny) cycle
 
                      ! tracer value at geometric center
                      tc_s(is) = tm(off+is,nt) - tx_s(is)*mxav_s(is)   &
@@ -1375,16 +1380,14 @@
             elseif (tracer_type(nt)==2) then   ! tracer nt depends on nt1
                nt1 = depend(nt)
 
-               call limited_gradient(ncells,                                      &
-                                     skipRmp(dynOff(iblk)+1:dynOff(iblk)+ncells), &
-                                     Nbr_Local (dynOff(iblk)+1:dynOff(iblk)+ncells,:),&
-                                     tm(off+1:off+nslot,nt), tmask(:,nt1),        &
-                                     mtxav(:,nt1), mtyav(:,nt1),                  &
+               call limited_gradient(off,      ncells,                       &
+                                     skipRmp,  tm(:,nt), trcmask(:,nt1),     &
+                                     mtxav(:,nt1), mtyav(:,nt1),             &
                                      tx_s,     ty_s)
 
                tc_s(:) = c0
                do is = 1, ncells     ! ice is present
-                  if (mmask(is) <= puny) cycle
+                  if (massmask(off+is) <= puny) cycle
                   tc_s(is) = tm(off+is,nt)                       &
                            - tx_s(is) * mtxav(is,nt1)        &
                            - ty_s(is) * mtyav(is,nt1)
@@ -1394,7 +1397,7 @@
 
                tc_s(:) = c0
                do is = 1, ncells
-                  if (mmask(is) <= puny) cycle
+                  if (massmask(off+is) <= puny) cycle
 
                   tc_s(is) = tm(off+is,nt)
                enddo               ! is
@@ -1421,16 +1424,17 @@
 ! authors William H. Lipscomb, LANL
 !         John R. Baumgardner, LANL
 
-      subroutine limited_gradient (ncells,   skipme,   &
-                                   nbr,                &
+      subroutine limited_gradient (off,      ncells,   &
+                                   skipme,             &
                                    phi,      phimask,  &
                                    cnx,      cny,      &
                                    gx,       gy)
 
-      use ice_grid, only: nbr_W, nbr_E, nbr_N, nbr_S, &
-                          nbr_NW, nbr_NE, nbr_SW, nbr_SE
+      use ice_grid, only: NbrW_Task,  NbrE_Task,  NbrN_Task,  NbrS_Task, &
+                          NbrNW_Task, NbrNE_Task, NbrSW_Task, NbrSE_Task
 
       integer (kind=int_kind), intent(in) :: &
+         off               , & ! first slot of this block, minus one
          ncells                ! slots held by this block
 
       ! .true. outside the remap loop range.  STATIC block geometry --
@@ -1441,10 +1445,6 @@
       logical (kind=log_kind), dimension(:), intent(in), contiguous :: &
          skipme
 
-      ! (slot, direction) -> neighbour slot; a missing neighbour points at
-      ! the block's dead slot, which holds zero.
-      integer (kind=int_kind), dimension (:,:), intent(in) :: &
-         nbr
 
       ! compressed: this block's slice, 1-based, cells 1..ncells, dead slot last
       real (kind=dbl_kind), dimension (:), intent (in), contiguous :: &
@@ -1462,7 +1462,8 @@
       ! local variables
 
       integer (kind=int_kind) :: &
-         is                    , & ! slot counter
+         ms                    , & ! task-global slot -- phi, phimask
+         is                    , & ! the same cell in this block -- cnx..gy
          isW, isE, isN, isS    , & ! the eight neighbour slots
          isNW, isNE, isSW, isSE
 
@@ -1485,42 +1486,48 @@
       if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
          file=__FILE__, line=__LINE__)
 
+      ! ⚠ TWO index spaces, and the split is not arbitrary: phi and phimask
+      ! are read at NEIGHBOUR slots, which Nbr*_Task gives task-global, so
+      ! they must span the task.  cnx, cny, gx and gy are touched at the
+      ! home cell only, so they stay the size of one block -- which is what
+      ! keeps a (dynTot,ntrace) pair from having to exist.
       gx(:) = c0
       gy(:) = c0
 
-      do is = 1, ncells
-         if (skipme(is)) cycle
-         if (phimask(is) <= puny) cycle
+      do ms = off+1, off+ncells
+         is = ms - off
+         if (skipme(ms)) cycle
+         if (phimask(ms) <= puny) cycle
 
-         isW  = nbr(is,nbr_W )
-         isE  = nbr(is,nbr_E )
-         isN  = nbr(is,nbr_N )
-         isS  = nbr(is,nbr_S )
-         isNW = nbr(is,nbr_NW)
-         isNE = nbr(is,nbr_NE)
-         isSW = nbr(is,nbr_SW)
-         isSE = nbr(is,nbr_SE)
+         isW  = NbrW_Task(ms)
+         isE  = NbrE_Task(ms)
+         isN  = NbrN_Task(ms)
+         isS  = NbrS_Task(ms)
+         isNW = NbrNW_Task(ms)
+         isNE = NbrNE_Task(ms)
+         isSW = NbrSW_Task(ms)
+         isSE = NbrSE_Task(ms)
 
          ! Store values of phi in the 8 neighbor cells.
          ! Note: phimask = 1. or 0.  If phimask = 1., use the true value;
          !  if phimask = 0., use the home cell value so that non-physical
          !  values of phi do not contribute to the gradient.
          phi_nw = phimask(isNW) * phi(isNW)  &
-            + (c1-phimask(isNW))* phi(is  )
+            + (c1-phimask(isNW))* phi(ms  )
          phi_n  = phimask(isN ) * phi(isN )  &
-            + (c1-phimask(isN ))* phi(is  )
+            + (c1-phimask(isN ))* phi(ms  )
          phi_ne = phimask(isNE) * phi(isNE)  &
-            + (c1-phimask(isNE))* phi(is  )
+            + (c1-phimask(isNE))* phi(ms  )
          phi_w  = phimask(isW ) * phi(isW )  &
-            + (c1-phimask(isW ))* phi(is  )
+            + (c1-phimask(isW ))* phi(ms  )
          phi_e  = phimask(isE ) * phi(isE )  &
-            + (c1-phimask(isE ))* phi(is  )
+            + (c1-phimask(isE ))* phi(ms  )
          phi_sw = phimask(isSW) * phi(isSW)  &
-            + (c1-phimask(isSW))* phi(is  )
+            + (c1-phimask(isSW))* phi(ms  )
          phi_s  = phimask(isS ) * phi(isS )  &
-            + (c1-phimask(isS ))* phi(is  )
+            + (c1-phimask(isS ))* phi(ms  )
          phi_se = phimask(isSE) * phi(isSE)  &
-            + (c1-phimask(isSE))* phi(is  )
+            + (c1-phimask(isSE))* phi(ms  )
 
          ! unlimited gradient components
          ! (factors of two cancel out)
@@ -1529,13 +1536,13 @@
          gytmp = (phi_n - phi_s) * p5
 
          ! minimum and maximum among the nine local cells
-         pmn = min (phi_nw, phi_n,  phi_ne, phi_w, phi(is),   &
+         pmn = min (phi_nw, phi_n,  phi_ne, phi_w, phi(ms),   &
                     phi_e,  phi_sw, phi_s,  phi_se)
-         pmx = max (phi_nw, phi_n,  phi_ne, phi_w, phi(is),   &
+         pmx = max (phi_nw, phi_n,  phi_ne, phi_w, phi(ms),   &
                     phi_e,  phi_sw, phi_s,  phi_se)
 
-         pmn = pmn - phi(is)
-         pmx = pmx - phi(is)
+         pmn = pmn - phi(ms)
+         pmx = pmx - phi(ms)
 
          ! minimum and maximum deviation of phi within the cell
          w1  =  (p5 - cnx(is)) * gxtmp   &
@@ -1569,7 +1576,7 @@
          gx(is) = w1 * gxtmp
          gy(is) = w1 * gytmp
 
-      enddo                     ! is
+      enddo                     ! ms
 
       end subroutine limited_gradient
 
