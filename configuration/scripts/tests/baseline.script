@@ -70,6 +70,25 @@ if (${ICE_BASECOM} != ${ICE_SPVAL}) then
     ${ICE_CASEDIR}/casescripts/comparerest.csh ${base_dir} ${test_dir}
     set bfbstatus = $status
 
+    # Reported separately rather than folded into bfbstatus: the restart
+    # compare answers "is the trajectory the same", this answers "is the
+    # written output the same", and a reader needs to see which one moved.
+    # Exit 3 means there was no binary history to compare; not a result,
+    # and not reported.
+    echo ""
+    echo "Regression History Compare Mode:"
+    ${ICE_CASEDIR}/casescripts/comparehist.csh ${base_dir}/../history ${ICE_RUNDIR}/history
+    set histstatus = $status
+    if ( ${histstatus} == 0 ) then
+      echo "PASS ${ICE_TESTNAME} comphist ${ICE_BASECOM}" >> ${ICE_CASEDIR}/test_output
+    else if ( ${histstatus} == 1 ) then
+      echo "FAIL ${ICE_TESTNAME} comphist ${ICE_BASECOM} different-data" >> ${ICE_CASEDIR}/test_output
+    else if ( ${histstatus} == 2 ) then
+      echo "MISS ${ICE_TESTNAME} comphist ${ICE_BASECOM} missing-data" >> ${ICE_CASEDIR}/test_output
+    else if ( ${histstatus} != 3 ) then
+      echo "FAIL ${ICE_TESTNAME} comphist ${ICE_BASECOM} usage-error" >> ${ICE_CASEDIR}/test_output
+    endif
+
     if ( ${bfbstatus} != 0 ) then
 
       set test_file = `ls -1t ${ICE_RUNDIR}/cice.runlog* | head -1`

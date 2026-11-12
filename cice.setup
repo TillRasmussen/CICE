@@ -880,7 +880,7 @@ EOF
     end
 
     # from tests dir to casescr
-    foreach file (cice.results.csh cice.codecov.csh cice.lcov.csh comparerest.csh comparelog.csh)
+    foreach file (cice.results.csh cice.codecov.csh cice.lcov.csh comparerest.csh comparelog.csh comparehist.csh)
       if !(-e ${ICE_SCRIPTS}/tests/$file) then
         echo "${0}: ERROR, ${ICE_SCRIPTS}/$file not found"
         exit -1
