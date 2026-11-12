@@ -162,13 +162,13 @@
 
          !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
          do iblk = 1, nblocks
-            call unpack_cat_from_slots(aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
+            call unpack_cat_from_slots(aicen_slot, &
                  dynMap(:,iblk), aicen(:,:,:,iblk))
-            call unpack_cat_from_slots(vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
+            call unpack_cat_from_slots(vicen_slot, &
                  dynMap(:,iblk), vicen(:,:,:,iblk))
-            call unpack_cat_from_slots(vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
+            call unpack_cat_from_slots(vsnon_slot, &
                  dynMap(:,iblk), vsnon(:,:,:,iblk))
-            call unpack_trc_from_slots(trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:), &
+            call unpack_trc_from_slots(trcrn_slot, &
                  dynMap(:,iblk), trcrn(:,:,:,:,iblk))
          enddo
          !$OMP END PARALLEL DO
@@ -226,27 +226,27 @@
       !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
       do iblk = 1, nblocks
          call pack_cat_to_slots(aicen(:,:,:,iblk), dynMap(:,iblk), &
-              aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
+              aicen_slot)
          call pack_cat_to_slots(vicen(:,:,:,iblk), dynMap(:,iblk), &
-              vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
+              vicen_slot)
          call pack_cat_to_slots(vsnon(:,:,:,iblk), dynMap(:,iblk), &
-              vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
+              vsnon_slot)
          call pack_trc_to_slots(trcrn(:,:,:,:,iblk), dynMap(:,iblk), &
-              trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:))
+              trcrn_slot)
          ! ⚠ The aggregates too.  update_state is their only other
          ! producer and CICE_RunMod is its only caller, so without this
          ! they are c0 at the initial-condition write and every history
          ! field guarded by aice silently reads zero.
          call pack_to_slots(aice (:,:,iblk), dynMap(:,iblk), &
-              aice_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+              aice_slot)
          call pack_to_slots(vice (:,:,iblk), dynMap(:,iblk), &
-              vice_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+              vice_slot)
          call pack_to_slots(vsno (:,:,iblk), dynMap(:,iblk), &
-              vsno_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+              vsno_slot)
          call pack_to_slots(aice0(:,:,iblk), dynMap(:,iblk), &
-              aice0_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+              aice0_slot)
          call pack_cat_to_slots(trcr(:,:,:,iblk), dynMap(:,iblk), &
-              trcr_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:))
+              trcr_slot)
 
          ! ⚠ The velocities too.  Every producer of uvel_slot is inside a
          ! solver, so on a continue run nothing has packed them when the
@@ -255,21 +255,21 @@
          ! allocated() covers kdyn <= 0, where init_dyn_shared never ran.
          if (allocated(uvel_slot)) then
             call pack_to_slots(uvel(:,iblk), dynMap(:,iblk), &
-                 uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                 uvel_slot)
             call pack_to_slots(vvel(:,iblk), dynMap(:,iblk), &
-                 vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                 vvel_slot)
          endif
 
          ! Allocated for grid_ice C and CD only.
          if (allocated(uvelE_slot)) then
             call pack_to_slots(uvelE(:,:,iblk), dynMap(:,iblk), &
-                 uvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                 uvelE_slot)
             call pack_to_slots(vvelE(:,:,iblk), dynMap(:,iblk), &
-                 vvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                 vvelE_slot)
             call pack_to_slots(uvelN(:,:,iblk), dynMap(:,iblk), &
-                 uvelN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                 uvelN_slot)
             call pack_to_slots(vvelN(:,:,iblk), dynMap(:,iblk), &
-                 vvelN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                 vvelN_slot)
          endif
       enddo
       !$OMP END PARALLEL DO

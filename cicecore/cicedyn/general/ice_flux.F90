@@ -1084,7 +1084,7 @@
       hwater_slot(:) = c0
       do iblk = 1, nblocks
          call pack_to_slots(hwater(:,iblk), dynMap(:,iblk), &
-                            hwater_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                            hwater_slot)
       enddo
       daice_da(:,:,:) = c0            ! data assimilation increment rate
 

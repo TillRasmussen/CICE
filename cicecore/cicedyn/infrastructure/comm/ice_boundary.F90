@@ -4133,7 +4133,7 @@ contains
       if (m == 0) then
          cslot = 0
       else
-         cslot = off(blk) + m
+         cslot = m
       endif
    end function cslot
 
@@ -10242,10 +10242,10 @@ contains
                m1 = map((j-1)*nx_block + ii+1, iblk)
                m2 = map((j-1)*nx_block + ii+2, iblk)
                w1 = c0
-               if (m1 >= 1) w1 = ARRAY(off(iblk)+m1)
+               if (m1 >= 1) w1 = ARRAY(m1)
                w2 = c0
-               if (m2 >= 1) w2 = ARRAY(off(iblk)+m2)
-               ARRAY(off(iblk)+m0) = c2*w1 - w2
+               if (m2 >= 1) w2 = ARRAY(m2)
+               ARRAY(m0) = c2*w1 - w2
             enddo
             enddo
          endif
@@ -10261,10 +10261,10 @@ contains
                m1 = map((j-1)*nx_block + ii-1, iblk)
                m2 = map((j-1)*nx_block + ii-2, iblk)
                w1 = c0
-               if (m1 >= 1) w1 = ARRAY(off(iblk)+m1)
+               if (m1 >= 1) w1 = ARRAY(m1)
                w2 = c0
-               if (m2 >= 1) w2 = ARRAY(off(iblk)+m2)
-               ARRAY(off(iblk)+m0) = c2*w1 - w2
+               if (m2 >= 1) w2 = ARRAY(m2)
+               ARRAY(m0) = c2*w1 - w2
             enddo
             enddo
          endif
@@ -10280,10 +10280,10 @@ contains
                m1 = map((jj+1-1)*nx_block + i, iblk)
                m2 = map((jj+2-1)*nx_block + i, iblk)
                w1 = c0
-               if (m1 >= 1) w1 = ARRAY(off(iblk)+m1)
+               if (m1 >= 1) w1 = ARRAY(m1)
                w2 = c0
-               if (m2 >= 1) w2 = ARRAY(off(iblk)+m2)
-               ARRAY(off(iblk)+m0) = c2*w1 - w2
+               if (m2 >= 1) w2 = ARRAY(m2)
+               ARRAY(m0) = c2*w1 - w2
             enddo
             enddo
          endif
@@ -10301,10 +10301,10 @@ contains
                m1 = map((jj-1-1)*nx_block + i, iblk)
                m2 = map((jj-2-1)*nx_block + i, iblk)
                w1 = c0
-               if (m1 >= 1) w1 = ARRAY(off(iblk)+m1)
+               if (m1 >= 1) w1 = ARRAY(m1)
                w2 = c0
-               if (m2 >= 1) w2 = ARRAY(off(iblk)+m2)
-               ARRAY(off(iblk)+m0) = c2*w1 - w2
+               if (m2 >= 1) w2 = ARRAY(m2)
+               ARRAY(m0) = c2*w1 - w2
             enddo
             enddo
          endif
@@ -10543,7 +10543,7 @@ contains
 
          mslot = map((jSrc-1)*nx_block + iSrc, srcBlock)
          if (mslot > 0) then
-            bufSend(n,nmsg) = array2(off(srcBlock)+mslot)
+            bufSend(n,nmsg) = array2(mslot)
          else
             bufSend(n,nmsg) = c0
          endif
@@ -10591,14 +10591,14 @@ contains
          if (dstBlock < 0) then ! tripole copy into buffer
             mslot = map((jSrc-1)*nx_block + iSrc, srcBlock)
             if (mslot > 0) then
-               bufTripole(iDst,jDst) = array2(off(srcBlock)+mslot)
+               bufTripole(iDst,jDst) = array2(mslot)
             else
                bufTripole(iDst,jDst) = c0
             endif
          endif
       else if (srcBlock == 0) then
          mslot = map((jDst-1)*nx_block + iDst, dstBlock)
-         if (mslot > 0) array1(off(dstBlock)+mslot) = fill
+         if (mslot > 0) array1(mslot) = fill
      endif
    end do
 
@@ -10739,7 +10739,7 @@ contains
 
             if (jSrc <= halo%tripoleRows .and. jSrc>0 .and. jDst>0) then
                mslot = map((jDst-1)*nx_block + iDst, dstBlock)
-               if (mslot > 0) array1(off(dstBlock)+mslot) = isign*bufTripole(iSrc,jSrc)
+               if (mslot > 0) array1(mslot) = isign*bufTripole(iSrc,jSrc)
             endif
 
          endif

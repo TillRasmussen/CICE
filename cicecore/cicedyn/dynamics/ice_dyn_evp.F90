@@ -895,8 +895,8 @@
          ! couplers; only the ndte subcycles run compressed.
          !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
          do iblk = 1, nblocks
-            call pack_to_slots(uvel(:,iblk), dynMap(:,iblk), uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(vvel(:,iblk), dynMap(:,iblk), vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            call pack_to_slots(uvel(:,iblk), dynMap(:,iblk), uvel_slot)
+            call pack_to_slots(vvel(:,iblk), dynMap(:,iblk), vvel_slot)
             ! constant through the subcycling, so packed once and never
             ! unpacked; the block-layout originals stay for the consumers
             ! outside the dynamics
@@ -1049,8 +1049,8 @@
 
             !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
             do iblk = 1, nblocks
-               call unpack_from_slots(uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), uvel(:,iblk))
-               call unpack_from_slots(vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), vvel(:,iblk))
+               call unpack_from_slots(uvel_slot, dynMap(:,iblk), uvel(:,iblk))
+               call unpack_from_slots(vvel_slot, dynMap(:,iblk), vvel(:,iblk))
                ! Both diagnostics are built here, once, rather than on
                ! every one of the ndte passes: str1..str8 still hold what
                ! the final pass used, and taubxU_slot holds its Cb.
@@ -1069,8 +1069,8 @@
                        NbrE_Task, NbrNE_Task, NbrN_Task, &
                        strintxU_slot, &
                        strintyU_slot)
-                  call unpack_from_slots(strintxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), strintxU(:,iblk))
-                  call unpack_from_slots(strintyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), strintyU(:,iblk))
+                  call unpack_from_slots(strintxU_slot, dynMap(:,iblk), strintxU(:,iblk))
+                  call unpack_from_slots(strintyU_slot, dynMap(:,iblk), strintyU(:,iblk))
                endif
                if (ltaub) then
                   call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceUmask_slot, &
@@ -1078,8 +1078,8 @@
                        taubxU_slot, &
                        vvel_slot, &
                        taubyU_slot)
-                  call unpack_from_slots(taubxU_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), taubxU  (:,iblk))
-                  call unpack_from_slots(taubyU_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), taubyU  (:,iblk))
+                  call unpack_from_slots(taubxU_slot, dynMap(:,iblk), taubxU  (:,iblk))
+                  call unpack_from_slots(taubyU_slot, dynMap(:,iblk), taubyU  (:,iblk))
                endif
             enddo
             !$OMP END PARALLEL DO
@@ -1110,18 +1110,18 @@
          ! ------------------------------------------------------------------
          !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
          do iblk = 1, nblocks
-            call pack_to_slots(uvelE(:,:,iblk), dynMap(:,iblk), uvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(vvelE(:,:,iblk), dynMap(:,iblk), vvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(uvelN(:,:,iblk), dynMap(:,iblk), uvelN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(vvelN(:,:,iblk), dynMap(:,iblk), vvelN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            call pack_to_slots(uvelE(:,:,iblk), dynMap(:,iblk), uvelE_slot)
+            call pack_to_slots(vvelE(:,:,iblk), dynMap(:,iblk), vvelE_slot)
+            call pack_to_slots(uvelN(:,:,iblk), dynMap(:,iblk), uvelN_slot)
+            call pack_to_slots(vvelN(:,:,iblk), dynMap(:,iblk), vvelN_slot)
             ! ⚠ uvel and vvel too.  strain_rates_U reads them on the FIRST
             ! subcycle pass -- as uvelU/vvelU -- before the grid_average
             ! shifts write them later in the same pass.  Without this the
             ! first pass used whatever uvel_slot held from the last timestep,
             ! which is the previous values in a continuous run and zeros
             ! after a restart: the restart test could not reproduce.
-            call pack_to_slots(uvel(:,iblk), dynMap(:,iblk), uvel_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(vvel(:,iblk), dynMap(:,iblk), vvel_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            call pack_to_slots(uvel(:,iblk), dynMap(:,iblk), uvel_slot)
+            call pack_to_slots(vvel(:,iblk), dynMap(:,iblk), vvel_slot)
             ! constant through the subcycling, so packed once
             ! The step kernels read these every pass but nothing changes
             ! them during the subcycle, so one pack each is enough.
@@ -1339,19 +1339,19 @@
          ! reads the block arrays, so this has to come first.
          !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
          do iblk = 1, nblocks
-            call unpack_from_slots(uvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), uvelE(:,:,iblk))
-            call unpack_from_slots(vvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), vvelE(:,:,iblk))
-            call unpack_from_slots(uvelN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), uvelN(:,:,iblk))
-            call unpack_from_slots(vvelN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), vvelN(:,:,iblk))
-            call unpack_from_slots(uvel_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), uvel(:,iblk))
-            call unpack_from_slots(vvel_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), vvel(:,iblk))
+            call unpack_from_slots(uvelE_slot, dynMap(:,iblk), uvelE(:,:,iblk))
+            call unpack_from_slots(vvelE_slot, dynMap(:,iblk), vvelE(:,:,iblk))
+            call unpack_from_slots(uvelN_slot, dynMap(:,iblk), uvelN(:,:,iblk))
+            call unpack_from_slots(vvelN_slot, dynMap(:,iblk), vvelN(:,:,iblk))
+            call unpack_from_slots(uvel_slot, dynMap(:,iblk), uvel(:,iblk))
+            call unpack_from_slots(vvel_slot, dynMap(:,iblk), vvel(:,iblk))
             ! strint* and taub* are outputs only: the kernels write slots
             ! every pass and this is their one and only block write.
             ! Cb was carried in taubxE_slot / taubyN_slot through the
             ! subcycling; the stresses are formed from it here, once.
             if (lstrint) then
-               call unpack_from_slots(strintxE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), strintxE(:,:,iblk))
-               call unpack_from_slots(strintyN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), strintyN(:,:,iblk))
+               call unpack_from_slots(strintxE_slot, dynMap(:,iblk), strintxE(:,:,iblk))
+               call unpack_from_slots(strintyN_slot, dynMap(:,iblk), strintyN(:,:,iblk))
             endif
             if (ltaub) then
                call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceEmask_slot, &
@@ -1385,18 +1385,18 @@
          ! Pack once, subcycle compressed, unpack once -- see the C branch.
          !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
          do iblk = 1, nblocks
-            call pack_to_slots(uvelE(:,:,iblk), dynMap(:,iblk), uvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(vvelE(:,:,iblk), dynMap(:,iblk), vvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(uvelN(:,:,iblk), dynMap(:,iblk), uvelN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(vvelN(:,:,iblk), dynMap(:,iblk), vvelN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            call pack_to_slots(uvelE(:,:,iblk), dynMap(:,iblk), uvelE_slot)
+            call pack_to_slots(vvelE(:,:,iblk), dynMap(:,iblk), vvelE_slot)
+            call pack_to_slots(uvelN(:,:,iblk), dynMap(:,iblk), uvelN_slot)
+            call pack_to_slots(vvelN(:,:,iblk), dynMap(:,iblk), vvelN_slot)
             ! ⚠ uvel and vvel too.  strain_rates_U reads them on the FIRST
             ! subcycle pass -- as uvelU/vvelU -- before the grid_average
             ! shifts write them later in the same pass.  Without this the
             ! first pass used whatever uvel_slot held from the last timestep,
             ! which is the previous values in a continuous run and zeros
             ! after a restart: the restart test could not reproduce.
-            call pack_to_slots(uvel(:,iblk), dynMap(:,iblk), uvel_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-            call pack_to_slots(vvel(:,iblk), dynMap(:,iblk), vvel_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            call pack_to_slots(uvel(:,iblk), dynMap(:,iblk), uvel_slot)
+            call pack_to_slots(vvel(:,iblk), dynMap(:,iblk), vvel_slot)
             ! constant through the subcycling, so packed once
             ! The step kernels read these every pass but nothing changes
             ! them during the subcycle, so one pack each is enough.
@@ -1629,21 +1629,21 @@
          ! reads the block arrays.
          !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
          do iblk = 1, nblocks
-            call unpack_from_slots(uvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), uvelE(:,:,iblk))
-            call unpack_from_slots(vvelE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), vvelE(:,:,iblk))
-            call unpack_from_slots(uvelN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), uvelN(:,:,iblk))
-            call unpack_from_slots(vvelN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), vvelN(:,:,iblk))
-            call unpack_from_slots(uvel_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), uvel(:,iblk))
-            call unpack_from_slots(vvel_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), vvel(:,iblk))
+            call unpack_from_slots(uvelE_slot, dynMap(:,iblk), uvelE(:,:,iblk))
+            call unpack_from_slots(vvelE_slot, dynMap(:,iblk), vvelE(:,:,iblk))
+            call unpack_from_slots(uvelN_slot, dynMap(:,iblk), uvelN(:,:,iblk))
+            call unpack_from_slots(vvelN_slot, dynMap(:,iblk), vvelN(:,:,iblk))
+            call unpack_from_slots(uvel_slot, dynMap(:,iblk), uvel(:,iblk))
+            call unpack_from_slots(vvel_slot, dynMap(:,iblk), vvel(:,iblk))
             ! strint* and taub* are outputs only: the kernels write slots
             ! every pass and this is their one and only block write.
             ! Cb was carried in taubxE_slot / taubxN_slot through the
             ! subcycling; both components are formed from it here, once.
             if (lstrint) then
-               call unpack_from_slots(strintxE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), strintxE(:,:,iblk))
-               call unpack_from_slots(strintyE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), strintyE(:,:,iblk))
-               call unpack_from_slots(strintxN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), strintxN(:,:,iblk))
-               call unpack_from_slots(strintyN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), strintyN(:,:,iblk))
+               call unpack_from_slots(strintxE_slot, dynMap(:,iblk), strintxE(:,:,iblk))
+               call unpack_from_slots(strintyE_slot, dynMap(:,iblk), strintyE(:,:,iblk))
+               call unpack_from_slots(strintxN_slot, dynMap(:,iblk), strintxN(:,:,iblk))
+               call unpack_from_slots(strintyN_slot, dynMap(:,iblk), strintyN(:,:,iblk))
             endif
             if (ltaub) then
                call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceEmask_slot, &

@@ -3876,7 +3876,7 @@
                do j = jlo, jhi
                do i = ilo, ihi
                 if (tmask((j-1)*nx_block+i,iblk)) then
-                  ms = dynOff(iblk) + dynMap((j-1)*nx_block+i,iblk)
+                  ms = dynMap((j-1)*nx_block+i,iblk)
                   do n=1,ncat_hist
                      worka(i,j)  = worka(i,j) + a3Dc(ms,n,n_fmelttn_ai(ns)-n2D)
                   enddo            ! n
@@ -3886,7 +3886,7 @@
                ! worka is already the shape pack_to_slots declares; the
                ! reshape only forced a copy in and out.
                call pack_to_slots(worka, dynMap(:,iblk), &
-                                  a2D(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,n_fmeltt_ai(ns)))
+                                  a2D(:,n_fmeltt_ai(ns)))
             endif
           enddo
          endif
@@ -3963,7 +3963,6 @@
                     ravgip(i,j) = c0
                     cycle
                  endif
-                 ms = dynOff(iblk) + ms
                  if (a2D(ms,n_aice(ns)) > puny) then
                     ravgip(i,j) = c1/(a2D(ms,n_aice(ns)))
                  else
@@ -3982,7 +3981,6 @@
                     ravgip_init(i,j) = c0
                     cycle
                  endif
-                 ms = dynOff(iblk) + ms
                  if (a2D(ms,n_aice_init(ns)) > puny) then
                     ravgip_init(i,j) = c1/(a2D(ms,n_aice_init(ns)))
                  else
@@ -4001,7 +3999,6 @@
                     ravgip_pond(i,j) = c0
                     cycle
                  endif
-                 ms = dynOff(iblk) + ms
                  if (a2D(ms,n_apond_ai(ns)) > puny) then
                     ravgip_pond(i,j) = c1/a2D(ms,n_apond_ai(ns))
                  else
@@ -4020,7 +4017,6 @@
                     ravgip_ridge(i,j) = c0
                     cycle
                  endif
-                 ms = dynOff(iblk) + ms
                  if (a2D(ms,n_ardg(ns)) > puny) then
                     ravgip_ridge(i,j) = c1/a2D(ms,n_ardg(ns))
                  else
@@ -4036,7 +4032,6 @@
               do j = jlo, jhi
               do i = ilo, ihi
                  ms = dynMap((j-1)*nx_block+i,iblk)
-                 if (ms > 0) ms = dynOff(iblk) + ms
                  ! a cell with no slot never accumulated: the block form
                  ! read c0 here and took the else branch
                  if (ms > 0) then
@@ -4067,7 +4062,6 @@
                     ! those with spval_dbl on expansion, which is what this loop
                     ! would have written here.
                     if (ms < 1) cycle
-                    ms = dynOff(iblk) + ms
                     if (.not. tmask((j-1)*nx_block+i,iblk)) then
                        a2D(ms,n) = spval_dbl
                     else                            ! convert units
@@ -4084,7 +4078,6 @@
                     ! those with spval_dbl on expansion, which is what this loop
                     ! would have written here.
                     if (ms < 1) cycle
-                    ms = dynOff(iblk) + ms
                     if (.not. tmask((j-1)*nx_block+i,iblk)) then
                        a2D(ms,n) = spval_dbl
                     else                            ! convert units
@@ -4101,7 +4094,6 @@
                     ! those with spval_dbl on expansion, which is what this loop
                     ! would have written here.
                     if (ms < 1) cycle
-                    ms = dynOff(iblk) + ms
                     if (.not. tmask((j-1)*nx_block+i,iblk)) then
                        a2D(ms,n) = spval_dbl
                     else                            ! convert units
@@ -4118,7 +4110,6 @@
                     ! those with spval_dbl on expansion, which is what this loop
                     ! would have written here.
                     if (ms < 1) cycle
-                    ms = dynOff(iblk) + ms
                     if (.not. tmask((j-1)*nx_block+i,iblk)) then
                        a2D(ms,n) = spval_dbl
                     else                            ! convert units
@@ -4135,7 +4126,6 @@
                     ! those with spval_dbl on expansion, which is what this loop
                     ! would have written here.
                     if (ms < 1) cycle
-                    ms = dynOff(iblk) + ms
                     if (.not. tmask((j-1)*nx_block+i,iblk)) then ! mask out land points
                        a2D(ms,n) = spval_dbl
                     else                            ! convert units
@@ -4156,7 +4146,6 @@
                     ! those with spval_dbl on expansion, which is what this loop
                     ! would have written here.
                     if (ms < 1) cycle
-                    ms = dynOff(iblk) + ms
                     if (ravgip(i,j) == c0) a2D(ms,n) = spval_dbl
                  enddo             ! i
                  enddo             ! j
@@ -4171,7 +4160,6 @@
                     ! those with spval_dbl on expansion, which is what this loop
                     ! would have written here.
                     if (ms < 1) cycle
-                    ms = dynOff(iblk) + ms
                     if (ravgip_init(i,j) == c0) a2D(ms,n) = spval_dbl
                  enddo             ! i
                  enddo             ! j
@@ -4280,7 +4268,6 @@
                     do i = ilo, ihi
                        ms = dynMap((j-1)*nx_block+i,iblk)
                        if (ms < 1) cycle   ! no slot: expand_a3Dc fills spval
-                       ms = dynOff(iblk) + ms
                        if (.not. tmask((j-1)*nx_block+i,iblk)) then ! mask out land points
                           a3Dc(ms,k,n) = spval_dbl
                        else                            ! convert units
@@ -4296,7 +4283,6 @@
                     do i = ilo, ihi
                        ms = dynMap((j-1)*nx_block+i,iblk)
                        if (ms < 1) cycle   ! no slot: expand_a3Dc fills spval
-                       ms = dynOff(iblk) + ms
                        if (.not. tmask((j-1)*nx_block+i,iblk)) then ! mask out land points
                           a3Dc(ms,k,n) = spval_dbl
                        else                            ! convert units
@@ -4375,7 +4361,6 @@
               do i = ilo, ihi
                  ms = dynMap((j-1)*nx_block+i,iblk)
                  if (ms < 1) cycle   ! no slot: the expansion fills spval
-                 ms = dynOff(iblk) + ms
                  if (.not. tmask((j-1)*nx_block+i,iblk)) then ! mask out land points
                     a3Df(ms,k,n) = spval_dbl
                  else                            ! convert units
@@ -4397,7 +4382,6 @@
               do i = ilo, ihi
                  ms = dynMap((j-1)*nx_block+i,iblk)
                  if (ms < 1) cycle   ! no slot: the expansion fills spval
-                 ms = dynOff(iblk) + ms
                  if (.not. tmask((j-1)*nx_block+i,iblk)) then ! mask out land points
                     a4Di(ms,k,ic,n) = spval_dbl
                  else                            ! convert units
@@ -4420,7 +4404,6 @@
               do i = ilo, ihi
                  ms = dynMap((j-1)*nx_block+i,iblk)
                  if (ms < 1) cycle   ! no slot: the expansion fills spval
-                 ms = dynOff(iblk) + ms
                  if (.not. tmask((j-1)*nx_block+i,iblk)) then ! mask out land points
                     a4Ds(ms,k,ic,n) = spval_dbl
                  else                            ! convert units
@@ -4443,7 +4426,6 @@
               do i = ilo, ihi
                  ms = dynMap((j-1)*nx_block+i,iblk)
                  if (ms < 1) cycle   ! no slot: the expansion fills spval
-                 ms = dynOff(iblk) + ms
                  if (.not. tmask((j-1)*nx_block+i,iblk)) then ! mask out land points
                     a4Df(ms,k,ic,n) = spval_dbl
                  else                            ! convert units

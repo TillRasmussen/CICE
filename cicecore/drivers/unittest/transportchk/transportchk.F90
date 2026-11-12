@@ -223,7 +223,7 @@
       ! the block copy of aice0 is written through dynMap, at every cell that
       ! owns a slot and nowhere else
       do ms = 1, nc
-         ij = dynIJ(off+ms)
+         ij = dynIJ(ms)
          j  = (ij-1)/nx_block + 1
          i  = ij - (j-1)*nx_block
          if (aice0b(i,j) /= aim(ms,0)) errorflag(8) = failflag
@@ -240,7 +240,7 @@
 
       do n = 1, ncat
       do ms = 1, nc
-         ij = dynIJ(off+ms)
+         ij = dynIJ(ms)
          j  = (ij-1)/nx_block + 1
          i  = ij - (j-1)*nx_block
          if (aicen(ms,n) > puny .and. mod(i + 2*j + n, 5) == 0) then
@@ -388,7 +388,7 @@
 
       do n = 1, ncat
       do ms = 1, nc
-         ij = dynIJ(off+ms)
+         ij = dynIJ(ms)
          j  = (ij-1)/nx_block + 1
          i  = ij - (j-1)*nx_block
          select case (mod(i + 3*j + 5*n, 8))

@@ -1945,8 +1945,8 @@
       ! init_history_dyn left there, which was not information.
       msl = dynMap((j-1)*nx_block + i, iblk)
       if (msl > 0) then
-         write(nu_diag,*) '            strtltxU= ',strtltxU(dynOff(iblk)+msl)
-         write(nu_diag,*) '            strtltyU= ',strtltyU(dynOff(iblk)+msl)
+         write(nu_diag,*) '            strtltxU= ',strtltxU(msl)
+         write(nu_diag,*) '            strtltyU= ',strtltyU(msl)
       else
          write(nu_diag,*) '            strtltxU=  (no slot)'
          write(nu_diag,*) '            strtltyU=  (no slot)'

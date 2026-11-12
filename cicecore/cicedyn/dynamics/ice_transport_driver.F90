@@ -621,10 +621,10 @@
          ! still read the block forms, and an island that packs block->slot
          ! would otherwise clobber what transport just computed.  This goes
          ! away with the last of those consumers.
-         call unpack_cat_from_slots(aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), aicen(:,:,:,iblk))
-         call unpack_cat_from_slots(vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), vicen(:,:,:,iblk))
-         call unpack_cat_from_slots(vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), vsnon(:,:,:,iblk))
-         call unpack_trc_from_slots(trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:), dynMap(:,iblk), trcrn(:,:,:,:,iblk))
+         call unpack_cat_from_slots(aicen_slot, dynMap(:,iblk), aicen(:,:,:,iblk))
+         call unpack_cat_from_slots(vicen_slot, dynMap(:,iblk), vicen(:,:,:,iblk))
+         call unpack_cat_from_slots(vsnon_slot, dynMap(:,iblk), vsnon(:,:,:,iblk))
+         call unpack_trc_from_slots(trcrn_slot, dynMap(:,iblk), trcrn(:,:,:,:,iblk))
 
       enddo                     ! iblk
       !$OMP END PARALLEL DO
@@ -801,7 +801,7 @@
 
       work(:,:,:) = c0
       do iblk = 1, nblocks
-         call unpack_from_slots(comp(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+         call unpack_from_slots(comp, &
                                 dynMap(:,iblk), work(:,:,iblk))
       enddo
 
@@ -912,9 +912,9 @@
          !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
          do iblk = 1, nblocks
             call pack_to_slots(uvelE(:,:,iblk), dynMap(:,iblk), &
-                               uee(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                               uee)
             call pack_to_slots(vvelN(:,:,iblk), dynMap(:,iblk), &
-                               vnn(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                               vnn)
          enddo
          !$OMP END PARALLEL DO
       else
@@ -1044,10 +1044,10 @@
          ! here for restart, history, restoring, diagnostics and the islands
          ! downstream, which would otherwise pack block->slot and clobber what
          ! transport just computed.
-         call unpack_cat_from_slots(aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), aicen(:,:,:,iblk))
-         call unpack_cat_from_slots(vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), vicen(:,:,:,iblk))
-         call unpack_cat_from_slots(vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), dynMap(:,iblk), vsnon(:,:,:,iblk))
-         call unpack_trc_from_slots(trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:), dynMap(:,iblk), trcrn(:,:,:,:,iblk))
+         call unpack_cat_from_slots(aicen_slot, dynMap(:,iblk), aicen(:,:,:,iblk))
+         call unpack_cat_from_slots(vicen_slot, dynMap(:,iblk), vicen(:,:,:,iblk))
+         call unpack_cat_from_slots(vsnon_slot, dynMap(:,iblk), vsnon(:,:,:,iblk))
+         call unpack_trc_from_slots(trcrn_slot, dynMap(:,iblk), trcrn(:,:,:,:,iblk))
 
       enddo                     ! iblk
       !$OMP END PARALLEL DO
@@ -1288,7 +1288,6 @@
       do i = 1, nx_block
          ms = map((j-1)*nx_block + i)
          if (ms < 1) cycle
-         ms = ms + off
          aice0(i,j)  = aim(ms,0)
          aice0_s(ms) = aim(ms,0)
       enddo
@@ -1949,7 +1948,6 @@
       do i=1,nx_block
          ms = map((j-1)*nx_block + i)
          if (ms < 1) cycle
-         ms = ms + off
          aice0(i,j) = works(ms,1)
             aice0_s(ms)  = works(ms,1)
       enddo
@@ -1962,7 +1960,6 @@
          do i=1,nx_block
             ms = map((j-1)*nx_block + i)
             if (ms < 1) cycle
-            ms = ms + off
 
             aicen(ms,n) = works(ms,narrays+1)
             vicen(ms,n) = works(ms,narrays+2)

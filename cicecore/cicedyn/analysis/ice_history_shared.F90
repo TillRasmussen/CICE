@@ -1166,7 +1166,6 @@
           if (tmask(ij,iblk)) then
              m = dynMap(ij,iblk)
              if (m > 0) then
-                m = dynOff(iblk) + m
                 field(m,idns) = field(m,idns) + field_accum(i,j)
              endif
           endif
@@ -1325,8 +1324,8 @@
           ! m > 0 FIRST -- see the note in _2D_compressed.
           m = dynMap(ij,iblk)
           if (m > 0) then
-             if (tmask_slot(dynOff(iblk)+m)) &
-                field(dynOff(iblk)+m,k,idns) = field(dynOff(iblk)+m,k,idns) &
+             if (tmask_slot(m)) &
+                field(m,k,idns) = field(m,k,idns) &
                                              + field_accum(i,j,k)
           endif
        enddo
@@ -1653,8 +1652,8 @@
           ij = (j-1)*nx_block + i
           m = dynMap(ij,iblk)
           if (m > 0) then
-             if (tmask_slot(dynOff(iblk)+m)) &
-                field(dynOff(iblk)+m,n,k,idns) = field(dynOff(iblk)+m,n,k,idns) &
+             if (tmask_slot(m)) &
+                field(m,n,k,idns) = field(m,n,k,idns) &
                                                + field_accum(i,j,n,k)
           endif
        enddo
@@ -1753,7 +1752,7 @@
 
       work(:,:) = spval_dbl
       do iblk = 1, nblocks
-         call unpack_from_slots(a2D(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,n), &
+         call unpack_from_slots(a2D(:,n), &
                                 dynMap(:,iblk), work(:,iblk))
       enddo
 
@@ -1778,7 +1777,7 @@
 
       do iblk = 1, nblocks
          call pack_to_slots(work(:,iblk), dynMap(:,iblk), &
-                            a2D(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,n))
+                            a2D(:,n))
       enddo
 
       end subroutine compress_a2D
@@ -1809,7 +1808,7 @@
 
       work(:,:) = spval_dbl
       do iblk = 1, nblocks
-         call unpack_from_slots(a3Dc(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,k,n), &
+         call unpack_from_slots(a3Dc(:,k,n), &
                                 dynMap(:,iblk), work(:,iblk))
       enddo
 
@@ -1838,7 +1837,7 @@
 
       do iblk = 1, nblocks
          call pack_to_slots(work(:,iblk), dynMap(:,iblk), &
-                            a3Dc(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,k,n))
+                            a3Dc(:,k,n))
       enddo
 
       end subroutine compress_a3Dc
@@ -1869,7 +1868,7 @@
 
       work(:,:) = spval_dbl
       do iblk = 1, nblocks
-         call unpack_from_slots(comp(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+         call unpack_from_slots(comp, &
                                 dynMap(:,iblk), work(:,iblk))
       enddo
 
@@ -1894,7 +1893,7 @@
 
       do iblk = 1, nblocks
          call pack_to_slots(work(:,iblk), dynMap(:,iblk), &
-                            comp(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                            comp)
       enddo
 
       end subroutine compress_hist_plane

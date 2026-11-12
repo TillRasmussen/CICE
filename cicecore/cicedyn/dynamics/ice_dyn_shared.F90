@@ -852,7 +852,7 @@
             ijb = (j-1)*nx_block + i
             m   = dynMap(ijb,iblk)
             if (m == 0) cycle
-            is  = off + m
+            is  = m
 
             select case (trim(dir))
 
@@ -959,7 +959,7 @@
             ijb = (j-1)*nx_block + i
             m   = dynMap(ijb,iblk)
             if (m == 0) cycle
-            is   = off + m
+            is   = m
             isE  = NbrE_Task(is)
             isN  = NbrN_Task(is)
             isNE = NbrNE_Task(is)
@@ -1099,24 +1099,24 @@
 
          ! Coriolis parameter
          if (trim(coriolis) == 'constant') then
-            if (msf > 0) fcor_slot(dynOff(iblk)+msf) = 1.46e-4_dbl_kind
+            if (msf > 0) fcor_slot(msf) = 1.46e-4_dbl_kind
          else if (trim(coriolis) == 'zero') then
-            if (msf > 0) fcor_slot(dynOff(iblk)+msf) = c0
+            if (msf > 0) fcor_slot(msf) = c0
          else
-            if (msf > 0) fcor_slot(dynOff(iblk)+msf) = c2*omega*sin(ULAT(ij,iblk))
+            if (msf > 0) fcor_slot(msf) = c2*omega*sin(ULAT(ij,iblk))
          endif
 
          if (grid_ice == 'CD' .or. grid_ice == 'C') then
 
             if (trim(coriolis) == 'constant') then
-               if (msf > 0) fcorE_slot(dynOff(iblk)+msf) = 1.46e-4_dbl_kind
-               if (msf > 0) fcorN_slot(dynOff(iblk)+msf) = 1.46e-4_dbl_kind
+               if (msf > 0) fcorE_slot(msf) = 1.46e-4_dbl_kind
+               if (msf > 0) fcorN_slot(msf) = 1.46e-4_dbl_kind
             else if (trim(coriolis) == 'zero') then
-               if (msf > 0) fcorE_slot(dynOff(iblk)+msf) = c0
-               if (msf > 0) fcorN_slot(dynOff(iblk)+msf) = c0
+               if (msf > 0) fcorE_slot(msf) = c0
+               if (msf > 0) fcorN_slot(msf) = c0
             else
-               if (msf > 0) fcorE_slot(dynOff(iblk)+msf) = c2*omega*sin(ELAT(ij,iblk))
-               if (msf > 0) fcorN_slot(dynOff(iblk)+msf) = c2*omega*sin(NLAT(ij,iblk))
+               if (msf > 0) fcorE_slot(msf) = c2*omega*sin(ELAT(ij,iblk))
+               if (msf > 0) fcorN_slot(msf) = c2*omega*sin(NLAT(ij,iblk))
             endif
 
          endif
@@ -1193,24 +1193,24 @@
       do iblk = 1, nblocks
          if (dynCnt(iblk) == 0) cycle
          call pack_to_slots(cyp      (:,iblk), dynMap(:,iblk), &
-              cyp_slot      (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+              cyp_slot)
          call pack_to_slots(cxp      (:,iblk), dynMap(:,iblk), &
-              cxp_slot      (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+              cxp_slot)
          call pack_to_slots(cym      (:,iblk), dynMap(:,iblk), &
-              cym_slot      (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+              cym_slot)
          call pack_to_slots(cxm      (:,iblk), dynMap(:,iblk), &
-              cxm_slot      (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+              cxm_slot)
          call pack_to_slots(DminTarea(:,iblk), dynMap(:,iblk), &
-              DminTarea_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+              DminTarea_slot)
       enddo
 
       if (allocated(dxhy)) then
          do iblk = 1, nblocks
             if (dynCnt(iblk) == 0) cycle
             call pack_to_slots(dxhy(:,iblk), dynMap(:,iblk), &
-                 dxhy_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                 dxhy_slot)
             call pack_to_slots(dyhx(:,iblk), dynMap(:,iblk), &
-                 dyhx_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                 dyhx_slot)
          enddo
       endif
 
@@ -1355,10 +1355,10 @@
          ! may be read even when Tmask(ij) is false, and ms must be in range.
          ! ⚠ ms stays BLOCK-LOCAL so "< 1" still means "no slot", and the
          ! fallback is THIS block's dead slot at ncnt+1.  The arrays are whole
-         ! now, so every read adds Xoff; size(aice) would be dynTot, which is
-         ! the LAST block's dead slot rather than this one's.
+           ! ⚠ map is task-global now, so the fallback must name this
+           ! block's dead slot in the SAME space: Xoff + ncnt + 1.
          ms = map(ij)
-         if (ms < 1) ms = ncnt + 1
+         if (ms < 1) ms = Xoff + ncnt + 1
 
          !-----------------------------------------------------------------
          ! total mass of ice and snow, centered in T-cell
@@ -1366,7 +1366,7 @@
          !       including ghost cells
          !-----------------------------------------------------------------
          if (Tmask(ij)) then
-            Tmass(ij) = (rhoi*vice(Xoff+ms) + rhos*vsno(Xoff+ms)) ! kg/m^2
+            Tmass(ij) = (rhoi*vice(ms) + rhos*vsno(ms)) ! kg/m^2
          else
             Tmass(ij) = c0
          endif
@@ -1374,7 +1374,7 @@
          !-----------------------------------------------------------------
          ! ice extent mask (T-cells)
          !-----------------------------------------------------------------
-           tmphm(ij) = Tmask(ij) .and. (aice (Xoff+ms) > dyn_area_min) &
+           tmphm(ij) = Tmask(ij) .and. (aice (ms) > dyn_area_min) &
                                 .and. (Tmass(ij)  > dyn_mass_min)
 
          !-----------------------------------------------------------------
@@ -1719,18 +1719,18 @@
             ! one is overwritten.  Neither is redundant across all three.
             mslotz = Xmap(ijb)
             if (mslotz > 0) then
-               stressp_1_slot(Xoff+mslotz) = c0
-               stressp_2_slot(Xoff+mslotz) = c0
-               stressp_3_slot(Xoff+mslotz) = c0
-               stressp_4_slot(Xoff+mslotz) = c0
-               stressm_1_slot(Xoff+mslotz) = c0
-               stressm_2_slot(Xoff+mslotz) = c0
-               stressm_3_slot(Xoff+mslotz) = c0
-               stressm_4_slot(Xoff+mslotz) = c0
-               stress12_1_slot(Xoff+mslotz) = c0
-               stress12_2_slot(Xoff+mslotz) = c0
-               stress12_3_slot(Xoff+mslotz) = c0
-               stress12_4_slot(Xoff+mslotz) = c0
+               stressp_1_slot(mslotz) = c0
+               stressp_2_slot(mslotz) = c0
+               stressp_3_slot(mslotz) = c0
+               stressp_4_slot(mslotz) = c0
+               stressm_1_slot(mslotz) = c0
+               stressm_2_slot(mslotz) = c0
+               stressm_3_slot(mslotz) = c0
+               stressm_4_slot(mslotz) = c0
+               stress12_1_slot(mslotz) = c0
+               stress12_2_slot(mslotz) = c0
+               stress12_3_slot(mslotz) = c0
+               stress12_4_slot(mslotz) = c0
             endif
          endif
       enddo                     ! i
@@ -1749,7 +1749,7 @@
       do j = jlo, jhi+1
       do i = ilo, ihi+1
          ijb = (j-1)*nx_block + i
-         if (iceTmask(ijb)) iceTmask_s(Xoff+Xmap(ijb)) = .true.
+         if (iceTmask(ijb)) iceTmask_s(Xmap(ijb)) = .true.
       enddo
       enddo
 
@@ -1773,22 +1773,22 @@
             ! at a cell that has no entry.
             iceXmask(ijb) = .false.
          else
-            iceXmask(ijb) = (Xmask(ijb)) .and. (aiX  (Xoff+msx) > dyn_area_min) &
-                                         .and. (Xmass(Xoff+msx) > dyn_mass_min)
+            iceXmask(ijb) = (Xmask(ijb)) .and. (aiX  (msx) > dyn_area_min) &
+                                         .and. (Xmass(msx) > dyn_mass_min)
          endif
 
          if (iceXmask(ijb)) then
 
             ! initialize velocity for new ice points to ocean sfc current
             if (.not. iceXmask_old(i,j)) then
-               uvel(i,j) = uocn(Xoff+Xmap(ijb))
-               vvel(i,j) = vocn(Xoff+Xmap(ijb))
+               uvel(i,j) = uocn(Xmap(ijb))
+               vvel(i,j) = vocn(Xmap(ijb))
             endif
 
             ! compressed: this cell owns slot Xmap(ijb) for the whole run
-            uvel_init(Xoff+Xmap(ijb)) = uvel(i,j)
-            vvel_init(Xoff+Xmap(ijb)) = vvel(i,j)
-            iceXmask_s    (Xoff+Xmap(ijb)) = .true.
+            uvel_init(Xmap(ijb)) = uvel(i,j)
+            vvel_init(Xmap(ijb)) = vvel(i,j)
+            iceXmask_s    (Xmap(ijb)) = .true.
          else
             ! set velocity and stresses to zero for masked-out points
             uvel(i,j)    = c0

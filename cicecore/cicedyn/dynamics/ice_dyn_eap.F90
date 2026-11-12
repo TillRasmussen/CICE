@@ -496,8 +496,8 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
       ! vvel stay in the block layout for everything outside the dynamics.
       !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
       do iblk = 1, nblocks
-         call pack_to_slots(uvel(:,iblk), dynMap(:,iblk), uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(vvel(:,iblk), dynMap(:,iblk), vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         call pack_to_slots(uvel(:,iblk), dynMap(:,iblk), uvel_slot)
+         call pack_to_slots(vvel(:,iblk), dynMap(:,iblk), vvel_slot)
          ! constant through the subcycling, so packed once and never unpacked
          ! strength changes every timestep (ridging), so it is packed here
          ! rather than once at init.  stress_eap reads it from the slots now.
@@ -670,8 +670,8 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
 
       !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
       do iblk = 1, nblocks
-         call unpack_from_slots(uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), uvel(:,iblk))
-         call unpack_from_slots(vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), vvel(:,iblk))
+         call unpack_from_slots(uvel_slot, dynMap(:,iblk), uvel(:,iblk))
+         call unpack_from_slots(vvel_slot, dynMap(:,iblk), vvel(:,iblk))
          ! Both diagnostics are built here, once, rather than on every one
          ! of the ndte passes: str1..str8 still hold what the final pass
          ! used, and taubxU_slot holds its Cb.
@@ -686,8 +686,8 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
                                   str6_slot      , str7_slot      , &
                                   str8_slot      , NbrE_Task, NbrNE_Task, NbrN_Task       , &
                                   strintxU_slot  , strintyU_slot)
-            call unpack_from_slots(strintxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), strintxU(:,iblk))
-            call unpack_from_slots(strintyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), strintyU(:,iblk))
+            call unpack_from_slots(strintxU_slot, dynMap(:,iblk), strintxU(:,iblk))
+            call unpack_from_slots(strintyU_slot, dynMap(:,iblk), strintyU(:,iblk))
          endif
          if (ltaub) then
             call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceUmask_slot, &
@@ -695,8 +695,8 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
                  taubxU_slot, &
                  vvel_slot, &
                  taubyU_slot)
-            call unpack_from_slots(taubxU_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), taubxU  (:,iblk))
-            call unpack_from_slots(taubyU_slot  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), taubyU  (:,iblk))
+            call unpack_from_slots(taubxU_slot, dynMap(:,iblk), taubxU  (:,iblk))
+            call unpack_from_slots(taubyU_slot, dynMap(:,iblk), taubyU  (:,iblk))
          endif
 
          ! ⚠ and no unpack.  The block stress arrays are read only by the
@@ -2399,7 +2399,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
       wrk(:,:,:) = c0
       do iblk = 1, nblocks
          if (dynCnt(iblk) == 0) cycle
-         call unpack_from_slots(fld_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+         call unpack_from_slots(fld_s, &
                                 dynMap(:,iblk), wrk(:,:,iblk))
       enddo
       call write_restart_field(nu_dump_eap,0,wrk,'ruf8',vname,1,diag)
@@ -2541,14 +2541,14 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
       !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
       do iblk = 1, nblocks
          if (dynCnt(iblk) == 0) cycle
-         call pack_to_slots(a11_1(:,:,iblk), dynMap(:,iblk), a11_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(a11_2(:,:,iblk), dynMap(:,iblk), a11_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(a11_3(:,:,iblk), dynMap(:,iblk), a11_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(a11_4(:,:,iblk), dynMap(:,iblk), a11_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(a12_1(:,:,iblk), dynMap(:,iblk), a12_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(a12_2(:,:,iblk), dynMap(:,iblk), a12_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(a12_3(:,:,iblk), dynMap(:,iblk), a12_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(a12_4(:,:,iblk), dynMap(:,iblk), a12_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         call pack_to_slots(a11_1(:,:,iblk), dynMap(:,iblk), a11_1_slot)
+         call pack_to_slots(a11_2(:,:,iblk), dynMap(:,iblk), a11_2_slot)
+         call pack_to_slots(a11_3(:,:,iblk), dynMap(:,iblk), a11_3_slot)
+         call pack_to_slots(a11_4(:,:,iblk), dynMap(:,iblk), a11_4_slot)
+         call pack_to_slots(a12_1(:,:,iblk), dynMap(:,iblk), a12_1_slot)
+         call pack_to_slots(a12_2(:,:,iblk), dynMap(:,iblk), a12_2_slot)
+         call pack_to_slots(a12_3(:,:,iblk), dynMap(:,iblk), a12_3_slot)
+         call pack_to_slots(a12_4(:,:,iblk), dynMap(:,iblk), a12_4_slot)
       enddo
       !$OMP END PARALLEL DO
 

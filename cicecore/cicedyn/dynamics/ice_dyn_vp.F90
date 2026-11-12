@@ -658,8 +658,8 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
                  vvel_slot,                                 &
                  tauby_s)
 
-            call unpack_from_slots(taubx_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), taubxU(:,iblk))
-            call unpack_from_slots(tauby_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), taubyU(:,iblk))
+            call unpack_from_slots(taubx_s, dynMap(:,iblk), taubxU(:,iblk))
+            call unpack_from_slots(tauby_s, dynMap(:,iblk), taubyU(:,iblk))
          enddo
          !$OMP END PARALLEL DO
       endif
@@ -934,8 +934,8 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
       ! velocity.  Refresh it here before anything reads it.
       !$OMP PARALLEL DO PRIVATE(iblk)
       do iblk = 1, nblocks
-         call pack_to_slots(uvel(:,iblk), dynMap(:,iblk), uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-         call pack_to_slots(vvel(:,iblk), dynMap(:,iblk), vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+         call pack_to_slots(uvel(:,iblk), dynMap(:,iblk), uvel_slot)
+         call pack_to_slots(vvel(:,iblk), dynMap(:,iblk), vvel_slot)
          uprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
          vprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
       enddo
@@ -991,7 +991,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
             ! still reads the block layout, so the compressed copies are built
             ! here and written back.  The pair disappears as those consumers
             ! convert.
-            call pack_to_slots(cdn_ocn(:,iblk), dynMap(:,iblk), Cw_s  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+            call pack_to_slots(cdn_ocn(:,iblk), dynMap(:,iblk), Cw_s)
             ulin_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = ulin(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
             vlin_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = vlin(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
 
@@ -1006,7 +1006,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
                                vrel_s,             &
                                Cb_s)
 
-            call unpack_from_slots(Cb_s  (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), Cb  (:,iblk))
+            call unpack_from_slots(Cb_s, dynMap(:,iblk), Cb  (:,iblk))
 
             ! prepare b vector (RHS)
             ! stPr and vrel are already compressed; uarear is compressed once
@@ -1265,15 +1265,15 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
          if (restore_ice) then
             !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
             do iblk = 1, nblocks
-               call unpack_from_slots(uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), uvel(:,iblk))
-               call unpack_from_slots(vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), vvel(:,iblk))
+               call unpack_from_slots(uvel_slot, dynMap(:,iblk), uvel(:,iblk))
+               call unpack_from_slots(vvel_slot, dynMap(:,iblk), vvel(:,iblk))
             enddo
             !$OMP END PARALLEL DO
             call ice_restoring_halo(setfld='velocity')
             !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
             do iblk = 1, nblocks
-               call pack_to_slots(uvel(:,iblk), dynMap(:,iblk), uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-               call pack_to_slots(vvel(:,iblk), dynMap(:,iblk), vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+               call pack_to_slots(uvel(:,iblk), dynMap(:,iblk), uvel_slot)
+               call pack_to_slots(vvel(:,iblk), dynMap(:,iblk), vvel_slot)
             enddo
             !$OMP END PARALLEL DO
          endif
@@ -1304,8 +1304,8 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
       do iblk = 1, nblocks
          uvel(:,iblk) = c0
          vvel(:,iblk) = c0
-         call unpack_from_slots(uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), uvel(:,iblk))
-         call unpack_from_slots(vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), vvel(:,iblk))
+         call unpack_from_slots(uvel_slot, dynMap(:,iblk), uvel(:,iblk))
+         call unpack_from_slots(vvel_slot, dynMap(:,iblk), vvel(:,iblk))
       enddo
       !$OMP END PARALLEL DO
 

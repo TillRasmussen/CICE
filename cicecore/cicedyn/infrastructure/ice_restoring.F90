@@ -1107,8 +1107,8 @@
             if (halo) then   ! set values explicitly
                do i = i1,i2
                do j = j1,j2
-                  uvel_s(dynOff(iblk)+dynMap((j-1)*nx_block+i,iblk)) = uvel_restoring(i,j,iblk)
-                  vvel_s(dynOff(iblk)+dynMap((j-1)*nx_block+i,iblk)) = vvel_restoring(i,j,iblk)
+                  uvel_s(dynMap((j-1)*nx_block+i,iblk)) = uvel_restoring(i,j,iblk)
+                  vvel_s(dynMap((j-1)*nx_block+i,iblk)) = vvel_restoring(i,j,iblk)
                enddo
                enddo
             else              ! restoring
@@ -1117,12 +1117,12 @@
                   if (mask_restoring(i,j,iblk)) then
                      vr1 = fval_restoring(i,j,iblk)
                      vv2 = c1 - vr1
-                     uvel_s(dynOff(iblk)+dynMap((j-1)*nx_block+i,iblk)) = &
+                     uvel_s(dynMap((j-1)*nx_block+i,iblk)) = &
                         uvel_restoring(i,j,iblk)*vr1 &
-                      + uvel_s(dynOff(iblk)+dynMap((j-1)*nx_block+i,iblk))*vv2
-                     vvel_s(dynOff(iblk)+dynMap((j-1)*nx_block+i,iblk)) = &
+                      + uvel_s(dynMap((j-1)*nx_block+i,iblk))*vv2
+                     vvel_s(dynMap((j-1)*nx_block+i,iblk)) = &
                         vvel_restoring(i,j,iblk)*vr1 &
-                      + vvel_s(dynOff(iblk)+dynMap((j-1)*nx_block+i,iblk))*vv2
+                      + vvel_s(dynMap((j-1)*nx_block+i,iblk))*vv2
                   endif
                enddo
                enddo

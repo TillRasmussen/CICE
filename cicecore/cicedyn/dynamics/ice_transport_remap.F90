@@ -439,7 +439,9 @@
       ! (dynTot) rather than (nx_block,ny_block,max_blocks).
       real (kind=dbl_kind), dimension (dynTot) ::     &
          dpx            , & ! x coordinates of departure points at cell corners
-         dpy                ! y coordinates of departure points at cell corners
+         dpy            , & ! y coordinates of departure points at cell corners
+         dx             , & ! dpx scaled by dxu -- locate_triangles reads it
+         dy                 ! dpy scaled by dyu -- at a neighbour slot
 
       ! Compressed.  construct_fields already computed these as slots and
       ! then unpacked them; transport_integrals reads them at the DONOR
@@ -612,8 +614,8 @@
          ! producer kept them current, which is the assumption that cost
          ! 797772a.  The metrics already have slot forms in ice_grid.
          nc = dynCnt(iblk)
-         call pack_to_slots(uvel(:,iblk), dynMap(:,iblk), uvel_s(dynOff(iblk)+1:dynOff(iblk)+nc+1))
-         call pack_to_slots(vvel(:,iblk), dynMap(:,iblk), vvel_s(dynOff(iblk)+1:dynOff(iblk)+nc+1))
+         call pack_to_slots(uvel(:,iblk), dynMap(:,iblk), uvel_s)
+         call pack_to_slots(vvel(:,iblk), dynMap(:,iblk), vvel_s)
 
          call departure_points(dynOff(iblk)+1,   dynOff(iblk)+nc,           &
                                skipRmp,                                       &
@@ -736,14 +738,18 @@
          ! Each thread allocates its own: these are PRIVATE, and on the
          ! stack they overflowed it.  One allocation per block per timestep
          ! against the triangle geometry costs nothing.
-         allocate(edgearea_e(dynCnt(iblk)+1),                     &
-                  edgearea_n(dynCnt(iblk)+1),                     &
-                  triarea(dynCnt(iblk)+1,ngroups),                &
-                  xp(dynCnt(iblk)+1,0:nvert,ngroups),             &
-                  yp(dynCnt(iblk)+1,0:nvert,ngroups),             &
-                  iflux(dynCnt(iblk)+1,ngroups),                  &
-                  jflux(dynCnt(iblk)+1,ngroups),                  &
-                  isflux(dynCnt(iblk)+1,ngroups),                 &
+         ! ⚠ TASK-GLOBAL, because dynMap now returns a task-global slot and
+         ! every one of these is indexed by it.  Allocated once outside the
+         ! block loop rather than per block, and SHARED: each block writes
+         ! its own range.
+         allocate(edgearea_e(dynTot),                              &
+                  edgearea_n(dynTot),                              &
+                  triarea(dynTot,ngroups),                         &
+                  xp(dynTot,0:nvert,ngroups),                      &
+                  yp(dynTot,0:nvert,ngroups),                      &
+                  iflux(dynTot,ngroups),                           &
+                  jflux(dynTot,ngroups),                           &
+                  isflux(dynTot,ngroups),                          &
                   indxsng(nx_block*ny_block,ngroups))
 
          l_stop = .false.
@@ -822,6 +828,7 @@
                                icellsng(:,iblk),                      &
                                indxsng(:,:),                          &
                                 dynOff(iblk),      dynCnt(iblk)+1,     &
+                                dx,                dy,                 &
                                 dpx,                                   &
                                 dpy,               dynMap(:,iblk),     &
                                 dynIJ,                                 &
@@ -885,6 +892,7 @@
                                icellsng(:,iblk),                      &
                                indxsng(:,:),                          &
                                 dynOff(iblk),      dynCnt(iblk)+1,     &
+                                dx,                dy,                 &
                                 dpx,                                   &
                                 dpy,               dynMap(:,iblk),     &
                                 dynIJ,                                 &
@@ -1834,6 +1842,7 @@
                                    icells,                   &
                                    indxs,                    &
                                    off,          nslot,    &
+                                 dx,           dy,       &
                                    dpx,          dpy,  map,  &
                                    ijslot,                   &
                                    dxu,          dyu,        &
@@ -1916,6 +1925,14 @@
       ! dead slot -- c0, which is what the block form held there: edgearea is
       ! zeroed wholesale and then filled from uvelE/vvelN, which are masked
       ! to zero wherever a cell is outside mask_any.
+      ! ⚠ TASK-GLOBAL, owned by horizontal_remap.  They were block-local
+      ! until the map went global: dx is read at dx(mw), a NEIGHBOUR slot,
+      ! and Nbr*_Task returns that task-global.  An automatic this size
+      ! would be a dynTot stack array per call per thread, so the caller
+      ! owns them and each block writes its own range.
+      real (kind=dbl_kind), dimension(:), intent(inout) ::   &
+         dx, dy           ! scaled departure points
+
       real (kind=dbl_kind), dimension(:), intent(inout) ::   &
          edgearea         ! area of departure region for each edge
                           ! edgearea > 0 for eastward/northward flow
@@ -1951,12 +1968,7 @@
          indxid       , & ! compressed index in i-direction
          indxjd           ! compressed index in j-direction
 
-      ! The scaled departure points: BLOCK-LOCAL scratch, 1..nslot.  Sized
-      ! from nslot, not from size(dpx) -- dpx is the whole task now, and an
-      ! automatic that large would be a dynTot stack array per call per
-      ! thread.
-      real (kind=dbl_kind), dimension(nslot) ::   &
-         dx, dy           ! scaled departure points
+
 
       ! ⚠ These two STAY BLOCK-SHAPED, deliberately, and the reason is
       ! measured rather than assumed.
@@ -2234,9 +2246,9 @@
             if (ms < 1) ms = mdead
             mw = map((j-1)*nx_block + i-1)
             if (mw < 1) mw = mdead
-            if (dpx(off+mw)/=c0 .or. dpy(off+mw)/=c0   &
+            if (dpx(mw)/=c0 .or. dpy(mw)/=c0   &
                             .or.               &
-                dpx(off+ms)/=c0 .or. dpy(off+ms)/=c0) then
+                dpx(ms)/=c0 .or. dpy(ms)/=c0) then
                icellsd = icellsd + 1
                indxid(icellsd) = i
                indxjd(icellsd) = j
@@ -2256,9 +2268,9 @@
             if (ms < 1) ms = mdead
             mw = map((j-1-1)*nx_block + i)
             if (mw < 1) mw = mdead
-            if (dpx(off+mw)/=c0 .or. dpy(off+mw)/=c0   &
+            if (dpx(mw)/=c0 .or. dpy(mw)/=c0   &
                             .or.               &
-                dpx(off+ms)/=c0 .or. dpy(off+ms)/=c0) then
+                dpx(ms)/=c0 .or. dpy(ms)/=c0) then
                icellsd = icellsd + 1
                indxid(icellsd) = i
                indxjd(icellsd) = j
@@ -2286,14 +2298,14 @@
       !
       ! Cells outside these bounds keep c0: the block form left dx
       ! undefined there and never read it, so any value is safe.
-      dx(:) = c0
-      dy(:) = c0
+      dx(off+1:off+nslot) = c0
+      dy(off+1:off+nslot) = c0
       do j = 1, jhi
       do i = 1, ihi
          ms = map((j-1)*nx_block + i)
          if (ms > 0) then
-            dx(ms) = dpx(off+ms) / dxu(off+ms)
-            dy(ms) = dpy(off+ms) / dyu(off+ms)
+              dx(ms) = dpx(ms) / dxu(ms)
+              dy(ms) = dpy(ms) / dyu(ms)
          endif
       enddo
       enddo
@@ -3332,7 +3344,7 @@
             do nv = 1, nvert
                do ij = 1, icells(ng)
                   ms = indxs(ij,ng)
-                  ijb = ijslot(off+ms)
+                  ijb = ijslot(ms)
                   i = mod(ijb-1, nx_block) + 1
                   j = (ijb-1)/nx_block + 1
                   ishift = iflux(ms,ng) - i
@@ -3347,7 +3359,7 @@
             do nv = 1, nvert
                do ij = 1, icells(ng)
                   ms = indxs(ij,ng)
-                  ijb = ijslot(off+ms)
+                  ijb = ijslot(ms)
                   i = mod(ijb-1, nx_block) + 1
                   j = (ijb-1)/nx_block + 1
                   ishift = iflux(ms,ng) - i
@@ -3545,7 +3557,7 @@
 
       ! ⚠ TWO index spaces.  mc, mx, my, tc, tx and ty are whole task-global
       ! arrays indexed by the DONOR slot is2, which isflux returns
-      ! block-local -- so those six compose: mc(off+is2).  Everything else
+      ! block-local -- so those six compose: mc(is2).  Everything else
       ! here (xp, yp, triarea, isflux, msum, mxsum, mtsum, mflx, mtflx) is
       ! the caller's per-block scratch indexed by ms.
       integer (kind=int_kind), intent(in) ::   &
@@ -3644,22 +3656,22 @@
 
                is2 = isflux(ms,ng)
 
-               if (is2 < 1) is2 = nslot
+               if (is2 < 1) is2 = off + nslot
 
                ! mass transports
 
-               m0 = mc(off+is2) + xp(ms,0,ng)*mx(off+is2)   &
-                              + yp(ms,0,ng)*my(off+is2)
-               msum(ms) = m0
+               m0 = mc(is2) + xp(ms,0,ng)*mx(is2)   &
+                              + yp(ms,0,ng)*my(is2)
+               msum(ms-off) = m0
 
-               mflx(off+ms) = mflx(off+ms) + triarea(ms,ng)*msum(ms)
+               mflx(ms) = mflx(ms) + triarea(ms,ng)*msum(ms-off)
 
                ! quantities needed for tracer transports
-               mxsum(ms)  =         m0*xp(ms,0,ng)
-               mxxsum(ms) = mxsum(ms)*xp(ms,0,ng)
-               mxysum(ms) = mxsum(ms)*yp(ms,0,ng)
-               mysum(ms)  =         m0*yp(ms,0,ng)
-               myysum(ms) = mysum(ms)*yp(ms,0,ng)
+               mxsum(ms-off)  =         m0*xp(ms,0,ng)
+               mxxsum(ms-off) = mxsum(ms-off)*xp(ms,0,ng)
+               mxysum(ms-off) = mxsum(ms-off)*yp(ms,0,ng)
+               mysum(ms-off)  =         m0*yp(ms,0,ng)
+               myysum(ms-off) = mysum(ms-off)*yp(ms,0,ng)
             enddo               ! ij
 
          elseif (integral_order == 2) then  ! quadratic (3-point formula)
@@ -3670,40 +3682,40 @@
 
                is2 = isflux(ms,ng)
 
-               if (is2 < 1) is2 = nslot
+               if (is2 < 1) is2 = off + nslot
 
                ! mass transports
                ! Weighting factor of 1/3 is incorporated into the ice
                ! area terms m1, m2, and m3.
-               m1 = p333 * (mc(off+is2) + xp(ms,1,ng)*mx(off+is2)   &
-                                      + yp(ms,1,ng)*my(off+is2))
-               m2 = p333 * (mc(off+is2) + xp(ms,2,ng)*mx(off+is2)   &
-                                      + yp(ms,2,ng)*my(off+is2))
-               m3 = p333 * (mc(off+is2) + xp(ms,3,ng)*mx(off+is2)   &
-                                      + yp(ms,3,ng)*my(off+is2))
-               msum(ms) = m1 + m2 + m3
-               mflx(off+ms) = mflx(off+ms) + triarea(ms,ng)*msum(ms)
+               m1 = p333 * (mc(is2) + xp(ms,1,ng)*mx(is2)   &
+                                      + yp(ms,1,ng)*my(is2))
+               m2 = p333 * (mc(is2) + xp(ms,2,ng)*mx(is2)   &
+                                      + yp(ms,2,ng)*my(is2))
+               m3 = p333 * (mc(is2) + xp(ms,3,ng)*mx(is2)   &
+                                      + yp(ms,3,ng)*my(is2))
+               msum(ms-off) = m1 + m2 + m3
+               mflx(ms) = mflx(ms) + triarea(ms,ng)*msum(ms-off)
 
                ! quantities needed for mass_tracer transports
                w1 = m1 * xp(ms,1,ng)
                w2 = m2 * xp(ms,2,ng)
                w3 = m3 * xp(ms,3,ng)
 
-               mxsum(ms) = w1 + w2 + w3
+               mxsum(ms-off) = w1 + w2 + w3
 
-               mxxsum(ms) = w1*xp(ms,1,ng) + w2*xp(ms,2,ng)   &
+               mxxsum(ms-off) = w1*xp(ms,1,ng) + w2*xp(ms,2,ng)   &
                            + w3*xp(ms,3,ng)
 
-               mxysum(ms) = w1*yp(ms,1,ng) + w2*yp(ms,2,ng)   &
+               mxysum(ms-off) = w1*yp(ms,1,ng) + w2*yp(ms,2,ng)   &
                            + w3*yp(ms,3,ng)
 
                w1 = m1 * yp(ms,1,ng)
                w2 = m2 * yp(ms,2,ng)
                w3 = m3 * yp(ms,3,ng)
 
-               mysum(ms) = w1 + w2 + w3
+               mysum(ms-off) = w1 + w2 + w3
 
-               myysum(ms) = w1*yp(ms,1,ng) + w2*yp(ms,2,ng)   &
+               myysum(ms-off) = w1*yp(ms,1,ng) + w2*yp(ms,2,ng)   &
                            + w3*yp(ms,3,ng)
             enddo               ! ij
 
@@ -3715,22 +3727,22 @@
 
                is2 = isflux(ms,ng)
 
-               if (is2 < 1) is2 = nslot
+               if (is2 < 1) is2 = off + nslot
 
                ! mass transports
 
                ! Weighting factors are incorporated into the
                ! terms m0, m1, m2, and m3.
-               m0 = p5625m * (mc(off+is2) + xp(ms,0,ng)*mx(off+is2)   &
-                                        + yp(ms,0,ng)*my(off+is2))
-               m1 = p52083 * (mc(off+is2) + xp(ms,1,ng)*mx(off+is2)   &
-                                        + yp(ms,1,ng)*my(off+is2))
-               m2 = p52083 * (mc(off+is2) + xp(ms,2,ng)*mx(off+is2)   &
-                                        + yp(ms,2,ng)*my(off+is2))
-               m3 = p52083 * (mc(off+is2) + xp(ms,3,ng)*mx(off+is2)   &
-                                        + yp(ms,3,ng)*my(off+is2))
-               msum(ms) = m0 + m1 + m2 + m3
-               mflx(off+ms) = mflx(off+ms) + triarea(ms,ng)*msum(ms)
+               m0 = p5625m * (mc(is2) + xp(ms,0,ng)*mx(is2)   &
+                                        + yp(ms,0,ng)*my(is2))
+               m1 = p52083 * (mc(is2) + xp(ms,1,ng)*mx(is2)   &
+                                        + yp(ms,1,ng)*my(is2))
+               m2 = p52083 * (mc(is2) + xp(ms,2,ng)*mx(is2)   &
+                                        + yp(ms,2,ng)*my(is2))
+               m3 = p52083 * (mc(is2) + xp(ms,3,ng)*mx(is2)   &
+                                        + yp(ms,3,ng)*my(is2))
+               msum(ms-off) = m0 + m1 + m2 + m3
+               mflx(ms) = mflx(ms) + triarea(ms,ng)*msum(ms-off)
 
                ! quantities needed for tracer transports
                w0 = m0 * xp(ms,0,ng)
@@ -3738,12 +3750,12 @@
                w2 = m2 * xp(ms,2,ng)
                w3 = m3 * xp(ms,3,ng)
 
-               mxsum(ms) = w0 + w1 + w2 + w3
+               mxsum(ms-off) = w0 + w1 + w2 + w3
 
-               mxxsum(ms) = w0*xp(ms,0,ng) + w1*xp(ms,1,ng)   &
+               mxxsum(ms-off) = w0*xp(ms,0,ng) + w1*xp(ms,1,ng)   &
                            + w2*xp(ms,2,ng) + w3*xp(ms,3,ng)
 
-               mxysum(ms) = w0*yp(ms,0,ng) + w1*yp(ms,1,ng)   &
+               mxysum(ms-off) = w0*yp(ms,0,ng) + w1*yp(ms,1,ng)   &
                            + w2*yp(ms,2,ng) + w3*yp(ms,3,ng)
 
                w0 = m0 * yp(ms,0,ng)
@@ -3751,9 +3763,9 @@
                w2 = m2 * yp(ms,2,ng)
                w3 = m3 * yp(ms,3,ng)
 
-               mysum(ms) = w0 + w1 + w2 + w3
+               mysum(ms-off) = w0 + w1 + w2 + w3
 
-               myysum(ms) = w0*yp(ms,0,ng) + w1*yp(ms,1,ng)   &
+               myysum(ms-off) = w0*yp(ms,0,ng) + w1*yp(ms,1,ng)   &
                            + w2*yp(ms,2,ng) + w3*yp(ms,3,ng)
 
             enddo               ! ij
@@ -3773,24 +3785,24 @@
 
                      is2 = isflux(ms,ng)
 
-                     if (is2 < 1) is2 = nslot
+                     if (is2 < 1) is2 = off + nslot
 
-                     mtsum(ms,nt) =  msum(ms) * tc(off+is2,nt)   &
-                                   + mxsum(ms) * tx(off+is2,nt)   &
-                                   + mysum(ms) * ty(off+is2,nt)
+                     mtsum(ms-off,nt) =  msum(ms-off) * tc(is2,nt)   &
+                                   + mxsum(ms-off) * tx(is2,nt)   &
+                                   + mysum(ms-off) * ty(is2,nt)
 
-                     mtflx(off+ms,nt) = mtflx(off+ms,nt)   &
-                                 + triarea(ms,ng) * mtsum(ms,nt)
+                     mtflx(ms,nt) = mtflx(ms,nt)   &
+                                 + triarea(ms,ng) * mtsum(ms-off,nt)
 
                      ! quantities needed for dependent tracers
 
-                     mtxsum(ms,nt) =  mxsum(ms) * tc(off+is2,nt)   &
-                                    + mxxsum(ms) * tx(off+is2,nt)   &
-                                    + mxysum(ms) * ty(off+is2,nt)
+                     mtxsum(ms-off,nt) =  mxsum(ms-off) * tc(is2,nt)   &
+                                    + mxxsum(ms-off) * tx(is2,nt)   &
+                                    + mxysum(ms-off) * ty(is2,nt)
 
-                     mtysum(ms,nt) =  mysum(ms) * tc(off+is2,nt)   &
-                                    + mxysum(ms) * tx(off+is2,nt)   &
-                                    + myysum(ms) * ty(off+is2,nt)
+                     mtysum(ms-off,nt) =  mysum(ms-off) * tc(is2,nt)   &
+                                    + mxysum(ms-off) * tx(is2,nt)   &
+                                    + myysum(ms-off) * ty(is2,nt)
                   enddo         ! ij
 
                elseif (tracer_type(nt)==2) then ! depends on another tracer
@@ -3802,14 +3814,14 @@
 
                      is2 = isflux(ms,ng)
 
-                     if (is2 < 1) is2 = nslot
+                     if (is2 < 1) is2 = off + nslot
 
-                     mtsum(ms,nt) =  mtsum(ms,nt1) * tc(off+is2,nt)   &
-                                   + mtxsum(ms,nt1) * tx(off+is2,nt)   &
-                                   + mtysum(ms,nt1) * ty(off+is2,nt)
+                     mtsum(ms-off,nt) =  mtsum(ms-off,nt1) * tc(is2,nt)   &
+                                   + mtxsum(ms-off,nt1) * tx(is2,nt)   &
+                                   + mtysum(ms-off,nt1) * ty(is2,nt)
 
-                     mtflx(off+ms,nt) = mtflx(off+ms,nt)   &
-                                   + triarea(ms,ng) * mtsum(ms,nt)
+                     mtflx(ms,nt) = mtflx(ms,nt)   &
+                                   + triarea(ms,ng) * mtsum(ms-off,nt)
                   enddo         ! ij
 
 
@@ -3822,13 +3834,13 @@
 
                      is2 = isflux(ms,ng)
 
-                     if (is2 < 1) is2 = nslot
+                     if (is2 < 1) is2 = off + nslot
 
                      ! upwind approx (tx=ty=0) for type 3 tracers
-                     mtsum(ms,nt) =  mtsum(ms,nt1) * tc(off+is2,nt)
+                     mtsum(ms-off,nt) =  mtsum(ms-off,nt1) * tc(is2,nt)
 
-                     mtflx(off+ms,nt) = mtflx(off+ms,nt)   &
-                                   + triarea(ms,ng) * mtsum(ms,nt)
+                     mtflx(ms,nt) = mtflx(ms,nt)   &
+                                   + triarea(ms,ng) * mtsum(ms-off,nt)
                   enddo         ! ij
 
                endif            ! tracer type

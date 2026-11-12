@@ -440,8 +440,8 @@ module ice_dyn_evp1d
     if (lsiforce) then
        !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
        do iblk = 1, nblocks
-          call unpack_from_slots(strintxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), strintxU(:,iblk))
-          call unpack_from_slots(strintyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), dynMap(:,iblk), strintyU(:,iblk))
+          call unpack_from_slots(strintxU_slot, dynMap(:,iblk), strintxU(:,iblk))
+          call unpack_from_slots(strintyU_slot, dynMap(:,iblk), strintyU(:,iblk))
        enddo
        !$OMP END PARALLEL DO
     endif
@@ -1188,8 +1188,8 @@ module ice_dyn_evp1d
      ! over two arrays and costs nothing on the wire.
      !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
      do iblk = 1, nblocks
-        call pack_to_slots(L_uvel(:,iblk), dynMap(:,iblk), uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
-        call pack_to_slots(L_vvel(:,iblk), dynMap(:,iblk), vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+        call pack_to_slots(L_uvel(:,iblk), dynMap(:,iblk), uvel_slot)
+        call pack_to_slots(L_vvel(:,iblk), dynMap(:,iblk), vvel_slot)
      enddo
      !$OMP END PARALLEL DO
 

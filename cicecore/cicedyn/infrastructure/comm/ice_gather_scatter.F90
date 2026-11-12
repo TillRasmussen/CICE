@@ -1025,7 +1025,7 @@
       do i = 1, nx_block
          ij = (j-1)*nx_block + i
          if (map(ij,iblk) > 0) then
-            ARRAY(off(iblk) + map(ij,iblk)) = ARRAY_b(i,j,iblk)
+            ARRAY(map(ij,iblk)) = ARRAY_b(i,j,iblk)
          endif
       enddo
       enddo
@@ -2763,7 +2763,7 @@
       do i = 1, nx_block
          ij = (j-1)*nx_block + i
          if (map(ij,iblk) > 0) then
-            ARRAY_b(i,j,iblk) = ARRAY(off(iblk) + map(ij,iblk))
+            ARRAY_b(i,j,iblk) = ARRAY(map(ij,iblk))
          endif
       enddo
       enddo
@@ -2833,7 +2833,7 @@
       do i = 1, nx_block
          ij = (j-1)*nx_block + i
          if (map(ij,iblk) > 0) then
-            ARRAY_b(i,j,iblk) = ARRAY(off(iblk) + map(ij,iblk))
+            ARRAY_b(i,j,iblk) = ARRAY(map(ij,iblk))
          endif
       enddo
       enddo

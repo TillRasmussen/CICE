@@ -2641,7 +2641,7 @@
          lon_adj, &
          lonB(2,2), &
          pi
-      integer (kind=int_kind) :: i, j, m, n
+      integer (kind=int_kind) :: i, j, m, n, mx
 
       character(len=*), parameter :: subname = '(mom_grid_rotation_angle)'
 
@@ -4102,7 +4102,7 @@
             do i = 1, nx_block
                ms = dynMap((j-1)*nx_block + i, iblk)
                if (ms < 1) cycle
-               work2(dynOff(iblk) + ms) = work1(i,j,iblk)
+               work2(ms) = work1(i,j,iblk)
             enddo
             enddo
          enddo
@@ -5271,7 +5271,6 @@
                do i = ilo, ihi
                   ms = dynMap((j-1)*nx_block + i, iblk)
                   if (ms < 1) cycle
-                  ms = dynOff(iblk) + ms
                   work2(ms) = p25 * &
                               (work1(i  ,j  ,iblk)*wght1((j-1)*nx_block + i,iblk) &
                              + work1(i+1,j  ,iblk)*wght1((j-1)*nx_block + i+1,iblk) &
@@ -5295,7 +5294,6 @@
                do i = ilo, ihi
                   ms = dynMap((j-1)*nx_block + i, iblk)
                   if (ms < 1) cycle
-                  ms = dynOff(iblk) + ms
                   work2(ms) = p25 * &
                               (work1(i  ,j  ,iblk)*wght1((j-1)*nx_block + i,iblk) &
                              + work1(i-1,j  ,iblk)*wght1((j-1)*nx_block + i-1,iblk) &
@@ -5319,7 +5317,6 @@
                do i = ilo, ihi
                   ms = dynMap((j-1)*nx_block + i, iblk)
                   if (ms < 1) cycle
-                  ms = dynOff(iblk) + ms
                   work2(ms) = p25 * &
                               (work1(i  ,j  ,iblk)*wght1((j-1)*nx_block + i,iblk) &
                              + work1(i-1,j  ,iblk)*wght1((j-1)*nx_block + i-1,iblk) &
@@ -5343,7 +5340,6 @@
                do i = ilo, ihi
                   ms = dynMap((j-1)*nx_block + i, iblk)
                   if (ms < 1) cycle
-                  ms = dynOff(iblk) + ms
                   work2(ms) = p25 * &
                               (work1(i  ,j  ,iblk)*wght1((j-1)*nx_block + i,iblk) &
                              + work1(i+1,j  ,iblk)*wght1((j-1)*nx_block + i+1,iblk) &
@@ -5367,7 +5363,6 @@
                do i = ilo, ihi
                   ms = dynMap((j-1)*nx_block + i, iblk)
                   if (ms < 1) cycle
-                  ms = dynOff(iblk) + ms
                   work2(ms) = p5 * &
                               (work1(i  ,j  ,iblk)*wght1((j-1)*nx_block + i,iblk) &
                              + work1(i+1,j  ,iblk)*wght1((j-1)*nx_block + i+1,iblk)) &
@@ -5389,7 +5384,6 @@
                do i = ilo, ihi
                   ms = dynMap((j-1)*nx_block + i, iblk)
                   if (ms < 1) cycle
-                  ms = dynOff(iblk) + ms
                   work2(ms) = p5 * &
                               (work1(i-1,j  ,iblk)*wght1((j-1)*nx_block + i-1,iblk) &
                              + work1(i  ,j  ,iblk)*wght1((j-1)*nx_block + i,iblk)) &
@@ -5411,7 +5405,6 @@
                do i = ilo, ihi
                   ms = dynMap((j-1)*nx_block + i, iblk)
                   if (ms < 1) cycle
-                  ms = dynOff(iblk) + ms
                   work2(ms) = p5 * &
                               (work1(i  ,j  ,iblk)*wght1((j-1)*nx_block + i,iblk) &
                              + work1(i  ,j+1,iblk)*wght1((j+1-1)*nx_block + i,iblk)) &
@@ -5433,7 +5426,6 @@
                do i = ilo, ihi
                   ms = dynMap((j-1)*nx_block + i, iblk)
                   if (ms < 1) cycle
-                  ms = dynOff(iblk) + ms
                   work2(ms) = p5 * &
                               (work1(i  ,j-1,iblk)*wght1((j-1-1)*nx_block + i,iblk) &
                              + work1(i  ,j  ,iblk)*wght1((j-1)*nx_block + i,iblk)) &
@@ -5501,7 +5493,6 @@
                do i = ilo, ihi
                   ms = dynMap((j-1)*nx_block + i, iblk)
                   if (ms < 1) cycle
-                  ms = dynOff(iblk) + ms
                   ij = (j-1)*nx_block + i
                   wtmp = (mask1(ij            ,iblk)*wght1(ij            ,iblk)  &
                         + mask1(ij+1          ,iblk)*wght1(ij+1          ,iblk)  &
@@ -5530,7 +5521,6 @@
                do i = ilo, ihi
                   ms = dynMap((j-1)*nx_block + i, iblk)
                   if (ms < 1) cycle
-                  ms = dynOff(iblk) + ms
                   ij = (j-1)*nx_block + i
                   wtmp = (mask1(ij  ,iblk)*wght1(ij  ,iblk)  &
                         + mask1(ij+1,iblk)*wght1(ij+1,iblk))
@@ -5555,7 +5545,6 @@
                do i = ilo, ihi
                   ms = dynMap((j-1)*nx_block + i, iblk)
                   if (ms < 1) cycle
-                  ms = dynOff(iblk) + ms
                   ij = (j-1)*nx_block + i
                   wtmp = (mask1(ij         ,iblk)*wght1(ij         ,iblk)  &
                         + mask1(ij+nx_block,iblk)*wght1(ij+nx_block,iblk))
@@ -5580,7 +5569,6 @@
                do i = ilo, ihi
                   ms = dynMap((j-1)*nx_block + i, iblk)
                   if (ms < 1) cycle
-                  ms = dynOff(iblk) + ms
                   ij = (j-1)*nx_block + i
                   wtmp = (mask1(ij,iblk)*wght1(ij,iblk)  &
                         + mask1(ij-1,iblk)*wght1(ij-1,iblk)  &
@@ -5609,7 +5597,6 @@
                do i = ilo, ihi
                   ms = dynMap((j-1)*nx_block + i, iblk)
                   if (ms < 1) cycle
-                  ms = dynOff(iblk) + ms
                   ij = (j-1)*nx_block + i
                   wtmp = (mask1(ij-1,iblk)*wght1(ij-1,iblk)  &
                         + mask1(ij,iblk)*wght1(ij,iblk)  &
@@ -5638,7 +5625,6 @@
                do i = ilo, ihi
                   ms = dynMap((j-1)*nx_block + i, iblk)
                   if (ms < 1) cycle
-                  ms = dynOff(iblk) + ms
                   ij = (j-1)*nx_block + i
                   wtmp = (mask1(ij-nx_block,iblk)*wght1(ij-nx_block,iblk)  &
                         + mask1(ij+1-nx_block,iblk)*wght1(ij+1-nx_block,iblk)  &
@@ -5667,7 +5653,6 @@
                do i = ilo, ihi
                   ms = dynMap((j-1)*nx_block + i, iblk)
                   if (ms < 1) cycle
-                  ms = dynOff(iblk) + ms
                   ij = (j-1)*nx_block + i
                   wtmp = (mask1(ij-1,iblk)*wght1(ij-1,iblk)  &
                         + mask1(ij,iblk)*wght1(ij,iblk))
@@ -5692,7 +5677,6 @@
                do i = ilo, ihi
                   ms = dynMap((j-1)*nx_block + i, iblk)
                   if (ms < 1) cycle
-                  ms = dynOff(iblk) + ms
                   ij = (j-1)*nx_block + i
                   wtmp = (mask1(ij-nx_block,iblk)*wght1(ij-nx_block,iblk)  &
                         + mask1(ij,iblk)*wght1(ij,iblk))
@@ -7119,6 +7103,19 @@
          total = total + cnt(iblk) + 1
       enddo
 
+      ! ⚠ map now holds the TASK-GLOBAL slot, not a block-local one.  Every
+      ! consumer used to compose dynOff(iblk) + dynMap(ij,iblk); they read it
+      ! directly instead, and pack_to_slots and friends take the WHOLE
+      ! compressed array rather than this block's slice.  That removes the
+      ! slice arithmetic from every call site, and -- the reason it is done
+      ! now -- it is layout-agnostic: a slice can only name a block's slots
+      ! while they are contiguous, which the ring move ends.
+      do iblk = 1, nblocks
+         do ij = 1, nx_block*ny_block
+            if (map(ij,iblk) > 0) map(ij,iblk) = map(ij,iblk) + off(iblk)
+         enddo
+      enddo
+
       ! a task may legitimately own no masked cells at all; keep the
       ! allocation non-zero so slicing stays well defined
       total = max(total, 1)
@@ -7198,7 +7195,7 @@
          do i = 1, nx_block
             ij = (j-1)*nx_block + i
             if (map(ij,iblk) == 0) cycle
-            is = off(iblk) + map(ij,iblk)
+            is = map(ij,iblk)
 
             ! default every direction to this block's dead slot, so a missing
             ! neighbour reads zero with no branch in the kernels
@@ -7214,7 +7211,7 @@
                ! available from the same lookup: block-local composes with the
                ! per-block slices the old kernels take, global is what the
                ! task-wide ones take directly
-               nbrG(is,d) = off(iblk) + map((jj-1)*nx_block + ii, iblk)
+               nbrG(is,d) = map((jj-1)*nx_block + ii, iblk)
             enddo
          enddo
          enddo
@@ -7261,8 +7258,8 @@
          do i = 1, nx_block
             ij = (j-1)*nx_block + i
             if (map(ij,iblk) == 0) cycle
-            ijmap (off(iblk) + map(ij,iblk)) = ij
-            blkmap(off(iblk) + map(ij,iblk)) = iblk
+            ijmap (map(ij,iblk)) = ij
+            blkmap(map(ij,iblk)) = iblk
          enddo
          enddo
       enddo
@@ -7284,21 +7281,31 @@
       integer (kind=int_kind), dimension(:), intent(in) :: &
          map                ! block-local slot of each cell, 0 if not stored
 
-      ! this block's slice, 1-based: real cells at 1..cnt, dead slot last
+      ! ⚠ the WHOLE compressed array.  map holds task-global slots, so this
+      ! routine indexes it directly and the caller passes no slice.
       real (kind=dbl_kind), dimension(:), intent(inout) :: &
-         comp               ! compressed values
+         comp               ! compressed values, whole
 
-      integer (kind=int_kind) :: i, j, m
+      integer (kind=int_kind) :: i, j, m, mx
 
       character(len=*), parameter :: subname = '(pack_to_slots)'
 
-      comp(size(comp)) = c0   ! the dead slot
+      ! ⚠ The dead slot is this BLOCK's, at one past its highest slot, not
+      ! the last element of the whole array.  map's largest value for this
+      ! block is off+cnt, so mx+1 is off+cnt+1.  Guarded because a block may
+      ! own no slots at all.
+      mx = 0
       do j = 1, ny_block
       do i = 1, nx_block
          m = map((j-1)*nx_block + i)
-         if (m > 0) comp(m) = arr(i,j)
+         if (m > 0) then
+            comp(m) = arr(i,j)
+            mx = max(mx, m)
+         endif
       enddo
       enddo
+
+      if (mx > 0) comp(mx+1) = c0   ! this block's dead slot
 
       end subroutine pack_to_slots
 !=======================================================================
@@ -7359,19 +7366,26 @@
       real (kind=dbl_kind), dimension(:,:), intent(inout) :: &
          comp               ! compressed values, (slot,ncat)
 
-      integer (kind=int_kind) :: i, j, m, n
+      integer (kind=int_kind) :: i, j, m, n, mx
 
       character(len=*), parameter :: subname = '(pack_cat_to_slots)'
 
-      comp(size(comp,dim=1),:) = c0   ! the dead slot
+      ! ⚠ This block's dead slot, one past its highest slot -- not the
+      ! last element of the whole array, which comp now is.
+      mx = 0
       do n = 1, size(arr,dim=3)
          do j = 1, ny_block
          do i = 1, nx_block
             m = map((j-1)*nx_block + i)
-            if (m > 0) comp(m,n) = arr(i,j,n)
+            if (m > 0) then
+               comp(m,n) = arr(i,j,n)
+               mx = max(mx, m)
+            endif
          enddo
          enddo
       enddo
+
+      if (mx > 0) comp(mx+1,:) = c0   ! this block's dead slot
 
       end subroutine pack_cat_to_slots
 
@@ -7412,21 +7426,28 @@
       real (kind=dbl_kind), dimension(:,:,:), intent(inout) :: &
          comp               ! compressed values, (slot,ntrcr,ncat)
 
-      integer (kind=int_kind) :: i, j, m, n, it
+      integer (kind=int_kind) :: i, j, m, n, it, mx
 
       character(len=*), parameter :: subname = '(pack_trc_to_slots)'
 
-      comp(size(comp,dim=1),:,:) = c0   ! the dead slot
+      ! ⚠ This block's dead slot, one past its highest slot -- not the
+      ! last element of the whole array, which comp now is.
+      mx = 0
       do n = 1, size(arr,dim=4)
          do it = 1, size(arr,dim=3)
             do j = 1, ny_block
             do i = 1, nx_block
                m = map((j-1)*nx_block + i)
-               if (m > 0) comp(m,it,n) = arr(i,j,it,n)
+               if (m > 0) then
+                  comp(m,it,n) = arr(i,j,it,n)
+                  mx = max(mx, m)
+               endif
             enddo
             enddo
          enddo
       enddo
+
+      if (mx > 0) comp(mx+1,:,:) = c0   ! this block's dead slot
 
       end subroutine pack_trc_to_slots
 
@@ -7761,52 +7782,52 @@
       do iblk = 1, nblocks
          if (dynCnt(iblk) == 0) cycle
          call pack_to_slots(uarear(:,iblk), dynMap(:,iblk), &
-              uarear_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+              uarear_slot)
          call pack_to_slots(tarear(:,iblk), dynMap(:,iblk), &
-              tarear_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+              tarear_slot)
          call pack_to_slots(dxN   (:,iblk), dynMap(:,iblk), &
-              dxN_slot   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+              dxN_slot)
          ! departure_points reads these at the E and N neighbours, so they
          ! have to be slot arrays: reaching them block-wise would need
          ! dynIJ(nbr(is,d)), a second indirection on every access.
          call pack_to_slots(HTN   (:,iblk), dynMap(:,iblk), &
-              HTN_slot   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+              HTN_slot)
          call pack_to_slots(HTE   (:,iblk), dynMap(:,iblk), &
-              HTE_slot   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+              HTE_slot)
          call pack_to_slots(dyE   (:,iblk), dynMap(:,iblk), &
-              dyE_slot   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+              dyE_slot)
          call pack_to_slots(uarea (:,iblk), dynMap(:,iblk), &
-              uarea_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+              uarea_slot)
          call pack_to_slots(tarea (:,iblk), dynMap(:,iblk), &
-              tarea_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+              tarea_slot)
          call pack_to_slots(earea (:,iblk), dynMap(:,iblk), &
-              earea_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+              earea_slot)
          call pack_to_slots(earear(:,iblk), dynMap(:,iblk), &
-              earear_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+              earear_slot)
          call pack_to_slots(narear(:,iblk), dynMap(:,iblk), &
-              narear_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+              narear_slot)
          call pack_to_slots(narea (:,iblk), dynMap(:,iblk), &
-              narea_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+              narea_slot)
          call pack_to_slots(hm    (:,iblk), dynMap(:,iblk), &
-              hm_slot    (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+              hm_slot)
          call pack_to_slots(dxU   (:,iblk), dynMap(:,iblk), &
-              dxU_slot   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+              dxU_slot)
          call pack_to_slots(dyT   (:,iblk), dynMap(:,iblk), &
-              dyT_slot   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+              dyT_slot)
          call pack_to_slots(dxT   (:,iblk), dynMap(:,iblk), &
-              dxT_slot   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+              dxT_slot)
          call pack_to_slots(dyU   (:,iblk), dynMap(:,iblk), &
-              dyU_slot   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+              dyU_slot)
          call pack_to_slots(dxE   (:,iblk), dynMap(:,iblk), &
-              dxE_slot   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+              dxE_slot)
          call pack_to_slots(dyN   (:,iblk), dynMap(:,iblk), &
-              dyN_slot   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+              dyN_slot)
          call pack_to_slots(epm   (:,iblk), dynMap(:,iblk), &
-              epm_slot   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+              epm_slot)
          call pack_to_slots(npm   (:,iblk), dynMap(:,iblk), &
-              npm_slot   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+              npm_slot)
          call pack_to_slots(uvm   (:,iblk), dynMap(:,iblk), &
-              uvm_slot   (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+              uvm_slot)
       enddo
 
       ! ⚠ dyE and dxN are DIVIDED BY at a neighbour, in
@@ -7850,8 +7871,7 @@
          do i = 2, nx_block
             ijb = (j-1)*nx_block + i
             m   = dynMap(ijb,iblk)
-            if (m < 1 .or. m > dynCnt(iblk)) cycle
-            m = dynOff(iblk) + m
+            if (m < 1) cycle
             uareaavg_slot(m) = uarea(ijb           ,iblk) &
                              + uarea(ijb-nx_block  ,iblk) &
                              + uarea(ijb-nx_block-1,iblk) &
@@ -7863,8 +7883,7 @@
          do i = 2, nx_block-1
             ijb = (j-1)*nx_block + i
             m   = dynMap(ijb,iblk)
-            if (m < 1 .or. m > dynCnt(iblk)) cycle
-            m = dynOff(iblk) + m
+            if (m < 1) cycle
             ! ⚠ HTN and HTE are edge LENGTHS -- nonzero over land, like the
             ! areas below.  departure_points compares dpx against HTN one
             ! cell east, and a neighbour with no slot would hand it c0, so
@@ -7919,28 +7938,28 @@
          do j = this_block_x%jlo-nghost+1, this_block_x%jhi+nghost-1
          do i = this_block_x%ilo-nghost+1, this_block_x%ihi+nghost-1
             m = dynMap((j-1)*nx_block + i, iblk)
-            if (m >= 1 .and. m <= dynCnt(iblk)) skipRmp(dynOff(iblk)+m) = .false.
+            if (m >= 1) skipRmp(m) = .false.
          enddo
          enddo
 
          do j = this_block_x%jlo-1, this_block_x%jhi
          do i = this_block_x%ilo  , this_block_x%ihi
             m = dynMap((j-1)*nx_block + i, iblk)
-            if (m >= 1 .and. m <= dynCnt(iblk)) skipEdgeN(dynOff(iblk)+m) = .false.
+            if (m >= 1) skipEdgeN(m) = .false.
          enddo
          enddo
 
          do j = this_block_x%jlo  , this_block_x%jhi
          do i = this_block_x%ilo-1, this_block_x%ihi
             m = dynMap((j-1)*nx_block + i, iblk)
-            if (m >= 1 .and. m <= dynCnt(iblk)) skipEdgeE(dynOff(iblk)+m) = .false.
+            if (m >= 1) skipEdgeE(m) = .false.
          enddo
          enddo
 
          do j = this_block_x%jlo, this_block_x%jhi
          do i = this_block_x%ilo, this_block_x%ihi
             m = dynMap((j-1)*nx_block + i, iblk)
-            if (m >= 1 .and. m <= dynCnt(iblk)) skipPhys(dynOff(iblk)+m) = .false.
+            if (m >= 1) skipPhys(m) = .false.
          enddo
          enddo
       enddo

@@ -371,7 +371,7 @@
 
       work(:,:) = c0
       do iblk = 1, nblocks
-         call unpack_from_slots(comp(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
+         call unpack_from_slots(comp, &
                                 dynMap(:,iblk), work(:,iblk))
       enddo
 
@@ -417,7 +417,7 @@
 
       work(:,:,:,:) = c0
       do iblk = 1, nblocks
-         call unpack_cat_from_slots(comp(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
+         call unpack_cat_from_slots(comp, &
                                     dynMap(:,iblk), work(:,:,:,iblk))
       enddo
 
@@ -468,7 +468,7 @@
             if (.not.tmask((j-1)*nx_block+i,iblk) .and. &
                 .not.opmask((j-1)*nx_block+i,iblk)) cycle
             m = dynMap((j-1)*nx_block+i,iblk)
-            if (m > 0) work(i,j,n,iblk) = comp(dynOff(iblk)+m,it,n)
+            if (m > 0) work(i,j,n,iblk) = comp(m,it,n)
          enddo
          enddo
          enddo
@@ -991,29 +991,29 @@
       !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
       do iblk = 1, nblocks
          call pack_to_slots(stressp_1(:,iblk), dynMap(:,iblk), &
-                            stressp_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                            stressp_1_slot)
          call pack_to_slots(stressp_2(:,iblk), dynMap(:,iblk), &
-                            stressp_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                            stressp_2_slot)
          call pack_to_slots(stressp_3(:,iblk), dynMap(:,iblk), &
-                            stressp_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                            stressp_3_slot)
          call pack_to_slots(stressp_4(:,iblk), dynMap(:,iblk), &
-                            stressp_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                            stressp_4_slot)
          call pack_to_slots(stressm_1(:,iblk), dynMap(:,iblk), &
-                            stressm_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                            stressm_1_slot)
          call pack_to_slots(stressm_2(:,iblk), dynMap(:,iblk), &
-                            stressm_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                            stressm_2_slot)
          call pack_to_slots(stressm_3(:,iblk), dynMap(:,iblk), &
-                            stressm_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                            stressm_3_slot)
          call pack_to_slots(stressm_4(:,iblk), dynMap(:,iblk), &
-                            stressm_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                            stressm_4_slot)
          call pack_to_slots(stress12_1(:,iblk), dynMap(:,iblk), &
-                            stress12_1_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                            stress12_1_slot)
          call pack_to_slots(stress12_2(:,iblk), dynMap(:,iblk), &
-                            stress12_2_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                            stress12_2_slot)
          call pack_to_slots(stress12_3(:,iblk), dynMap(:,iblk), &
-                            stress12_3_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                            stress12_3_slot)
          call pack_to_slots(stress12_4(:,iblk), dynMap(:,iblk), &
-                            stress12_4_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                            stress12_4_slot)
       enddo
       !$OMP END PARALLEL DO
 
@@ -1025,17 +1025,17 @@
          !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
          do iblk = 1, nblocks
             call pack_to_slots(stresspT (:,iblk), dynMap(:,iblk), &
-                               stresspT_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                               stresspT_slot)
             call pack_to_slots(stressmT (:,iblk), dynMap(:,iblk), &
-                               stressmT_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                               stressmT_slot)
             call pack_to_slots(stress12T(:,iblk), dynMap(:,iblk), &
-                               stress12T_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                               stress12T_slot)
             call pack_to_slots(stresspU (:,iblk), dynMap(:,iblk), &
-                               stresspU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                               stresspU_slot)
             call pack_to_slots(stressmU (:,iblk), dynMap(:,iblk), &
-                               stressmU_slot (dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                               stressmU_slot)
             call pack_to_slots(stress12U(:,iblk), dynMap(:,iblk), &
-                               stress12U_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))
+                               stress12U_slot)
          enddo
          !$OMP END PARALLEL DO
       endif

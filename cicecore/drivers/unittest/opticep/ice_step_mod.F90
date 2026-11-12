@@ -973,9 +973,9 @@
          ! endif
       enddo   ! is
 
-      call unpack_cat_from_slots(aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), &
+      call unpack_cat_from_slots(aicen_slot, &
            dynMap(:,iblk), aicen(:,:,:,iblk))
-      call unpack_trc_from_slots(trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:), &
+      call unpack_trc_from_slots(trcrn_slot, &
            dynMap(:,iblk), trcrn(:,:,:,:,iblk))
 
       call icepack_warnings_flush(nu_diag)
@@ -1064,8 +1064,8 @@
             msl = dynMap(ij,iblk)
             if (msl > 0) then
                if (aiU(ij,iblk) /= c0) then
-                  work1(i,j,iblk) = strocnxU(dynOff(iblk)+msl)/aiU(ij,iblk)
-                  work2(i,j,iblk) = strocnyU(dynOff(iblk)+msl)/aiU(ij,iblk)
+                  work1(i,j,iblk) = strocnxU(msl)/aiU(ij,iblk)
+                  work2(i,j,iblk) = strocnyU(msl)/aiU(ij,iblk)
                endif
             endif
         enddo
@@ -1163,7 +1163,7 @@
          ! skipped anyway -- it is here to keep the subscript in range.
          msl = dynMap((j-1)*nx_block + i, iblk)
          if (msl < 1) cycle
-         ms  = dynOff(iblk) + msl
+         ms  = msl
 
 !echmod: this changes the answers, continue using tmask for now
 !      call aggregate_area (ncat, aicen(i,j,:,iblk), atmp, atmp0)
