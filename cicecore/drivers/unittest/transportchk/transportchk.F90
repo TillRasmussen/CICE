@@ -33,7 +33,7 @@
       use ice_exit, only: abort_ice, end_run
       use ice_fileunits, only: nu_diag
       use ice_global_reductions, only: global_maxval
-      use ice_grid, only: dynMap, dynOff, dynCnt, dynIJ
+      use ice_grid, only: dynMap, dynOff, dynCntA, dynIJ
       use ice_transport_driver, only: state_to_tracers, tracers_to_state
       use icepack_intfc, only: icepack_warnings_flush, icepack_warnings_aborted
       use icepack_intfc, only: icepack_query_parameters
@@ -83,7 +83,7 @@
          file=__FILE__, line=__LINE__)
       ntrace = 2 + ntrcr
 
-      nc  = dynCnt(1)
+      nc  = dynCntA(1)
       off = dynOff(1)
       nd  = nc + 1              ! the dead slot
 

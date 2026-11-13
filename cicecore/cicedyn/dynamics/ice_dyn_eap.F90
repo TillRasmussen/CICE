@@ -130,7 +130,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
           calc_seabed_stress_slot, calc_strint_slot, &
           str1_slot, str2_slot, str3_slot, str4_slot, &
           str5_slot, str6_slot, str7_slot, str8_slot, &
-          denom1, uvel_init, vvel_init, dynOff, dynCnt, dynTot, dynMap, &
+          denom1, uvel_init, vvel_init, dynOff, dynCnt, dynCntA, dynTot, dynMap, &
           NbrW_Task , NbrSW_Task, NbrS_Task , NbrE_Task , &
           NbrE_Task, NbrNE_Task, NbrN_Task, &
         NbrNE_Task, NbrN_Task , NbrNW_Task, NbrSE_Task, &
@@ -164,7 +164,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
           strtltxU, strtltyU, strocnxU, strocnyU, strintxU, strintyU, taubxU, taubyU, &
           strax, stray, &
           hwater, hwater_slot
-      use ice_grid, only: tmask, umask, dxT, dyT, dxU, dyU, &
+      use ice_grid, only: deadSlot, dynBlk, tmask, umask, dxT, dyT, dxU, dyU, &
           tarear, uarear, grid_average_X2Y, &
           grid_atm_dynu, grid_atm_dynv, grid_ocn_dynu, grid_ocn_dynv
       use ice_restoring, only: ice_restoring_halo, restore_ice
@@ -180,6 +180,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
       ! local variables
 
       integer (kind=int_kind) :: &
+         jblk           , & ! block owning a slot, from dynBlk
          ms             , & ! global slot of this cell
          is             , & ! slot within this block
          ksub       , & ! subcycle step
@@ -261,7 +262,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
                            aice_slot,          vice_slot,          &
                            vsno_slot,                              &
                            dynMap  (:,iblk),   tmask   (:,  iblk), &
-                         dynOff(iblk),       dynCnt(iblk),       &
+                         dynOff(iblk),       dynCntA(iblk),       &
                          tmass   (:,iblk),   iceTmask(:,iblk))
 
       enddo                     ! iblk
@@ -359,57 +360,13 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
                          forceyU_slot, &
                          uvel_init,   vvel_init,   &
                          uvel(:,iblk), vvel(:,iblk), &
-                        dynMap(:,iblk), dynOff(iblk), dynCnt(iblk), iceUmask_slot, &
+                        dynMap(:,iblk), dynOff(iblk), dynCntA(iblk), iceUmask_slot, &
                         iceTmask_slot, &
                          TbU_slot)
 
          !-----------------------------------------------------------------
          ! Initialize structure tensor
          !-----------------------------------------------------------------
-
-         ! Reset the structure tensor where the ice has gone, in SLOTS.
-         ! It used to write the block arrays and the pack below carried the
-         ! result across; writing the slots directly is what lets that pack
-         ! go.  A cell with no slot is tmask-false -- dynMap is tmask .or.
-         ! umask -- so the branch below would have written c0 there, which
-         ! is what the block array already holds.
-         do is = dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk)
-            ij = dynIJ(is)
-            if (ij == 0) cycle                  ! dead slot
-            if (.not.iceTmask(ij,iblk)) then
-               if (tmask(ij,iblk)) then
-                  ! structure tensor
-                  a11_1_slot(is) = p5
-                  a11_2_slot(is) = p5
-                  a11_3_slot(is) = p5
-                  a11_4_slot(is) = p5
-                else
-                  a11_1_slot(is) = c0
-                  a11_2_slot(is) = c0
-                  a11_3_slot(is) = c0
-                  a11_4_slot(is) = c0
-               endif
-               a12_1_slot(is) = c0
-               a12_2_slot(is) = c0
-               a12_3_slot(is) = c0
-               a12_4_slot(is) = c0
-            endif                  ! iceTmask
-         enddo                     ! is
-
-         ! ⚠ The dead slot, which the pack used to clear for free:
-         ! pack_to_slots zeroes it on every call so a missing neighbour
-         ! reads zero.  Nothing else writes it, and the kernels below read
-         ! a11/a12 at neighbours, so without this it keeps whatever the
-         ! last subcycle left and a missing neighbour picks that up.
-         ms = dynOff(iblk) + dynCnt(iblk) + 1
-         a11_1_slot(ms) = c0
-         a11_2_slot(ms) = c0
-         a11_3_slot(ms) = c0
-         a11_4_slot(ms) = c0
-         a12_1_slot(ms) = c0
-         a12_2_slot(ms) = c0
-         a12_3_slot(ms) = c0
-         a12_4_slot(ms) = c0
 
          !-----------------------------------------------------------------
          ! ice strength
@@ -434,7 +391,58 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
                                       strength = strength_slot(ms))
          enddo  ! is
       enddo  ! iblk
+
       !$OMP END PARALLEL DO
+
+      ! Reset the structure tensor where the ice has gone, in SLOTS.
+      ! It used to write the block arrays and the pack below carried the
+      ! result across; writing the slots directly is what lets that pack go.
+      !
+      ! ⚠ Runs over the whole task, AFTER the block loop.  It must reach the
+      ! RING as well as the active cells: a ring cell is land, takes the c0
+      ! branch, and the eap restart carries that value out -- bounded at
+      ! dynCntA it keeps the p5 an ocean cell was initialised with, which is
+      ! 1572 values in the gx3 eap restart.  It cannot be hoisted ABOVE the
+      ! block loop either: dyn_prep2 builds iceTmask inside it.
+      ! dynBlk is 0 only at the dead slot, so the skip is layout-agnostic.
+      do is = 1, dynTot
+         jblk = dynBlk(is)
+         if (jblk == 0) cycle                ! dead slot
+         ij = dynIJ(is)
+         if (.not. iceTmask(ij,jblk)) then
+            if (tmask(ij,jblk)) then
+               ! structure tensor
+               a11_1_slot(is) = p5
+               a11_2_slot(is) = p5
+               a11_3_slot(is) = p5
+               a11_4_slot(is) = p5
+            else
+               a11_1_slot(is) = c0
+               a11_2_slot(is) = c0
+               a11_3_slot(is) = c0
+               a11_4_slot(is) = c0
+            endif
+            a12_1_slot(is) = c0
+            a12_2_slot(is) = c0
+            a12_3_slot(is) = c0
+            a12_4_slot(is) = c0
+         endif                  ! iceTmask
+      enddo                     ! is
+
+      ! ⚠ The dead slot, which the pack used to clear for free:
+      ! pack_to_slots zeroes it on every call so a missing neighbour reads
+      ! zero.  Nothing else writes it, and the kernels below read a11/a12 at
+      ! neighbours, so without this it keeps whatever the last subcycle left.
+      ms = deadSlot
+      a11_1_slot(ms) = c0
+      a11_2_slot(ms) = c0
+      a11_3_slot(ms) = c0
+      a11_4_slot(ms) = c0
+      a12_1_slot(ms) = c0
+      a12_2_slot(ms) = c0
+      a12_3_slot(ms) = c0
+      a12_4_slot(ms) = c0
+
 
       call icepack_warnings_flush(nu_diag)
       if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &
@@ -679,7 +687,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
          ! outputs only; stepu writes strint slots every pass, this is their
          ! one write
          if (lstrint) then
-            call calc_strint_slot(dynOff(iblk)+1  , dynOff(iblk)+dynCnt(iblk), &
+            call calc_strint_slot(dynOff(iblk)+1  , dynOff(iblk)+dynCntA(iblk), &
                                   iceUmask_slot          , uarear_slot    , &
                                   rheofactU_slot , str1_slot      , &
                                   str2_slot      , str3_slot      , &
@@ -691,7 +699,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
             call unpack_from_slots(strintyU_slot, dynMap(:,iblk), strintyU(:,iblk))
          endif
          if (ltaub) then
-            call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceUmask_slot, &
+            call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCntA(iblk), iceUmask_slot, &
                  uvel_slot, &
                  taubxU_slot, &
                  vvel_slot, &
@@ -2399,7 +2407,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
 
       wrk(:,:,:) = c0
       do iblk = 1, nblocks
-         if (dynCnt(iblk) == 0) cycle
+         if (dynCntA(iblk) == 0) cycle
          call unpack_from_slots(fld_s, &
                                 dynMap(:,iblk), wrk(:,:,iblk))
       enddo
@@ -2541,7 +2549,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
       ! ones.
       !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
       do iblk = 1, nblocks
-         if (dynCnt(iblk) == 0) cycle
+         if (dynCntA(iblk) == 0) cycle
          call pack_to_slots(a11_1(:,:,iblk), dynMap(:,iblk), a11_1_slot)
          call pack_to_slots(a11_2(:,:,iblk), dynMap(:,iblk), a11_2_slot)
          call pack_to_slots(a11_3(:,:,iblk), dynMap(:,iblk), a11_3_slot)

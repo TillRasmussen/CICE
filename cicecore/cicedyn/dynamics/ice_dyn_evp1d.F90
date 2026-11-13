@@ -952,7 +952,7 @@ module ice_dyn_evp1d
      use ice_communicate, only : my_task, master_task
      use ice_gather_scatter, only : scatter_globalR8_compressed
      use ice_domain, only : distrb_info, nblocks
-     use ice_grid, only : dynMap, dynOff, dynCnt
+     use ice_grid, only : dynMap, dynOff, dynCnt, deadSlot
      implicit none
 
      ! the compressed destination, dimension(dynTot)
@@ -985,7 +985,7 @@ module ice_dyn_evp1d
      ! at its own cell -- so the value cannot matter today, but reproducing
      ! pack_to_slots exactly costs one store per block and keeps it that way.
      do iblk = 1, nblocks
-        A_slot(dynOff(iblk) + dynCnt(iblk) + 1) = c0
+        A_slot(deadSlot) = c0
      enddo
 
   end subroutine scatter_slot_r8

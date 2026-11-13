@@ -291,9 +291,16 @@
          nbr_SE  = 8, & ! (+1,-1)
          nbr_num = 8    ! number of directions held
 
+      ! ⚠ SCOPE is what the names encode.  dyn* are PER BLOCK and are what
+      ! the conversion exists to remove; the _TU pair and deadSlot are PER
+      ! TASK and are the end state.  Do not reuse a dyn* name for a task
+      ! quantity just because it is free.
       integer (kind=int_kind), public :: &
          dynTot    , & ! total compressed length over all local blocks
-         dynMaxCnt     ! largest dynCnt over the local blocks
+         dynMaxCnt , & ! largest dynCntA over the local blocks
+         nActive_TU, & ! this task's active slots: 1 .. nActive_TU, contiguous
+         nStored_TU, & ! every slot the task holds, deadSlot and ring included
+         deadSlot      ! THE dead slot, at nActive_TU+1, held at zero
 
       integer (kind=int_kind), dimension(:), allocatable, public :: &
          dynOff, dynCnt, dynCntA, dynIJ, dynBlk
@@ -2641,7 +2648,7 @@
          lon_adj, &
          lonB(2,2), &
          pi
-      integer (kind=int_kind) :: i, j, m, n, mx
+      integer (kind=int_kind) :: i, j, m, n
 
       character(len=*), parameter :: subname = '(mom_grid_rotation_angle)'
 
@@ -7024,7 +7031,8 @@
 ! neighbour index arrays to be precomputed later, the way ice_dyn_evp1d
 ! precomputes ee/ne/se/nw/sw/sse against its own static list.
 
-      subroutine set_ragged_layout(mask, act, off, cnt, cntA, total, map)
+      subroutine set_ragged_layout(mask, act, off, cnt, cntA, total, map, &
+                                   nActive, nStored, deadIdx)
 
       use ice_domain, only: nblocks
 
@@ -7039,7 +7047,10 @@
          cntA               ! of which potentially active, numbered first
 
       integer (kind=int_kind), intent(out) :: &
-         total              ! total number of slots
+         total          , & ! total number of slots
+         nActive        , & ! active slots, 1 .. nActive, contiguous
+         nStored        , & ! every slot held, dead slot and ring included
+         deadIdx            ! the one dead slot, at nActive+1
 
       ! flattened: element (i,j,iblk) lives at ((j-1)*nx_block + i, iblk)
       integer (kind=int_kind), dimension(:,:), intent(out) :: &
@@ -7057,33 +7068,65 @@
       cntA(:)  = 0
       map(:,:) = 0
 
-      ! Two passes, so each block reads [ active | neighbour ring | dead ].
-      ! A loop that only has business at cells which can carry ice runs
-      ! off(iblk)+1 .. off(iblk)+cntA(iblk) and never walks the ring.
+      ! Three segments for the TASK, not per block:
+      !
+      !     1 .. nActive_TU              active, every block's, contiguous
+      !     nActive_TU + 1               deadSlot, one for the task
+      !     nActive_TU+2 .. nStored_TU   the neighbour ring
+      !
+      ! A kernel with business only at cells that can carry ice runs
+      ! 1 .. nActive_TU and needs no block loop.  A block's own active cells
+      ! are off(iblk)+1 .. off(iblk)+cntA(iblk), off being a prefix sum.
       !
       ! ⚠ "active" here is STATIC -- it is the set a kernel can EVER visit.
       ! iceTmask_slot/iceUmask_slot remain necessary inside that range: they come from
       ! iceTmask/iceUmask, which dyn_prep2 rebuilds every timestep as the
       ! ice edge moves.
+      ! Pass 1: the active cells of every block, consecutively.
+      total = 0
       do iblk = 1, nblocks
+         off(iblk) = total
          do j = 1, ny_block
          do i = 1, nx_block
             ij = (j-1)*nx_block + i
             if (mask(ij,iblk) .and. act(ij,iblk)) then
-               cnt(iblk)    = cnt(iblk) + 1
-               map(ij,iblk) = cnt(iblk)
+               total        = total + 1
+               map(ij,iblk) = total
+               cntA(iblk)   = cntA(iblk) + 1
             endif
          enddo
          enddo
-         cntA(iblk) = cnt(iblk)
+      enddo
+      nActive = total
+
+      ! THE dead slot.  One for the task, not one per block: a dead slot
+      ! between two blocks' active cells is exactly what would stop
+      ! 1 .. nActive_TU naming a contiguous range.
+      total    = total + 1
+      deadIdx  = total
+
+      ! Pass 2: the neighbour ring, after the dead slot.
+      do iblk = 1, nblocks
          do j = 1, ny_block
          do i = 1, nx_block
             ij = (j-1)*nx_block + i
             if (mask(ij,iblk) .and. .not. act(ij,iblk)) then
-               cnt(iblk)    = cnt(iblk) + 1
-               map(ij,iblk) = cnt(iblk)
+               total        = total + 1
+               map(ij,iblk) = total
             endif
          enddo
+         enddo
+      enddo
+      nStored = total
+
+      ! cnt is the count a block OWNS, active and ring together.  It is no
+      ! longer an EXTENT: a block's ring is not adjacent to its active cells.
+      do iblk = 1, nblocks
+         cnt(iblk) = cntA(iblk)
+      enddo
+      do iblk = 1, nblocks
+         do ij = 1, nx_block*ny_block
+            if (map(ij,iblk) > nActive + 1) cnt(iblk) = cnt(iblk) + 1
          enddo
       enddo
 
@@ -7097,11 +7140,6 @@
       ! slice would silently shift every neighbour index by one.
       ! The spacing below (cnt+1 per block) is what reserves the dead slot;
       ! without it a block's last index would alias the next block's first.
-      total = 0
-      do iblk = 1, nblocks
-         off(iblk) = total
-         total = total + cnt(iblk) + 1
-      enddo
 
       ! ⚠ map now holds the TASK-GLOBAL slot, not a block-local one.  Every
       ! consumer used to compose dynOff(iblk) + dynMap(ij,iblk); they read it
@@ -7110,11 +7148,7 @@
       ! slice arithmetic from every call site, and -- the reason it is done
       ! now -- it is layout-agnostic: a slice can only name a block's slots
       ! while they are contiguous, which the ring move ends.
-      do iblk = 1, nblocks
-         do ij = 1, nx_block*ny_block
-            if (map(ij,iblk) > 0) map(ij,iblk) = map(ij,iblk) + off(iblk)
-         enddo
-      enddo
+      ! map is numbered task-global in place above; nothing to rebase.
 
       ! a task may legitimately own no masked cells at all; keep the
       ! allocation non-zero so slicing stays well defined
@@ -7197,9 +7231,9 @@
             if (map(ij,iblk) == 0) cycle
             is = map(ij,iblk)
 
-            ! default every direction to this block's dead slot, so a missing
+            ! default every direction to THE dead slot, so a missing
             ! neighbour reads zero with no branch in the kernels
-            nbrG(is,:) = off(iblk) + cnt(iblk) + 1
+            nbrG(is,:) = deadSlot
 
             do d = 1, nbr_num
                ii = i + di(d)
@@ -7286,26 +7320,23 @@
       real (kind=dbl_kind), dimension(:), intent(inout) :: &
          comp               ! compressed values, whole
 
-      integer (kind=int_kind) :: i, j, m, mx
+      integer (kind=int_kind) :: i, j, m
 
       character(len=*), parameter :: subname = '(pack_to_slots)'
 
-      ! ⚠ The dead slot is this BLOCK's, at one past its highest slot, not
-      ! the last element of the whole array.  map's largest value for this
-      ! block is off+cnt, so mx+1 is off+cnt+1.  Guarded because a block may
-      ! own no slots at all.
-      mx = 0
+      ! ⚠ ONE dead slot for the task, so it is named directly rather than
+      ! derived from this block's highest slot -- after the reorder a block's
+      ! highest slot is in the ring, and one past it belongs to another block.
       do j = 1, ny_block
       do i = 1, nx_block
          m = map((j-1)*nx_block + i)
          if (m > 0) then
             comp(m) = arr(i,j)
-            mx = max(mx, m)
          endif
       enddo
       enddo
 
-      if (mx > 0) comp(mx+1) = c0   ! this block's dead slot
+      comp(deadSlot) = c0           ! THE dead slot
 
       end subroutine pack_to_slots
 !=======================================================================
@@ -7366,26 +7397,25 @@
       real (kind=dbl_kind), dimension(:,:), intent(inout) :: &
          comp               ! compressed values, (slot,ncat)
 
-      integer (kind=int_kind) :: i, j, m, n, mx
+      integer (kind=int_kind) :: i, j, m, n
 
       character(len=*), parameter :: subname = '(pack_cat_to_slots)'
 
-      ! ⚠ This block's dead slot, one past its highest slot -- not the
-      ! last element of the whole array, which comp now is.
-      mx = 0
+      ! ⚠ ONE dead slot for the task, named directly: after the reorder a
+      ! block's highest slot is in the ring, and one past it is another
+      ! block's.
       do n = 1, size(arr,dim=3)
          do j = 1, ny_block
          do i = 1, nx_block
             m = map((j-1)*nx_block + i)
             if (m > 0) then
                comp(m,n) = arr(i,j,n)
-               mx = max(mx, m)
             endif
          enddo
          enddo
       enddo
 
-      if (mx > 0) comp(mx+1,:) = c0   ! this block's dead slot
+      comp(deadSlot,:) = c0           ! THE dead slot
 
       end subroutine pack_cat_to_slots
 
@@ -7426,13 +7456,13 @@
       real (kind=dbl_kind), dimension(:,:,:), intent(inout) :: &
          comp               ! compressed values, (slot,ntrcr,ncat)
 
-      integer (kind=int_kind) :: i, j, m, n, it, mx
+      integer (kind=int_kind) :: i, j, m, n, it
 
       character(len=*), parameter :: subname = '(pack_trc_to_slots)'
 
-      ! ⚠ This block's dead slot, one past its highest slot -- not the
-      ! last element of the whole array, which comp now is.
-      mx = 0
+      ! ⚠ ONE dead slot for the task, named directly: after the reorder a
+      ! block's highest slot is in the ring, and one past it is another
+      ! block's.
       do n = 1, size(arr,dim=4)
          do it = 1, size(arr,dim=3)
             do j = 1, ny_block
@@ -7440,14 +7470,13 @@
                m = map((j-1)*nx_block + i)
                if (m > 0) then
                   comp(m,it,n) = arr(i,j,it,n)
-                  mx = max(mx, m)
-               endif
+                  endif
             enddo
             enddo
          enddo
       enddo
 
-      if (mx > 0) comp(mx+1,:,:) = c0   ! this block's dead slot
+      comp(deadSlot,:,:) = c0           ! THE dead slot
 
       end subroutine pack_trc_to_slots
 
@@ -7662,9 +7691,9 @@
       enddo
 
       call set_ragged_layout(mask_any, mask_act, dynOff, dynCnt, dynCntA, &
-                             dynTot, dynMap)
+                             dynTot, dynMap, nActive_TU, nStored_TU, deadSlot)
       deallocate(mask_any, mask_act)
-      dynMaxCnt = max(maxval(dynCnt), 1)
+      dynMaxCnt = max(maxval(dynCntA), 1)
 
       allocate(Nbr_Task(dynTot,nbr_num), stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
@@ -7780,7 +7809,7 @@
       wsumNE_slot   = c0
 
       do iblk = 1, nblocks
-         if (dynCnt(iblk) == 0) cycle
+         if (dynCntA(iblk) == 0) cycle
          call pack_to_slots(uarear(:,iblk), dynMap(:,iblk), &
               uarear_slot)
          call pack_to_slots(tarear(:,iblk), dynMap(:,iblk), &
@@ -7844,11 +7873,8 @@
       ! ONLY these two.  uarea, tarea, earea, narea and hm are SUMMED or used
       ! as weights, never divided by, and a nonzero dead slot would corrupt
       ! those sums.
-      do iblk = 1, nblocks
-         if (dynCnt(iblk) == 0) cycle
-         dyE_slot(dynOff(iblk)+dynCnt(iblk)+1) = c1
-         dxN_slot(dynOff(iblk)+dynCnt(iblk)+1) = c1
-      enddo
+      dyE_slot(deadSlot) = c1
+      dxN_slot(deadSlot) = c1
 
       ! The weight sums, in block space.  Term order matches each kernel
       ! exactly: these are floating-point sums and reordering them costs
@@ -7866,7 +7892,7 @@
       ! they must stop one short -- and may, because
       ! grid_average_*_compressed loops ilo..ihi, jlo..jhi only.
       do iblk = 1, nblocks
-         if (dynCnt(iblk) == 0) cycle
+         if (dynCntA(iblk) == 0) cycle
          do j = 2, ny_block
          do i = 2, nx_block
             ijb = (j-1)*nx_block + i
@@ -7932,7 +7958,7 @@
       ! to its right; locate_triangles builds its icellsd list over exactly
       ! these.
       do iblk = 1, nblocks
-         if (dynCnt(iblk) == 0) cycle
+         if (dynCntA(iblk) == 0) cycle
          this_block_x = get_block(blocks_ice(iblk),iblk)
 
          do j = this_block_x%jlo-nghost+1, this_block_x%jhi+nghost-1

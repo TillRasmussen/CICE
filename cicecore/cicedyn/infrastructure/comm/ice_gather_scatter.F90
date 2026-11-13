@@ -2904,7 +2904,11 @@
     ! stamp every slot with (global block, slot) and push it through the
     ! existing path
     !-----------------------------------------------------------------
-    allocate(probe(maxval(off(1:nb)+cnt(1:nb))), stat=ierr)
+    ! ⚠ NOT maxval(off+cnt): that was the task's extent only while each
+    ! block's slots were contiguous.  With the ring in one trailing segment
+    ! a block's own slots are no longer adjacent, so off+cnt stops well
+    ! short of the end.  maxval(map) is the highest slot by definition.
+    allocate(probe(maxval(map)), stat=ierr)
     if (ierr /= 0) call abort_ice(subname//' ERROR: out of memory (probe)')
     probe = c0
     do n = 1, nblocks_tot

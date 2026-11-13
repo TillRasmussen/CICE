@@ -67,7 +67,7 @@
       use ice_domain_size, only: max_blocks, ncat
       use ice_blocks, only: nx_block, ny_block
       use ice_domain, only: halo_info, maskhalo_bound, nblocks
-      use ice_grid, only: dynMap, dynOff, dynCnt, &
+      use ice_grid, only: dynMap, dynOff,       &
           pack_cat_to_slots, pack_trc_to_slots, &
           unpack_cat_from_slots, unpack_trc_from_slots
       use ice_state, only: aicen_slot, vicen_slot, vsnon_slot, trcrn_slot, &
@@ -208,12 +208,12 @@
       subroutine pack_state_slots
 
       use ice_domain, only: nblocks
-      use ice_grid, only: dynMap, dynOff, dynCnt, &
+      use ice_grid, only: dynMap, dynOff,                      &
           pack_cat_to_slots, pack_trc_to_slots, pack_to_slots, &
           unpack_cat_from_slots, unpack_trc_from_slots
-      use ice_state, only: aicen, vicen, vsnon, trcrn, &
+      use ice_state, only: aicen, vicen, vsnon, trcrn,    &
           aicen_slot, vicen_slot, vsnon_slot, trcrn_slot, &
-          aice, vice, vsno, aice0, trcr, &
+          aice, vice, vsno, aice0, trcr,                  &
           aice_slot, vice_slot, vsno_slot, aice0_slot, trcr_slot
       use ice_state, only: uvel, vvel, uvelE, vvelE, uvelN, vvelN
       use ice_dyn_shared, only: uvel_slot, vvel_slot, &

@@ -262,7 +262,7 @@
           uvel, vvel, uvelE, vvelN
       use ice_bound_state, only: bound_state
       use ice_grid, only: tarea, grid_ice, &
-          dynMap, dynOff, dynCnt, dynTot, unpack_from_slots, &
+          dynMap, dynOff, dynCnt, dynCntA, dynTot, unpack_from_slots, &
           unpack_cat_from_slots, unpack_trc_from_slots
       use ice_calendar, only: istep1
       use ice_timers, only: ice_timer_start, ice_timer_stop, &
@@ -403,6 +403,14 @@
 !      call ice_timer_stop(timer_bound)
 
 
+      ! ⚠ Cleared WHOLE, once, before the block loop.  state_to_tracers clears
+      ! only lo:hi and the kernels skip cells with no ice, so a ring cell is
+      ! never written -- before the reorder it lay inside the block's range
+      ! and was cleared on every call.  These are read at NEIGHBOUR slots,
+      ! so the ring has to hold a value.
+      aim = c0
+      trm = c0
+
       !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
       do iblk = 1, nblocks
 
@@ -410,7 +418,7 @@
       ! Fill arrays with fields to be remapped.
       !-------------------------------------------------------------------
 
-         call state_to_tracers(dynOff(iblk)+1,      dynOff(iblk)+dynCnt(iblk), &
+         call state_to_tracers(dynOff(iblk)+1,      dynOff(iblk)+dynCntA(iblk), &
                                ntrcr,               ntrace,              &
                                aice0_slot,          aicen_slot,          &
                                trcrn_slot,                               &
@@ -507,13 +515,13 @@
             ! aim and trm whole, task-global; the masks stay a slice, which
             ! rebases to 1 at the assumed-shape dummy and so matches the
             ! per-block scratch horizontal_remap hands in.
-            call make_masks (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk),          &
+            call make_masks (dynOff(iblk)+1, dynOff(iblk)+dynCntA(iblk),          &
                              ntrace,                                             &
                              has_dependents,                                     &
                              aim,                                                &
-                             aimask(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:),   &
+                             aimask(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk),:),   &
                              trm,                                                &
-                             trmask(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:,:))
+                             trmask(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk),:,:))
          enddo
          !$OMP END PARALLEL DO
 
@@ -605,7 +613,7 @@
       !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
       do iblk = 1, nblocks
 
-         call tracers_to_state (dynOff(iblk),        dynCnt(iblk),        &
+         call tracers_to_state (dynOff(iblk),        dynCntA(iblk),        &
                                 nx_block,            ny_block,            &
                                 dynMap(:,iblk),                           &
                                 ntrcr,               ntrace,              &
@@ -786,7 +794,7 @@
       subroutine expand_slot_field (comp, work)
 
       use ice_domain, only: nblocks
-      use ice_grid, only: dynMap, dynOff, dynCnt, unpack_from_slots, &
+      use ice_grid, only: dynMap, dynOff, dynCnt, dynCntA, unpack_from_slots, &
            unpack_cat_from_slots, unpack_trc_from_slots
 
       real (kind=dbl_kind), dimension (:), intent(in) :: &
@@ -827,7 +835,7 @@
       use ice_bound_state, only: bound_state
       use ice_flux, only: Tf
       use ice_grid, only: tmask, grid_ice, &
-          dynMap, dynOff, dynCnt, dynTot, dynIJ, &
+          dynMap, dynOff, dynCnt, dynCntA, dynTot, dynIJ, dynBlk, &
           skipEdgeE, skipEdgeN, skipPhys, &
           HTE_slot, HTN_slot, tarea_slot, pack_to_slots, &
               unpack_cat_from_slots, unpack_trc_from_slots
@@ -953,18 +961,23 @@
          ! but by the slot's own cell index rather than by the loop bounds:
          ! ij > nx_block is j >= 2, and mod(ij-1,nx_block) > 0 is i >= 2.
          if (allocated(uvel_slot)) then
-            !$OMP PARALLEL DO PRIVATE(iblk,is,ij,ms) SCHEDULE(runtime)
-            do iblk = 1, nblocks
-               do is = 1, dynCnt(iblk)
-                  ms = dynOff(iblk) + is
-                  ij = dynIJ(ms)
-                  if (ij > nx_block) then
-                     uee(ms) = p5*(uvel_slot(ms) + uvel_slot(NbrS_Task(ms)))
-                  endif
-                  if (mod(ij-1,nx_block) > 0) then
-                     vnn(ms) = p5*(vvel_slot(ms) + vvel_slot(NbrW_Task(ms)))
-                  endif
-               enddo
+            ! ⚠ Runs the RING as well as the active cells, and must: an
+            ! active cell reads uee at its ring neighbour, so uee has to
+            ! exist there.  Computing it on the ring reaches one layer
+            ! further out, which has no slot -- that is what the dead slot
+            ! terminates, and it holds c0, which is what the block form had
+            ! at the land cell out there.
+            ! dynBlk is 0 only at a dead slot, so this skip is layout-agnostic.
+            !$OMP PARALLEL DO PRIVATE(ms,ij) SCHEDULE(runtime)
+            do ms = 1, dynTot
+               if (dynBlk(ms) == 0) cycle
+               ij = dynIJ(ms)
+               if (ij > nx_block) then
+                  uee(ms) = p5*(uvel_slot(ms) + uvel_slot(NbrS_Task(ms)))
+               endif
+               if (mod(ij-1,nx_block) > 0) then
+                  vnn(ms) = p5*(vvel_slot(ms) + vvel_slot(NbrW_Task(ms)))
+               endif
             enddo
             !$OMP END PARALLEL DO
          endif
@@ -987,6 +1000,18 @@
       ! this routine, not inside the region, so leaving it off the clause
       ! makes it shared -- which is exactly how 8da46d2 reached boreas.  No
       ! compiler warns.
+      ! ⚠ Cleared WHOLE, once, before the block loop.  state_to_work clears
+      ! only lo:hi and the kernels skip cells with no ice, so a ring cell is
+      ! never written -- before the reorder it lay inside the block's range
+      ! and was cleared on every call.  These are read at NEIGHBOUR slots,
+      ! so the ring has to hold a value.
+      works = c0
+      ! worka/workb are read at NEIGHBOUR slots (worka(isW), workb(isS)), so
+      ! they must hold a value on the ring.  upwind_field clears only its
+      ! block's active range.
+      worka = c0
+      workb = c0
+
       !$OMP PARALLEL DO PRIVATE(iblk,ilo,ihi,jlo,jhi,this_block,nc) &
       !$OMP SCHEDULE(runtime)
       do iblk = 1, nblocks
@@ -1000,7 +1025,7 @@
          ! fill work arrays with fields to be advected
          !-----------------------------------------------------------------
 
-         nc = dynCnt(iblk)
+         nc = dynCntA(iblk)
 
          call state_to_work (dynOff(iblk)+1,      dynOff(iblk)+nc,      &
                              ntrcr,                                      &
@@ -1101,7 +1126,7 @@
 
       integer (kind=int_kind), intent(in) ::     &
          lo                , & ! first slot of this block
-         hi                , & ! last real slot of this block (dead slot is hi+1)
+         hi                , & ! last ACTIVE slot of this block
          ntrcr             , & ! number of tracers in use
          ntrace                ! number of tracers in use incl. hi, hs
 
@@ -1157,13 +1182,13 @@
       ! and a stencil that lands on it must read c0.
       ! A straight copy now: slot order on both sides, dead slot included,
       ! so the block walk and its map lookup are gone.
-      aim(lo:hi+1,0) = c0
-      aim(lo:hi+1,0) = aice0(lo:hi+1)
+      aim(lo:hi,0) = c0
+      aim(lo:hi,0) = aice0(lo:hi)
 
       do n = 1, ncat
 
-         trm(lo:hi+1,:,n) = c0
-         aim(lo:hi+1,n)   = c0
+         trm(lo:hi,:,n) = c0
+         aim(lo:hi,n)   = c0
 
          !-------------------------------------------------------------------
          ! Find grid cells where ice is present and fill area array.
@@ -1729,7 +1754,7 @@
 
       integer (kind=int_kind), intent(in) ::     &
          lo                , & ! first slot of this block
-         hi                , & ! last real slot of this block (dead slot is hi+1)
+         hi                , & ! last ACTIVE slot of this block
          ntrcr             , & ! number of tracers in use
          narr                  ! number of 2D state variable arrays in works array
 
@@ -1786,10 +1811,10 @@
       ! The dead slot is never reached by the traversal below, and
       ! upwind_field reads it wherever a neighbour is missing, so it has to
       ! start at c0.
-      works(lo:hi+1,:) = c0
+      works(lo:hi,:) = c0
 
       ! straight copy: slot order on both sides, dead slot included
-      works(lo:hi+1,1) = aice0(lo:hi+1)
+      works(lo:hi,1) = aice0(lo:hi)
       narrays = 1
 
       do n=1, ncat
@@ -2065,8 +2090,10 @@
 
       do n = 1, narrays
 
-         worka(off+1:off+ncells+1) = c0
-         workb(off+1:off+ncells+1) = c0
+         ! ⚠ off+ncells+1 was this block's dead slot; after the reorder it
+         ! is the NEXT block's first active slot.  Stop at the active range.
+         worka(off+1:off+ncells) = c0
+         workb(off+1:off+ncells) = c0
 
          do ms = off+1, off+ncells
             if (skipE(ms)) cycle

@@ -330,11 +330,11 @@
       ! like workb itself, so each call and therefore each thread has its own
       ! -- no shared buffer to race on.  Length cnt+1 matches the slice the
       ! dynamics passes everywhere, real cells then the dead slot.
-      real (kind=dbl_kind), dimension (dynCnt(iblk)+1,ncat_hist) :: &
+      real (kind=dbl_kind), dimension (dynCntA(iblk),ncat_hist) :: &
          workbs
 
       ! The 1-D sibling of workbs, for the aggregate fields.
-      real (kind=dbl_kind), dimension (dynCnt(iblk)+1) :: &
+      real (kind=dbl_kind), dimension (dynCntA(iblk)) :: &
          workas
 
       integer (kind=int_kind) :: &

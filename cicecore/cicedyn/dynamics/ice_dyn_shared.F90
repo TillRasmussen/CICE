@@ -24,6 +24,7 @@
       ! solvers that import it from ice_dyn_shared are unchanged.
       use ice_grid, only: grid_ice,                                                 &
                           dynOff, dynCnt, dynCntA, dynTot, dynMaxCnt,               &
+                          nActive_TU, nStored_TU, deadSlot,                         &
                           dynMap, dynIJ,                                            &
                         NbrW_Task , NbrSW_Task, NbrS_Task , NbrE_Task ,             &
                         NbrNE_Task, NbrN_Task , NbrNW_Task, NbrSE_Task,             &
@@ -47,6 +48,7 @@
 
       ! re-exported from ice_grid, which owns the ragged layout
       public :: dynOff, dynCnt, dynCntA, dynTot, dynMaxCnt, dynMap, dynIJ
+      public :: nActive_TU, nStored_TU, deadSlot
       public :: NbrW_Task , NbrSW_Task, NbrS_Task , NbrE_Task
       public :: NbrNE_Task, NbrN_Task , NbrNW_Task, NbrSE_Task
       public :: nbr_W, nbr_SW, nbr_S, nbr_E, nbr_NE, nbr_N, nbr_NW, nbr_SE
@@ -839,7 +841,7 @@
       !$OMP PARALLEL DO PRIVATE(iblk,i,j,ijb,m,is,isN,isE,isW,isS,isNW,isSE, &
       !$OMP                     off,ilo,ihi,jlo,jhi,this_block,wtmp) SCHEDULE(runtime)
       do iblk = 1, nblocks
-         if (dynCnt(iblk) == 0) cycle
+         if (dynCntA(iblk) == 0) cycle
          this_block = get_block(blocks_ice(iblk),iblk)
          ilo = this_block%ilo
          ihi = this_block%ihi
@@ -946,7 +948,7 @@
       !$OMP PARALLEL DO PRIVATE(iblk,i,j,ijb,m,is,isE,isN,isNE,off, &
       !$OMP                     ilo,ihi,jlo,jhi,this_block,wtmp) SCHEDULE(runtime)
       do iblk = 1, nblocks
-         if (dynCnt(iblk) == 0) cycle
+         if (dynCntA(iblk) == 0) cycle
          this_block = get_block(blocks_ice(iblk),iblk)
          ilo = this_block%ilo
          ihi = this_block%ihi
@@ -1191,7 +1193,7 @@
       ! above.  They do not change again, so this runs once per run.
       ! ------------------------------------------------------------------
       do iblk = 1, nblocks
-         if (dynCnt(iblk) == 0) cycle
+         if (dynCntA(iblk) == 0) cycle
          call pack_to_slots(cyp      (:,iblk), dynMap(:,iblk), &
               cyp_slot)
          call pack_to_slots(cxp      (:,iblk), dynMap(:,iblk), &
@@ -1206,7 +1208,7 @@
 
       if (allocated(dxhy)) then
          do iblk = 1, nblocks
-            if (dynCnt(iblk) == 0) cycle
+            if (dynCntA(iblk) == 0) cycle
             call pack_to_slots(dxhy(:,iblk), dynMap(:,iblk), &
                  dxhy_slot)
             call pack_to_slots(dyhx(:,iblk), dynMap(:,iblk), &
@@ -1286,7 +1288,7 @@
          nx_block, ny_block, & ! block dimensions
          ilo,ihi,jlo,jhi   , & ! beginning and end of physical domain
          Xoff              , & ! dynOff(iblk): this block's slots start at Xoff+1
-         ncnt                  ! dynCnt(iblk): its count, dead slot at ncnt+1
+         ncnt                  ! dynCntA(iblk): this block's active count
 
       ! all array arguments are assumed shape, so the actual arguments must be
       ! array sections of the right rank: (nx_block,ny_block) for the rank-2
@@ -1353,12 +1355,11 @@
          ! is false there and both results below are forced regardless.  But
          ! Fortran does not guarantee short-circuit evaluation, so aice(ms)
          ! may be read even when Tmask(ij) is false, and ms must be in range.
-         ! ⚠ ms stays BLOCK-LOCAL so "< 1" still means "no slot", and the
-         ! fallback is THIS block's dead slot at ncnt+1.  The arrays are whole
-           ! ⚠ map is task-global now, so the fallback must name this
-           ! block's dead slot in the SAME space: Xoff + ncnt + 1.
+         ! ⚠ map is task-global, and so is the fallback: THE dead slot,
+         ! one for the task.  It holds zero, which is what the block form
+         ! carried at the land cell this names.
          ms = map(ij)
-         if (ms < 1) ms = Xoff + ncnt + 1
+         if (ms < 1) ms = deadSlot
 
          !-----------------------------------------------------------------
          ! total mass of ice and snow, centered in T-cell
@@ -1506,7 +1507,7 @@
       ! so the zeroing needs the offset to address this block's slice.
       integer (kind=int_kind), intent(in) :: &
          Xoff      , & ! dynOff(iblk): this block's slots start at Xoff+1
-         ncnt          ! dynCnt(iblk): its count, dead slot at Xoff+ncnt+1
+         ncnt          ! dynCntA(iblk): this block's active count
 
       ! iceTmask_s is iceXmask_s's counterpart for the T cells: .true. where the slot
       ! carries no ice this step.  It is set over the SAME range as icellT,
@@ -3006,7 +3007,7 @@
 
       ! Over the range worked plus the dead slot, so a missing neighbour
       ! in the max below lands on a real, zeroed element.
-      real (kind=dbl_kind), dimension (lo:hi+1) :: &
+      real (kind=dbl_kind), dimension (lo:hi) :: &
            Tbt         ! seabed stress factor at T location (N/m^2)
 
       integer (kind=int_kind) :: m   ! this cell's slot

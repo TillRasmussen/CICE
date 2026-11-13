@@ -74,7 +74,7 @@
       use ice_flux, only: scale_factor, swvdr, swvdf, swidr, swidf, &
           strocnxT_iavg, strocnyT_iavg, sst, frzmlt
       use ice_flux, only: coszen
-      use ice_grid, only: dynMap, dynOff, dynCnt, unpack_from_slots
+      use ice_grid, only: dynMap, unpack_from_slots
       use ice_dyn_shared, only: uvel_slot, vvel_slot, uvelE_slot, vvelE_slot, &
                                 uvelN_slot, vvelN_slot
       ! The velocities are imported only as the no-dynamics fallback: with
@@ -341,7 +341,7 @@
       use ice_blocks, only: nx_block, ny_block
       use ice_domain, only: nblocks
       use ice_domain_size, only: max_blocks
-      use ice_grid, only: dynMap, dynOff, dynCnt, unpack_from_slots
+      use ice_grid, only: dynMap, unpack_from_slots
 
       ! ⚠ kdyn <= 0 means init_dyn_shared never ran and comp does NOT exist.
       ! The block form does, allocated at c0 and never updated, so it is the
@@ -394,7 +394,7 @@
       use ice_blocks, only: nx_block, ny_block
       use ice_domain, only: nblocks
       use ice_domain_size, only: max_blocks, ncat
-      use ice_grid, only: dynMap, dynOff, dynCnt, unpack_cat_from_slots
+      use ice_grid, only: dynMap, unpack_cat_from_slots
 
       ! ⚠ Absent when kdyn <= 0, exactly as in expand_vel.
       real (kind=dbl_kind), dimension(:,:), intent(in), allocatable :: &
@@ -434,7 +434,7 @@
       use ice_blocks, only: nx_block, ny_block
       use ice_domain, only: nblocks
       use ice_domain_size, only: max_blocks, ncat
-      use ice_grid, only: dynMap, dynOff, dynCnt
+      use ice_grid, only: dynMap
 
       real (kind=dbl_kind), dimension(:,:,:), intent(in), allocatable :: &
          comp              ! the compressed field, whole, (slot,ntrcr,ncat)
@@ -554,7 +554,7 @@
           stress12_1_slot, stress12_2_slot, stress12_3_slot, stress12_4_slot, &
           stresspT_slot, stressmT_slot, stress12T_slot, &
           stresspU_slot, stressmU_slot, stress12U_slot
-      use ice_grid, only: dynMap, dynOff, dynCnt, pack_to_slots, grid_ice
+      use ice_grid, only: dynMap, pack_to_slots, grid_ice
       use ice_flux, only: scale_factor, swvdr, swvdf, swidr, swidf, &
           strocnxT_iavg, strocnyT_iavg, sst, frzmlt
       use ice_flux, only: coszen, Tf

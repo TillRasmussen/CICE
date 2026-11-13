@@ -939,7 +939,7 @@
                              aice_slot, vice_slot, vsno_slot, aice0_slot, &
                              aicen_slot, vicen_slot, vsnon_slot, trcrn_slot, &
                              trcr_slot
-        use ice_grid,  only: dynMap, dynOff, dynCnt, dynCntA, dynIJ
+        use ice_grid,  only: dynMap, dynIJ, dynBlk, dynTot
       use ice_bound_state, only: bound_state
       use ice_flux,  only: Tf
       use ice_timers, only: ice_timer_start, ice_timer_stop, timer_bound, timer_updstate
@@ -959,7 +959,7 @@
       integer (kind=int_kind) :: &
          iblk,  & ! block index
          i,j,   & ! horizontal indices
-         is, ij, & ! slot, and its flattened cell index
+         ij,     & ! the slot's flattened cell index
          ntrcr, & !
          nt_iage, & !
          ms       ! global slot of this cell
@@ -987,8 +987,10 @@
                         ntrcr, trcrn)
       call ice_timer_stop(timer_bound)
 
-      !$OMP PARALLEL DO PRIVATE(iblk,i,j,is,ij,ms) SCHEDULE(runtime)
-      do iblk = 1, nblocks
+      !$OMP PARALLEL DO PRIVATE(iblk,i,j,ij,ms) SCHEDULE(runtime)
+      do ms = 1, dynTot
+         iblk = dynBlk(ms)
+         if (iblk == 0) cycle           ! dead slot; layout-agnostic
          ! Slot-driven.  ⚠ This drops the interior LAND cells the block loop
          ! used to visit: dynMap covers every ocean cell plus the forced
          ! ghost rim, so the ghost cells the comment below depends on are
@@ -996,78 +998,75 @@
          ! icepack_aggregate at a land cell returns aice=0 and aice0=1 from
          ! aicen=0, so skipping it is only correct if the block arrays
          ! already hold that -- which the bit-for-bit suite is what decides.
-         do is = 1, dynCnt(iblk)
-            ij = dynIJ(dynOff(iblk)+is)
-            j  = (ij-1)/nx_block + 1
-            i  = ij - (j-1)*nx_block
-            ms = dynOff(iblk) + is
+         ij = dynIJ(ms)
+         j  = (ij-1)/nx_block + 1
+         i  = ij - (j-1)*nx_block
 
       !-----------------------------------------------------------------
       ! Aggregate the updated state variables (includes ghost cells).
       !-----------------------------------------------------------------
 
 !        if (tmask((j-1)*nx_block+i,iblk)) &
-            call icepack_aggregate(aicen = aicen_slot (ms,:)   ,     &
-                                   trcrn = trcrn_slot (ms,:,:) ,   &
-                                   vicen = vicen_slot (ms,:)   ,     &
-                                   vsnon = vsnon_slot (ms,:)   ,     &
-                                   aice  = aice (i,j,  iblk),     &
-                                   trcr  = trcr (i,j,:,iblk),     &
-                                   vice  = vice (i,j,  iblk),     &
-                                   vsno  = vsno (i,j,  iblk),     &
-                                   aice0 = aice0(i,j,  iblk),     &
-                                   trcr_depend   = trcr_depend(:),   &
-                                   trcr_base     = trcr_base(:,:),   &
-                                   n_trcr_strata = n_trcr_strata(:), &
-                                   nt_strata     = nt_strata(:,:),   &
-                                   Tf            = Tf(i,j,iblk))
+         call icepack_aggregate(aicen = aicen_slot (ms,:)   ,     &
+                                trcrn = trcrn_slot (ms,:,:) ,   &
+                                vicen = vicen_slot (ms,:)   ,     &
+                                vsnon = vsnon_slot (ms,:)   ,     &
+                                aice  = aice (i,j,  iblk),     &
+                                trcr  = trcr (i,j,:,iblk),     &
+                                vice  = vice (i,j,  iblk),     &
+                                vsno  = vsno (i,j,  iblk),     &
+                                aice0 = aice0(i,j,  iblk),     &
+                                trcr_depend   = trcr_depend(:),   &
+                                trcr_base     = trcr_base(:,:),   &
+                                n_trcr_strata = n_trcr_strata(:), &
+                                nt_strata     = nt_strata(:,:),   &
+                                Tf            = Tf(i,j,iblk))
 
-              ! The compressed copies, written in the SAME loop rather than
-              ! by a second traversal: one store per cell instead of another
-              ! pass over the block.  This is the producer -- icepack_aggregate
-              ! has just filled the block forms, including the ghost cells,
-              ! which is why the dynamics can read the slots without a halo
-              ! update of its own.
-              !
-              ! ⚠ Both layouts are written while the conversion is in
-              ! progress.  The block forms stay authoritative for every
-              ! consumer that has not moved yet.
-              !
-              ! slot-audit: no-refresh-needed  icepack_aggregate has just written
-              ! the BLOCK forms and these slots are DERIVED from them, so the block
-              ! copy is current by construction.  This is the one shape the audit
-              ! cannot distinguish from a real slot-write that strands its block
-              ! copy, which is why the reason is recorded here and not elsewhere.
-              aice_slot (ms) = aice (i,j,iblk)
-              vice_slot (ms) = vice (i,j,iblk)
-              vsno_slot (ms) = vsno (i,j,iblk)
-              aice0_slot(ms) = aice0(i,j,iblk)
-              trcr_slot (ms,:) = trcr (i,j,:,iblk)
+           ! The compressed copies, written in the SAME loop rather than
+           ! by a second traversal: one store per cell instead of another
+           ! pass over the block.  This is the producer -- icepack_aggregate
+           ! has just filled the block forms, including the ghost cells,
+           ! which is why the dynamics can read the slots without a halo
+           ! update of its own.
+           !
+           ! ⚠ Both layouts are written while the conversion is in
+           ! progress.  The block forms stay authoritative for every
+           ! consumer that has not moved yet.
+           !
+           ! slot-audit: no-refresh-needed  icepack_aggregate has just written
+           ! the BLOCK forms and these slots are DERIVED from them, so the block
+           ! copy is current by construction.  This is the one shape the audit
+           ! cannot distinguish from a real slot-write that strands its block
+           ! copy, which is why the reason is recorded here and not elsewhere.
+           aice_slot (ms) = aice (i,j,iblk)
+           vice_slot (ms) = vice (i,j,iblk)
+           vsno_slot (ms) = vsno (i,j,iblk)
+           aice0_slot(ms) = aice0(i,j,iblk)
+           trcr_slot (ms,:) = trcr (i,j,:,iblk)
 
 
-            if (present(offset)) then
+         if (present(offset)) then
 
-            !-----------------------------------------------------------------
-            ! Compute thermodynamic area and volume tendencies.
-            !-----------------------------------------------------------------
+         !-----------------------------------------------------------------
+         ! Compute thermodynamic area and volume tendencies.
+         !-----------------------------------------------------------------
 
-               if (present(daidt)) daidt(i,j,iblk) = (aice(i,j,iblk) - daidt(i,j,iblk)) / dt
-               if (present(dvidt)) dvidt(i,j,iblk) = (vice(i,j,iblk) - dvidt(i,j,iblk)) / dt
-               if (present(dvsdt)) dvsdt(i,j,iblk) = (vsno(i,j,iblk) - dvsdt(i,j,iblk)) / dt
-               if (present(dagedt) .and. tr_iage) then
-                  if (offset > c0) then                 ! thermo
-                     if (trcr(i,j,nt_iage,iblk) > c0) &
-                     dagedt(i,j,iblk) = (trcr(i,j,nt_iage,iblk) &
-                                      - dagedt(i,j,iblk) - offset) / dt
-                  else                                  ! dynamics
-                     dagedt(i,j,iblk) = (trcr(i,j,nt_iage,iblk) &
-                                      - dagedt(i,j,iblk)) / dt
-                  endif
-               endif ! tr_iage
-            endif ! present(offset)
+            if (present(daidt)) daidt(i,j,iblk) = (aice(i,j,iblk) - daidt(i,j,iblk)) / dt
+            if (present(dvidt)) dvidt(i,j,iblk) = (vice(i,j,iblk) - dvidt(i,j,iblk)) / dt
+            if (present(dvsdt)) dvsdt(i,j,iblk) = (vsno(i,j,iblk) - dvsdt(i,j,iblk)) / dt
+            if (present(dagedt) .and. tr_iage) then
+               if (offset > c0) then                 ! thermo
+                  if (trcr(i,j,nt_iage,iblk) > c0) &
+                  dagedt(i,j,iblk) = (trcr(i,j,nt_iage,iblk) &
+                                   - dagedt(i,j,iblk) - offset) / dt
+               else                                  ! dynamics
+                  dagedt(i,j,iblk) = (trcr(i,j,nt_iage,iblk) &
+                                   - dagedt(i,j,iblk)) / dt
+               endif
+            endif ! tr_iage
+         endif ! present(offset)
 
-         enddo ! is
-      enddo    ! iblk
+      enddo    ! ms
       !$OMP END PARALLEL DO
 
       call icepack_warnings_flush(nu_diag)

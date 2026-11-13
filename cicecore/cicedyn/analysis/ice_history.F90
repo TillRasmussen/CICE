@@ -2229,7 +2229,7 @@
           stressm_1_slot, stress12_1_slot, &
           stresspT_slot, stressmT_slot, stress12T_slot, &
           strength_slot, &
-          dynMap, dynOff, dynCnt
+          dynMap, dynOff, dynCnt, dynCntA
       use ice_dyn_shared, only: fmU_slot, fmN_slot, fmE_slot, &
           uvel_slot, vvel_slot, &
           taubxN_slot, taubyN_slot, taubxE_slot, taubyE_slot
@@ -3149,7 +3149,7 @@
               i  = ij - (j-1)*nx_block
               worksl(is,iblk) = aice_slot(dynOff(iblk)+is) * strairxU(dynOff(iblk)+is)
            enddo
-           call accum_hist_field_2D_slotin(n_sistrxdtop, iblk, worksl(1:dynCnt(iblk),iblk), a2D)
+           call accum_hist_field_2D_slotin(n_sistrxdtop, iblk, worksl(1:dynCntA(iblk),iblk), a2D)
          endif
 
          if (f_sistrydtop(1:1) /= 'x') then
@@ -3160,7 +3160,7 @@
               i  = ij - (j-1)*nx_block
               worksl(is,iblk) = aice_slot(dynOff(iblk)+is) * strairyU(dynOff(iblk)+is)
            enddo
-           call accum_hist_field_2D_slotin(n_sistrydtop, iblk, worksl(1:dynCnt(iblk),iblk), a2D)
+           call accum_hist_field_2D_slotin(n_sistrydtop, iblk, worksl(1:dynCntA(iblk),iblk), a2D)
          endif
 
          if (f_sistrxubot(1:1) /= 'x') then
@@ -3172,7 +3172,7 @@
               i  = ij - (j-1)*nx_block
               worksl(is,iblk) = aice_slot(dynOff(iblk)+is) * strocnxU(dynOff(iblk)+is)
            enddo
-           call accum_hist_field_2D_slotin(n_sistrxubot, iblk, worksl(1:dynCnt(iblk),iblk), a2D)
+           call accum_hist_field_2D_slotin(n_sistrxubot, iblk, worksl(1:dynCntA(iblk),iblk), a2D)
          endif
 
          if (f_sistryubot(1:1) /= 'x') then
@@ -3184,7 +3184,7 @@
               i  = ij - (j-1)*nx_block
               worksl(is,iblk) = aice_slot(dynOff(iblk)+is) * strocnyU(dynOff(iblk)+is)
            enddo
-           call accum_hist_field_2D_slotin(n_sistryubot, iblk, worksl(1:dynCnt(iblk),iblk), a2D)
+           call accum_hist_field_2D_slotin(n_sistryubot, iblk, worksl(1:dynCntA(iblk),iblk), a2D)
          endif
 
          if (f_sicompstren(1:1) /= 'x') then
@@ -3655,7 +3655,7 @@
            do is = 1, dynCntA(iblk)
               worksl(is,iblk) = aice_init(dynIJ(dynOff(iblk)+is),iblk) * strtltxU(dynOff(iblk)+is)
            enddo
-           call accum_hist_field_2D_slotin(n_siforcetiltx, iblk, worksl(1:dynCnt(iblk),iblk), a2D)
+           call accum_hist_field_2D_slotin(n_siforcetiltx, iblk, worksl(1:dynCntA(iblk),iblk), a2D)
          endif
 
          if (f_siforcetilty(1:1) /= 'x') then
@@ -3666,7 +3666,7 @@
            do is = 1, dynCntA(iblk)
               worksl(is,iblk) = aice_init(dynIJ(dynOff(iblk)+is),iblk) * strtltyU(dynOff(iblk)+is)
            enddo
-           call accum_hist_field_2D_slotin(n_siforcetilty, iblk, worksl(1:dynCnt(iblk),iblk), a2D)
+           call accum_hist_field_2D_slotin(n_siforcetilty, iblk, worksl(1:dynCntA(iblk),iblk), a2D)
          endif
 
          if (f_siforcecoriolx(1:1) /= 'x') then
@@ -4460,14 +4460,14 @@
                ! the block form produced there.
                if (allocated(stressp_1_slot)) then
                   call principal_stress (dynOff(iblk)+1,                &
-                                         dynOff(iblk)+dynCnt(iblk)+1,   &
+                                         dynOff(iblk)+dynCntA(iblk),   &
                                          stressp_1_slot  ,              &
                                          stressm_1_slot  ,              &
                                          stress12_1_slot ,              &
                                          strength_slot   ,              &
                                          sig1, sig2, sigP)
                else
-                  do is = dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk)
+                  do is = dynOff(iblk)+1, dynOff(iblk)+dynCntA(iblk)
                      sig1(is) = spval_dbl
                      sig2(is) = spval_dbl
                      sigP(is) = spval_dbl
@@ -4477,14 +4477,14 @@
                ! guarded as the B arm is: kdyn <= 0 leaves the slots unallocated
                if (allocated(stresspT_slot)) then
                   call principal_stress (dynOff(iblk)+1,                &
-                                         dynOff(iblk)+dynCnt(iblk)+1,   &
+                                         dynOff(iblk)+dynCntA(iblk),   &
                                          stresspT_slot   ,              &
                                          stressmT_slot   ,              &
                                          stress12T_slot  ,              &
                                          strength_slot   ,              &
                                          sig1, sig2, sigP)
                else
-                  do is = dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk)
+                  do is = dynOff(iblk)+1, dynOff(iblk)+dynCntA(iblk)
                      sig1(is) = spval_dbl
                      sig2(is) = spval_dbl
                      sigP(is) = spval_dbl

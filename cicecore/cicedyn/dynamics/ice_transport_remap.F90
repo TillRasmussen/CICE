@@ -349,7 +349,7 @@
                               ice_HaloUpdate3DR8_compressed
       use ice_grid, only: HTE, HTN, dxu, dyu,       &
                           earea, narea,       &
-                          dynMap, dynOff, dynCnt, dynIJ, dynTot, skipRmp, &
+                          dynMap, dynOff, dynCnt, dynCntA, dynIJ, dynTot, skipRmp, &
                           skipPhys, tarear_slot,                          &
                           dxU_slot, dyU_slot, HTN_slot, HTE_slot,         &
                           HTNe_slot, HTEn_slot, pack_to_slots
@@ -531,9 +531,30 @@
       ! Remap the open water area (without tracers).
       !-------------------------------------------------------------------
 
+      ! ⚠ Cleared WHOLE, once, before the block loop.  construct_fields
+      ! used to clear its own block's range including the dead slot that
+      ! followed it; with the ring moved to one trailing segment there is no
+      ! per-block slice that reaches a block's ring cells, and
+      ! off+ncells+1 now names the NEXT block's first active slot.  These
+      ! arrays are read at neighbour slots, so the ring must hold a value.
+      mc = c0
+      mx = c0
+      my = c0
+      tc = c0
+      tx = c0
+      ty = c0
+      massmask = c0
+      trcmask = c0
+      dpx = c0
+      dpy = c0
+      mflxe  = c0
+      mflxn  = c0
+      mtflxe = c0
+      mtflxn = c0
+
       ! ⚠ nc is per-iteration state and MUST be PRIVATE.  uvel_s and vvel_s
       ! are NOT: they are task-global now and each block packs only its own
-      ! dynOff+1 .. dynOff+dynCnt+1 slice, so the ranges are disjoint.
+      ! active range, so the ranges are disjoint.
       ! They are declared in this routine, not inside the region, so leaving
       ! them off the clause makes them shared and the packs race -- which is
       ! exactly how 8da46d2 reached boreas.  No compiler warns.
@@ -560,7 +581,7 @@
          !  being used to compute tracer gradients.
          !-------------------------------------------------------------------
 
-         call make_masks (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk),          &
+         call make_masks (dynOff(iblk)+1, dynOff(iblk)+dynCntA(iblk),          &
                           ntrace,                                           &
                           has_dependents,                                   &
                           mm,                                               &
@@ -613,7 +634,7 @@
          ! dynamics' uvel_slot/vvel_slot: reaching across to those assumes a
          ! producer kept them current, which is the assumption that cost
          ! 797772a.  The metrics already have slot forms in ice_grid.
-         nc = dynCnt(iblk)
+         nc = dynCntA(iblk)
          call pack_to_slots(uvel(:,iblk), dynMap(:,iblk), uvel_s)
          call pack_to_slots(vvel(:,iblk), dynMap(:,iblk), vvel_s)
 
@@ -684,7 +705,7 @@
                ! is tested through dynIJ rather than through the mask.
                do n = 1, ncat
                do m = 1, ntrace
-               do is = dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk)
+               do is = dynOff(iblk)+1, dynOff(iblk)+dynCntA(iblk)
                   ijb = dynIJ(is)
                   i = mod(ijb-1, nx_block) + 1
                   j = (ijb-1) / nx_block + 1
@@ -827,7 +848,7 @@
                                nghost,            edge,               &
                                icellsng(:,iblk),                      &
                                indxsng(:,:),                          &
-                                dynOff(iblk),      dynCnt(iblk)+1,     &
+                                dynOff(iblk),      dynCntA(iblk),     &
                                 dx,                dy,                 &
                                 dpx,                                   &
                                 dpy,               dynMap(:,iblk),     &
@@ -855,7 +876,7 @@
          !-------------------------------------------------------------------
 
          ! open water
-         call transport_integrals(dynOff(iblk), dynCnt(iblk)+1,                                       &
+         call transport_integrals(dynOff(iblk), dynCntA(iblk),                                       &
                                   ntrace,          icellsng (:,iblk),  &
                                   indxsng(:,:),                        &
                                   tracer_type,     depend,             &
@@ -868,7 +889,7 @@
          ! ice categories
          do n = 1, ncat
             call transport_integrals                                     &
-                               (dynOff(iblk), dynCnt(iblk)+1,  ntrace,            icellsng (:,iblk),    &
+                               (dynOff(iblk), dynCntA(iblk),  ntrace,            icellsng (:,iblk),    &
                                 indxsng(:,:),                        &
                                 tracer_type,       depend,               &
                                 integral_order,    triarea,              &
@@ -891,7 +912,7 @@
                                nghost,            edge,               &
                                icellsng(:,iblk),                      &
                                indxsng(:,:),                          &
-                                dynOff(iblk),      dynCnt(iblk)+1,     &
+                                dynOff(iblk),      dynCntA(iblk),     &
                                 dx,                dy,                 &
                                 dpx,                                   &
                                 dpy,               dynMap(:,iblk),     &
@@ -909,7 +930,7 @@
                                     xp,              yp)
 
          ! open water
-         call transport_integrals(dynOff(iblk), dynCnt(iblk)+1,                                      &
+         call transport_integrals(dynOff(iblk), dynCntA(iblk),                                      &
                                   ntrace,          icellsng (:,iblk), &
                                   indxsng(:,:),                        &
                                   tracer_type,     depend,            &
@@ -922,7 +943,7 @@
          ! ice categories
          do n = 1, ncat
             call transport_integrals                                     &
-                               (dynOff(iblk), dynCnt(iblk)+1,  ntrace,            icellsng (:,iblk),    &
+                               (dynOff(iblk), dynCntA(iblk),  ntrace,            icellsng (:,iblk),    &
                                 indxsng(:,:),                        &
                                 tracer_type,       depend,               &
                                 integral_order,    triarea,              &
@@ -940,7 +961,7 @@
          !-------------------------------------------------------------------
 
          ! open water
-         call update_fields (dynOff(iblk),   dynCnt(iblk),                                   &
+         call update_fields (dynOff(iblk),   dynCntA(iblk),                                   &
                              skipPhys, &
                              dynIJ, &
                              nx_block,                              &
@@ -959,7 +980,7 @@
          ! ice categories
          do n = 1, ncat
 
-            call update_fields(dynOff(iblk),   dynCnt(iblk),                                   &
+            call update_fields(dynOff(iblk),   dynCntA(iblk),                                   &
                                skipPhys, &
                                dynIJ, &
                                nx_block,                               &
@@ -1081,7 +1102,7 @@
          ! ice area mask: grid cells where ice is present
          !-------------------------------------------------------------------
 
-         massmask(lo:hi+1,n) = c0
+         massmask(lo:hi,n) = c0
          do ms = lo, hi
             if (mm(ms,n) > puny) massmask(ms,n) = c1
          enddo
@@ -1092,7 +1113,7 @@
 
          if (present(tm)) then
 
-            trcmask(lo:hi+1,:,n) = c0
+            trcmask(lo:hi,:,n) = c0
 
             ! Same cells the ice-area mask just marked, which is what the
             ! icells list carried: mm > puny over the WHOLE block, before it
@@ -1130,7 +1151,7 @@
                                    tx,             ty,         &
                                    trcmask)
 
-      use ice_grid, only: dynMap, dynOff, dynCnt, skipRmp, &
+      use ice_grid, only: dynMap, dynOff, dynCnt, dynCntA, skipRmp, &
                           pack_to_slots, hm_slot
 
       integer (kind=int_kind), intent(in) ::   &
@@ -1181,7 +1202,7 @@
          puny, &
          w2, w3, w7        ! work variables
 
-      integer (kind=int_kind) :: ncells, is, off, nslot
+      integer (kind=int_kind) :: ncells, is, off
 
       ! The compressed working set.  mm, massmask, tm and trcmask are no longer
       ! here: they arrive compressed, so only the genuinely local vectors
@@ -1192,13 +1213,13 @@
       ! cell only, so they stay the size of one block.  That matters most
       ! for mtxav and mtyav: ntrace can be large, and a (dynTot,ntrace) pair
       ! is the one shape worth not allocating.
-      real (kind=dbl_kind), dimension (dynCnt(iblk)+1) :: &
+      real (kind=dbl_kind), dimension (dynCntA(iblk)) :: &
          zero_s         , & ! identically zero -- the no-centroid case
          mxav_s, myav_s , & ! mass centroid of this field
          tc_s           , & ! tracer at the geometric centre
          tx_s,   ty_s       ! limited tracer gradient
 
-      real (kind=dbl_kind), dimension (dynCnt(iblk)+1,ntrace) :: &
+      real (kind=dbl_kind), dimension (dynCntA(iblk),ntrace) :: &
          mtxav          , & ! x coordinate of centre of mass*tracer
          mtyav              ! y coordinate of centre of mass*tracer
 
@@ -1258,19 +1279,15 @@
       ! which happened to leave a usable value on the stack, and caught by
       ! ifx only once an unrelated change to this routine's locals moved
       ! the stack around: "Subscript #1 of MC has value -285250143".
-      ncells = dynCnt(iblk)
+      ncells = dynCntA(iblk)
       off    = dynOff(iblk)
-      nslot  = ncells + 1
 
-      mc(off+1:off+nslot) = c0
-      mx(off+1:off+nslot) = c0
-      my(off+1:off+nslot) = c0
-
-      if (present(tm)) then
-         tc(off+1:off+nslot,:) = c0
-         tx(off+1:off+nslot,:) = c0
-         ty(off+1:off+nslot,:) = c0
-      endif
+      ! ⚠ mc/mx/my and tc/tx/ty are cleared WHOLE by the caller, not per
+      ! block.  They are read at NEIGHBOUR slots, so they must hold a value
+      ! on the ring -- and the ring is no longer adjacent to the block that
+      ! borders it, so no per-block slice can reach it.  Clearing
+      ! off+1:off+ncells+1 here would also write the next block's first
+      ! active slot, concurrently, from inside the OMP loop.
 
       ! limited gradient of mass field in each cell (except masked cells)
       ! Note: The gradient is computed in scaled coordinates with
@@ -1295,13 +1312,13 @@
       call limited_gradient (off,      ncells,                       &
                              skipRmp,  mm,       hm_slot,            &
                              zero_s,   zero_s,                       &
-                             mx(off+1:off+nslot), my(off+1:off+nslot))
+                             mx(off+1:off+ncells), my(off+1:off+ncells))
 
       ! ⚠ massmask is the indicator of the icells list: make_masks sets it to c1
       ! at exactly the cells it counted, mm > puny.  So testing it per slot
       ! selects the same cells the indxi/indxj loop did, and every such cell
       ! has a slot -- ice implies ocean implies trcmask implies mask_any.
-      mc(off+1:off+nslot) = c0
+      mc(off+1:off+ncells) = c0
       do is = 1, ncells
          if (massmask(off+is) <= puny) cycle
 
@@ -1414,9 +1431,9 @@
 
             endif                  ! tracer_type
 
-            tc(off+1:off+nslot,nt) = tc_s(:)
-            tx(off+1:off+nslot,nt) = tx_s(:)
-            ty(off+1:off+nslot,nt) = ty_s(:)
+            tc(off+1:off+ncells,nt) = tc_s(:)
+            tx(off+1:off+ncells,nt) = tx_s(:)
+            ty(off+1:off+ncells,nt) = ty_s(:)
 
          enddo                    ! ntrace
 
@@ -1697,8 +1714,8 @@
       ! one block; with the whole array passed, the unsubscripted form would
       ! wipe every block already filled and leave only the last standing.
       ! The dead slot at hi+1 is zeroed too -- a missing neighbour lands there.
-      dpx(lo:hi+1) = c0
-      dpy(lo:hi+1) = c0
+      dpx(lo:hi) = c0
+      dpy(lo:hi) = c0
       isstop = 0
 
       do is = lo, hi
@@ -1851,6 +1868,8 @@
                                    iflux,        jflux,      &
                                    isflux,                   &
                                    triarea,      edgearea)
+
+      use ice_grid, only: deadSlot
 
       integer (kind=int_kind), intent(in) ::   &
          off               , & ! this block's dynOff: block-local + off = task-global
@@ -2239,7 +2258,7 @@
       ! to name this block's dead slot in the SAME space.  nslot alone is a
       ! COUNT: for iblk > 1 it indexes an active cell of an earlier block and
       ! reads its real departure point instead of zero.
-      mdead = off + nslot
+      mdead = deadSlot
 
       icellsd = 0
       if (trim(edge) == 'north') then
@@ -3558,6 +3577,8 @@
                                       tc,             tx,          &
                                       ty,             mtflx)
 
+      use ice_grid, only: deadSlot
+
       ! ⚠ TWO index spaces.  mc, mx, my, tc, tx and ty are whole task-global
       ! arrays indexed by the DONOR slot is2, which isflux returns
       ! block-local -- so those six compose: mc(is2).  Everything else
@@ -3659,7 +3680,7 @@
 
                is2 = isflux(ms,ng)
 
-               if (is2 < 1) is2 = off + nslot
+               if (is2 < 1) is2 = deadSlot
 
                ! mass transports
 
@@ -3685,7 +3706,7 @@
 
                is2 = isflux(ms,ng)
 
-               if (is2 < 1) is2 = off + nslot
+               if (is2 < 1) is2 = deadSlot
 
                ! mass transports
                ! Weighting factor of 1/3 is incorporated into the ice
@@ -3730,7 +3751,7 @@
 
                is2 = isflux(ms,ng)
 
-               if (is2 < 1) is2 = off + nslot
+               if (is2 < 1) is2 = deadSlot
 
                ! mass transports
 
@@ -3788,7 +3809,7 @@
 
                      is2 = isflux(ms,ng)
 
-                     if (is2 < 1) is2 = off + nslot
+                     if (is2 < 1) is2 = deadSlot
 
                      mtsum(ms-off,nt) =  msum(ms-off) * tc(is2,nt)   &
                                    + mxsum(ms-off) * tx(is2,nt)   &
@@ -3817,7 +3838,7 @@
 
                      is2 = isflux(ms,ng)
 
-                     if (is2 < 1) is2 = off + nslot
+                     if (is2 < 1) is2 = deadSlot
 
                      mtsum(ms-off,nt) =  mtsum(ms-off,nt1) * tc(is2,nt)   &
                                    + mtxsum(ms-off,nt1) * tx(is2,nt)   &
@@ -3837,7 +3858,7 @@
 
                      is2 = isflux(ms,ng)
 
-                     if (is2 < 1) is2 = off + nslot
+                     if (is2 < 1) is2 = deadSlot
 
                      ! upwind approx (tx=ty=0) for type 3 tracers
                      mtsum(ms-off,nt) =  mtsum(ms-off,nt1) * tc(is2,nt)

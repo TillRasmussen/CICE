@@ -49,7 +49,7 @@
           dyn_prep1, dyn_prep2, dyn_finish, &
           ndte, yield_curve, ecci, denom1, arlx1i, &
           uvel_init, vvel_init, uvelE_init, vvelE_init, uvelN_init, vvelN_init, &
-          dynOff, dynCnt, dynMap, &
+          dynOff, dynCnt, dynCntA, dynMap, &
         NbrW_Task , NbrSW_Task, NbrS_Task , NbrE_Task , &
         NbrE_Task, NbrNE_Task, NbrN_Task, &
         NbrNE_Task, NbrN_Task , NbrNW_Task, NbrSE_Task, &
@@ -117,7 +117,7 @@
       use ice_grid, only: dynIJ, dynBlk
       use ice_calendar, only: dt_dyn
       use ice_dyn_shared, only: init_dyn_shared, evp_algorithm, &
-          dynTot, dynOff, dynCnt, dynMap, dxN_slot, dyE_slot
+          dynTot, dynOff, dynCnt, dynCntA, dynMap, dxN_slot, dyE_slot
       use ice_grid, only: pack_to_slots
       use ice_dyn_evp1d, only: dyn_evp1d_init
 
@@ -409,7 +409,7 @@
                            aice_slot,          vice_slot,          &
                            vsno_slot,                              &
                            dynMap  (:,iblk),   tmask   (:,  iblk), &
-                         dynOff(iblk),       dynCnt(iblk),       &
+                         dynOff(iblk),       dynCntA(iblk),       &
                          tmass   (:,iblk),   iceTmask(:,iblk))
 
       enddo                     ! iblk
@@ -550,7 +550,7 @@
                             forceyU_slot, &
                             uvel_init,   vvel_init,   &
                             uvel(:,iblk), vvel(:,iblk), &
-                           dynMap(:,iblk), dynOff(iblk), dynCnt(iblk), iceUmask_slot, &
+                           dynMap(:,iblk), dynOff(iblk), dynCntA(iblk), iceUmask_slot, &
                            iceTmask_slot, &
                             TbU_slot, &
                             rheofactU_slot)
@@ -615,7 +615,7 @@
                             forceyU_slot, &
                             uvel_init,   vvel_init,   &
                             uvel(:,iblk), vvel(:,iblk), &
-                           dynMap(:,iblk), dynOff(iblk), dynCnt(iblk), iceUmask_slot, &
+                           dynMap(:,iblk), dynOff(iblk), dynCntA(iblk), iceUmask_slot, &
                            iceTmask_slot, &
                             TbU_slot)
 
@@ -668,7 +668,7 @@
                             forceyN_slot, &
                             uvelN_init,   vvelN_init,   &
                             uvelN     (:,:,iblk), vvelN     (:,:,iblk), &
-                           dynMap(:,iblk), dynOff(iblk), dynCnt(iblk), iceNmask_slot, &
+                           dynMap(:,iblk), dynOff(iblk), dynCntA(iblk), iceNmask_slot, &
                            iceTmask_slot, &
                             TbN_slot, &
                             rheofactN_slot)
@@ -700,7 +700,7 @@
                             forceyE_slot, &
                             uvelE_init,   vvelE_init,   &
                             uvelE     (:,:,iblk), vvelE     (:,:,iblk), &
-                           dynMap(:,iblk), dynOff(iblk), dynCnt(iblk), iceEmask_slot, &
+                           dynMap(:,iblk), dynOff(iblk), dynCntA(iblk), iceEmask_slot, &
                            iceTmask_slot, &
                             TbE_slot, &
                             rheofactE_slot)
@@ -1061,7 +1061,7 @@
                ! arrays history reads get their one and only write -- and only
                ! when a stream is going to read them.
                if (lstrint) then
-                  call calc_strint_slot(dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceUmask_slot, &
+                  call calc_strint_slot(dynOff(iblk)+1, dynOff(iblk)+dynCntA(iblk), iceUmask_slot, &
                        uarear_slot, &
                        rheofactU_slot, &
                        str1_slot, str2_slot, &
@@ -1075,7 +1075,7 @@
                   call unpack_from_slots(strintyU_slot, dynMap(:,iblk), strintyU(:,iblk))
                endif
                if (ltaub) then
-                  call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceUmask_slot, &
+                  call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCntA(iblk), iceUmask_slot, &
                        uvel_slot, &
                        taubxU_slot, &
                        vvel_slot, &
@@ -1356,10 +1356,10 @@
                call unpack_from_slots(strintyN_slot, dynMap(:,iblk), strintyN(:,:,iblk))
             endif
             if (ltaub) then
-               call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceEmask_slot, &
+               call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCntA(iblk), iceEmask_slot, &
                     uvelE_slot, &
                     taubxE_slot)
-               call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceNmask_slot, &
+               call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCntA(iblk), iceNmask_slot, &
                     vvelN_slot, &
                     taubyN_slot)
             endif
@@ -1648,12 +1648,12 @@
                call unpack_from_slots(strintyN_slot, dynMap(:,iblk), strintyN(:,:,iblk))
             endif
             if (ltaub) then
-               call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceEmask_slot, &
+               call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCntA(iblk), iceEmask_slot, &
                     uvelE_slot, &
                     taubxE_slot, &
                     vvelE_slot, &
                     taubyE_slot)
-               call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceNmask_slot, &
+               call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCntA(iblk), iceNmask_slot, &
                     uvelN_slot, &
                     taubxN_slot, &
                     vvelN_slot, &

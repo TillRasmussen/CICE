@@ -46,7 +46,7 @@
       use ice_domain, only: nblocks, distrb_info
       use ice_domain_size, only: max_blocks
       use ice_dyn_shared, only: dyn_prep1, dyn_prep2, dyn_finish, &
-          cosw, sinw, uvel_init, vvel_init, dynOff, dynCnt, dynMap, dynIJ, dynMaxCnt, iceTmask_slot, iceUmask_slot, &
+          cosw, sinw, uvel_init, vvel_init, dynOff, dynCnt, dynCntA, dynMap, dynIJ, dynMaxCnt, iceTmask_slot, iceUmask_slot, &
           dynTot, pack_to_slots, unpack_from_slots, calc_seabed_stress_slot, &
           nbr_W, nbr_S, nbr_SW, nbr_E, nbr_N, nbr_NE, uarear_slot, &
           NbrW_Task, NbrSW_Task, NbrS_Task, &
@@ -199,6 +199,18 @@
       allocate(mvAu_s(dynTot), mvAv_s(dynTot))
       allocate(str1(dynTot), str2(dynTot), str3(dynTot), str4(dynTot), &
                str5(dynTot), str6(dynTot), str7(dynTot), str8(dynTot))
+      ! ⚠ Cleared WHOLE, once.  matvec clears only lo:hi and then skips any
+      ! cell without ice, so a ring cell is never written -- before the
+      ! reorder it sat inside the block's range and was cleared each call.
+      ! Nothing writes the ring, so clearing it here keeps it zero for good.
+      str1 = c0
+      str2 = c0
+      str3 = c0
+      str4 = c0
+      str5 = c0
+      str6 = c0
+      str7 = c0
+      str8 = c0
       mvAu_s = c0
       mvAv_s = c0
       ! Krylov-side vectors.  solx/soly and diagx/diagy are packed per
@@ -370,7 +382,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
                            aice_slot,          vice_slot,          &
                            vsno_slot,                              &
                            dynMap  (:,iblk),   tmask   (:,  iblk), &
-                         dynOff(iblk),       dynCnt(iblk),       &
+                         dynOff(iblk),       dynCntA(iblk),       &
                          tmass   (:,iblk),   iceTmask(:,iblk))
 
       enddo                     ! iblk
@@ -469,11 +481,11 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
                          forceyU_slot, &
                          uvel_init,   vvel_init, &
                          uvel(:,iblk), vvel(:,iblk),                                                                                   &
-                        dynMap(:,iblk), dynOff(iblk), dynCnt(iblk), iceUmask_slot,                                               &
+                        dynMap(:,iblk), dynOff(iblk), dynCntA(iblk), iceUmask_slot,                                               &
                         iceTmask_slot,                                                               &
                          TbU_s)
 
-         call calc_bfix (dynOff(iblk)+1      , dynOff(iblk)+dynCnt(iblk), &
+         call calc_bfix (dynOff(iblk)+1      , dynOff(iblk)+dynCntA(iblk), &
                          iceUmask_slot               ,                           &
                          umassdti_slot       ,                           &
                          forcexU_slot        , forceyU_slot        ,     &
@@ -643,7 +655,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
          !$OMP PARALLEL DO PRIVATE(iblk)
          do iblk = 1, nblocks
             ! uvel_slot/vvel_slot are already the converged velocity
-            call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceUmask_slot, &
+            call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCntA(iblk), iceUmask_slot, &
                  uvel_slot,                                 &
                  taubx_s,                                   &
                  vvel_slot,                                 &
@@ -957,7 +969,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
          !$OMP PARALLEL DO PRIVATE(iblk)
          do iblk = 1, nblocks
 
-            call calc_zeta_dPr (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceTmask_slot, &
+            call calc_zeta_dPr (dynOff(iblk)+1, dynOff(iblk)+dynCntA(iblk), iceTmask_slot, &
                                 uprev_k,    &
                                 vprev_k,    &
                                 dxT_slot,    &
@@ -982,7 +994,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
             ! convert.
             call pack_to_slots(cdn_ocn(:,iblk), dynMap(:,iblk), Cw_s)
 
-            call calc_vrel_Cb (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceUmask_slot, &
+            call calc_vrel_Cb (dynOff(iblk)+1, dynOff(iblk)+dynCntA(iblk), iceUmask_slot, &
                                Cw_s,             &
                                aiU_slot,             &
                                TbU_s,             &
@@ -999,7 +1011,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
             ! stPr and vrel are already compressed; uarear is compressed once
             ! per run.  Only the four still-block-layout inputs are packed.
 
-            call calc_bvec (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceUmask_slot, &
+            call calc_bvec (dynOff(iblk)+1, dynOff(iblk)+dynCntA(iblk), iceUmask_slot, &
                             stPr_s,       &
                             uarear_slot,       &
                             waterxU_slot,         &
@@ -1013,7 +1025,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
 
 
             ! Compute nonlinear residual norm (PDE residual)
-            call matvec (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceTmask_slot,                                                &
+            call matvec (dynOff(iblk)+1, dynOff(iblk)+dynCntA(iblk), iceTmask_slot,                                                &
                          iceUmask_slot, NbrW_Task, NbrSW_Task, NbrS_Task, NbrE_Task, NbrNE_Task, NbrN_Task,          &
                          dxT_slot, dyT_slot,   &
                          dxhy_slot, dyhx_slot, &
@@ -1026,7 +1038,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
                          umassdti_slot, fmU_slot,    &
                          uarear_slot,                                                      &
                          mvAu_s, mvAv_s)
-            call residual_vec (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceUmask_slot,                                          &
+            call residual_vec (dynOff(iblk)+1, dynOff(iblk)+dynCntA(iblk), iceUmask_slot,                                          &
                                bx_s, by_s,     &
                                mvAu_s, mvAv_s, &
                                Fx_s, Fy_s)
@@ -1375,9 +1387,9 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
       ! and zeroing all of dynTot here would wipe every other block's
       ! results -- each call leaving only its own.  hi+1 is the dead slot,
       ! which the slice included.
-      stPr  (lo:hi+1,:) = c0
-      zetax2(lo:hi+1,:) = c0
-      etax2 (lo:hi+1,:) = c0
+      stPr  (lo:hi,:) = c0
+      zetax2(lo:hi,:) = c0
+      etax2 (lo:hi,:) = c0
 
       do is = lo, hi
          if (.not. icemask_s(is)) cycle
@@ -1823,14 +1835,14 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
       ! Initialize
       !-----------------------------------------------------------------
 
-      str1(lo:hi+1) = c0
-      str2(lo:hi+1) = c0
-      str3(lo:hi+1) = c0
-      str4(lo:hi+1) = c0
-      str5(lo:hi+1) = c0
-      str6(lo:hi+1) = c0
-      str7(lo:hi+1) = c0
-      str8(lo:hi+1) = c0
+      str1(lo:hi) = c0
+      str2(lo:hi) = c0
+      str3(lo:hi) = c0
+      str4(lo:hi) = c0
+      str5(lo:hi) = c0
+      str6(lo:hi) = c0
+      str7(lo:hi) = c0
+      str8(lo:hi) = c0
 
       do is = lo, hi
          if (.not. iceTmask_slot(is)) cycle
@@ -3458,7 +3470,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
       ! merely equivalent -- which is what keeps both branches bit-for-bit.
       !$OMP PARALLEL DO PRIVATE(is, iblk, p)
       do iblk = 1, nblocks
-         do is = dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk)
+         do is = dynOff(iblk)+1, dynOff(iblk)+dynCntA(iblk)
             if (.not. iceUmask_slot(is)) cycle
             p = vector1_x(is)*vector2_x(is) + vector1_y(is)*vector2_y(is)
             prod(dynIJ(is),iblk) = p
@@ -3774,7 +3786,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
 
       !$OMP PARALLEL DO PRIVATE(iblk)
       do iblk = 1, nblocks
-         call matvec (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceTmask_slot,                                                &
+         call matvec (dynOff(iblk)+1, dynOff(iblk)+dynCntA(iblk), iceTmask_slot,                                                &
                       iceUmask_slot, NbrW_Task, NbrSW_Task, NbrS_Task, NbrE_Task, NbrNE_Task, NbrN_Task,          &
                       dxT_slot, dyT_slot,   &
                       dxhy_slot, dyhx_slot, &
@@ -3787,7 +3799,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
                       umassdti_slot, fmU_slot,    &
                       uarear_slot,                                                      &
                       workspace_x, workspace_y)
-         call residual_vec (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceUmask_slot,                                                    &
+         call residual_vec (dynOff(iblk)+1, dynOff(iblk)+dynCntA(iblk), iceUmask_slot,                                                    &
                             bx, by,                   &
                             workspace_x, workspace_y, &
                             arnoldi_basis_x(:,1),                                                    &
@@ -3865,7 +3877,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
 
             !$OMP PARALLEL DO PRIVATE(iblk)
             do iblk = 1, nblocks
-               call matvec (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceTmask_slot,                                                    &
+               call matvec (dynOff(iblk)+1, dynOff(iblk)+dynCntA(iblk), iceTmask_slot,                                                    &
                             iceUmask_slot, NbrW_Task, NbrSW_Task, NbrS_Task, NbrE_Task, NbrNE_Task, NbrN_Task,              &
                             dxT_slot, dyT_slot,       &
                             dxhy_slot, dyhx_slot,     &
@@ -4148,7 +4160,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
 
       !$OMP PARALLEL DO PRIVATE(iblk)
       do iblk = 1, nblocks
-         call matvec (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceTmask_slot,                                                &
+         call matvec (dynOff(iblk)+1, dynOff(iblk)+dynCntA(iblk), iceTmask_slot,                                                &
                       iceUmask_slot, NbrW_Task, NbrSW_Task, NbrS_Task, NbrE_Task, NbrNE_Task, NbrN_Task,          &
                       dxT_slot, dyT_slot,   &
                       dxhy_slot, dyhx_slot, &
@@ -4161,7 +4173,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
                       umassdti_slot, fmU_slot,    &
                       uarear_slot,                                                      &
                       workspace_x, workspace_y)
-         call residual_vec (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceUmask_slot,                                                    &
+         call residual_vec (dynOff(iblk)+1, dynOff(iblk)+dynCntA(iblk), iceUmask_slot,                                                    &
                             bx, by,                   &
                             workspace_x, workspace_y, &
                             arnoldi_basis_x(:,1),                                                    &
@@ -4238,7 +4250,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
 
             !$OMP PARALLEL DO PRIVATE(iblk)
             do iblk = 1, nblocks
-               call matvec (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceTmask_slot,                                                    &
+               call matvec (dynOff(iblk)+1, dynOff(iblk)+dynCntA(iblk), iceTmask_slot,                                                    &
                             iceUmask_slot, NbrW_Task, NbrSW_Task, NbrS_Task, NbrE_Task, NbrNE_Task, NbrN_Task,              &
                             dxT_slot, dyT_slot,       &
                             dxhy_slot, dyhx_slot,     &

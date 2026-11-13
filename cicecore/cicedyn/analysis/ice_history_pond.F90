@@ -483,7 +483,7 @@
       ! Slot-shaped siblings of worka.  aiinit gathers aice_init, which is
       ! stored block-flattened at (ij,iblk), so a slot form of it is not
       ! needed -- dynIJ gives the cell and the value is the same one.
-      real (kind=dbl_kind), dimension (dynCnt(iblk)+1) :: &
+      real (kind=dbl_kind), dimension (dynCntA(iblk)) :: &
          workas, aiinit
 
       integer (kind=int_kind) :: &
