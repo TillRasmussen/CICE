@@ -136,6 +136,22 @@
       ! the same number of passes.  The saving arrives when the exit
       ! unpacks in ice_step_mod can be gated, which this unblocks.
       if (maskhalo_bound) then
+         ! ⚠ This branch halos the BLOCK arrays and never touches the slots,
+         ! so it needs the block form to be current on entry.  The step_*
+         ! exit unpacks used to provide that; they are gone, because on the
+         ! compressed path below bound_state re-packs anyway.  Refresh here
+         ! instead, so the two branches do not depend on each other.
+         if (.not. lpack) then
+            !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
+            do iblk = 1, nblocks
+               call unpack_cat_from_slots(aicen_slot, dynMap(:,iblk), aicen(:,:,:,iblk))
+               call unpack_cat_from_slots(vicen_slot, dynMap(:,iblk), vicen(:,:,:,iblk))
+               call unpack_cat_from_slots(vsnon_slot, dynMap(:,iblk), vsnon(:,:,:,iblk))
+               call unpack_trc_from_slots(trcrn_slot, dynMap(:,iblk), trcrn(:,:,:,:,iblk))
+            enddo
+            !$OMP END PARALLEL DO
+         endif
+
          call ice_HaloUpdate (aicen,            halo_info, &
                               field_loc_center, field_type_scalar)
          halomask(:,:,:) = 0
