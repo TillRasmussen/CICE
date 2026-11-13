@@ -247,7 +247,7 @@
 ! author: JF Lemieux, A. Qaddouri and F. Dupont ECCC
 
       subroutine implicit_solver (dt)
-use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
+use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
 
       use ice_arrays_column, only: Cdn_ocn
       use ice_boundary, only: ice_HaloMask, ice_HaloUpdate, &
@@ -499,7 +499,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
          ! reproduces icellT cell for cell.  ms is assigned BEFORE the
          ! call: in update_state it was the ordering, not the index, that
          ! was wrong, and the symptom appeared two routines downstream.
-         do is = 1, dynCnt(iblk)
+         do is = 1, dynCntA(iblk)
             if (.not. iceTmask_slot(dynOff(iblk)+is)) cycle
             ms = dynOff(iblk) + is
             call icepack_ice_strength (aice  = aice_slot (ms), &

@@ -64,7 +64,7 @@
          vicen, vicen_init, vsnon, vsnon_init, trcrn, Tsfcn_init, &
          aicen_slot, vicen_slot, vsnon_slot, &
          aicen_init_slot, vicen_init_slot, vsnon_init_slot
-      use ice_grid, only: dynMap, dynOff, dynCnt, unpack_cat_from_slots
+      use ice_grid, only: dynMap, dynOff, dynCnt, dynCntA, unpack_cat_from_slots
       use ice_domain, only: nblocks
 
       integer (kind=int_kind) :: &
@@ -184,7 +184,7 @@
            fswthrun, fswthrun_vdr, fswthrun_vdf, fswthrun_idr, fswthrun_idf, &
            fswpenln, Sswabsn, Iswabsn
       use ice_state, only: aice, aicen
-        use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys, dynMap, &
+        use ice_grid,  only: dynCnt, dynCntA, dynOff, dynIJ, skipPhys, dynMap, &
            pack_cat_to_slots, unpack_cat_from_slots, &
            pack_trc_to_slots, unpack_trc_from_slots, &
            pack_to_slots, unpack_from_slots
@@ -238,7 +238,7 @@
            ! away when the neighbouring code converts.
            call pack_cat_to_slots(aicen(:,:,:,iblk), dynMap(:,iblk), aicen_slot)
 
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               if (skipPhys(dynOff(iblk)+is)) cycle
               ij = dynIJ(dynOff(iblk)+is)
               j  = (ij-1)/nx_block + 1
@@ -293,7 +293,7 @@
       subroutine step_therm1 (dt, iblk)
          use ice_state, only: aicen_slot, vicen_slot, vsnon_slot, trcrn_slot
 
-        use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys, dynMap, &
+        use ice_grid,  only: dynCnt, dynCntA, dynOff, dynIJ, skipPhys, dynMap, &
            pack_cat_to_slots, unpack_cat_from_slots, &
            pack_trc_to_slots, unpack_trc_from_slots, &
            pack_to_slots, unpack_from_slots
@@ -439,7 +439,7 @@
       call pack_cat_to_slots(vsnon(:,:,:,iblk), dynMap(:,iblk), vsnon_slot)
       call pack_trc_to_slots(trcrn(:,:,:,:,iblk), dynMap(:,iblk), trcrn_slot)
 
-      do is = 1, dynCnt(iblk)
+      do is = 1, dynCntA(iblk)
          if (skipPhys(dynOff(iblk)+is)) cycle
          ij = dynIJ(dynOff(iblk)+is)
          j  = (ij-1)/nx_block + 1
@@ -466,7 +466,7 @@
       ! Every array below is still block-shaped, reached through the (i,j)
       ! recovered from the slot.  See prep_radiation for why this is the
       ! step that comes before converting the arrays.
-      do is = 1, dynCnt(iblk)
+      do is = 1, dynCntA(iblk)
          if (skipPhys(dynOff(iblk)+is)) cycle
          ij = dynIJ(dynOff(iblk)+is)
          j  = (ij-1)/nx_block + 1
@@ -758,7 +758,7 @@
       subroutine step_therm2 (dt, iblk)
          use ice_state, only: aicen_slot, vicen_slot, vsnon_slot, trcrn_slot, aice0_slot
 
-        use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys, dynMap, &
+        use ice_grid,  only: dynCnt, dynCntA, dynOff, dynIJ, skipPhys, dynMap, &
            pack_cat_to_slots, unpack_cat_from_slots, &
            pack_trc_to_slots, unpack_trc_from_slots, &
            pack_to_slots, unpack_from_slots
@@ -840,7 +840,7 @@
       ! The unpack at the end stays -- restart, history, restoring,
       ! diagnostics and ice_dyn_evp/eap still read the block forms.
 
-      do is = 1, dynCnt(iblk)
+      do is = 1, dynCntA(iblk)
          if (skipPhys(dynOff(iblk)+is)) cycle
          ij = dynIJ(dynOff(iblk)+is)
          j  = (ij-1)/nx_block + 1
@@ -939,7 +939,7 @@
                              aice_slot, vice_slot, vsno_slot, aice0_slot, &
                              aicen_slot, vicen_slot, vsnon_slot, trcrn_slot, &
                              trcr_slot
-        use ice_grid,  only: dynMap, dynOff, dynCnt, dynIJ
+        use ice_grid,  only: dynMap, dynOff, dynCnt, dynCntA, dynIJ
       use ice_bound_state, only: bound_state
       use ice_flux,  only: Tf
       use ice_timers, only: ice_timer_start, ice_timer_stop, timer_bound, timer_updstate
@@ -1087,7 +1087,7 @@
       subroutine step_dyn_wave (dt, iblk)
 
       use ice_state, only: aicen_slot, trcrn_slot
-      use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys, dynMap, &
+      use ice_grid,  only: dynCnt, dynCntA, dynOff, dynIJ, skipPhys, dynMap, &
           unpack_cat_from_slots, unpack_trc_from_slots
       use ice_arrays_column, only: wave_spectrum, wave_sig_ht, &
           d_afsd_wave, wavefreq, dwavefreq
@@ -1122,7 +1122,7 @@
       ! history, restoring, diagnostics and ice_dyn_evp/eap still read the
       ! block forms.
 
-      do is = 1, dynCnt(iblk)
+      do is = 1, dynCntA(iblk)
          if (skipPhys(dynOff(iblk)+is)) cycle
          ij = dynIJ(dynOff(iblk)+is)
          j  = (ij-1)/nx_block + 1
@@ -1170,7 +1170,7 @@
 
       subroutine step_dyn_horiz (dt)
 
-        use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys, dynMap, &
+        use ice_grid,  only: dynCnt, dynCntA, dynOff, dynIJ, skipPhys, dynMap, &
            pack_cat_to_slots, unpack_cat_from_slots, &
            pack_trc_to_slots, unpack_trc_from_slots, &
            pack_to_slots, unpack_from_slots
@@ -1254,7 +1254,7 @@
             ihi = this_block%ihi
             jlo = this_block%jlo
             jhi = this_block%jhi
-            do is = 1, dynCnt(iblk)
+            do is = 1, dynCntA(iblk)
                ms = dynOff(iblk) + is
                if (skipPhys(ms)) cycle
                ij = dynIJ(ms)
@@ -1284,7 +1284,7 @@
             ihi = this_block%ihi
             jlo = this_block%jlo
             jhi = this_block%jhi
-            do is = 1, dynCnt(iblk)
+            do is = 1, dynCntA(iblk)
                ms = dynOff(iblk) + is
                if (skipPhys(ms)) cycle
                ij = dynIJ(ms)
@@ -1327,7 +1327,7 @@
       subroutine step_dyn_ridge (dt, ndtd, iblk)
          use ice_state, only: aicen_slot, vicen_slot, vsnon_slot, trcrn_slot, aice0_slot
 
-        use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys, dynMap, &
+        use ice_grid,  only: dynCnt, dynCntA, dynOff, dynIJ, skipPhys, dynMap, &
            pack_cat_to_slots, unpack_cat_from_slots, &
            pack_trc_to_slots, unpack_trc_from_slots, &
            pack_to_slots, unpack_from_slots
@@ -1404,7 +1404,7 @@
       ! The unpack at the end stays: restart, history, restoring,
       ! diagnostics and ice_dyn_evp/eap still read the block forms.
 
-      do is = 1, dynCnt(iblk)
+      do is = 1, dynCntA(iblk)
          if (skipPhys(dynOff(iblk)+is)) cycle
          ij = dynIJ(dynOff(iblk)+is)
          j  = (ij-1)/nx_block + 1
@@ -1489,7 +1489,7 @@
       subroutine step_snow (dt, iblk)
          use ice_state, only: aicen_slot, vicen_slot, vsnon_slot, trcrn_slot
 
-        use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys, dynMap, &
+        use ice_grid,  only: dynCnt, dynCntA, dynOff, dynIJ, skipPhys, dynMap, &
            pack_cat_to_slots, unpack_cat_from_slots, &
            pack_trc_to_slots, unpack_trc_from_slots, &
            pack_to_slots, unpack_from_slots
@@ -1557,7 +1557,7 @@
       ! The unpack at the end stays -- restart, history, restoring,
       ! diagnostics and ice_dyn_evp/eap still read the block forms.
 
-      do is = 1, dynCnt(iblk)
+      do is = 1, dynCntA(iblk)
          if (skipPhys(dynOff(iblk)+is)) cycle
          ij = dynIJ(dynOff(iblk)+is)
          j  = (ij-1)/nx_block + 1
@@ -1601,7 +1601,7 @@
       ! Every array below is still block-shaped, reached through the (i,j)
       ! recovered from the slot.  See prep_radiation for why this is the
       ! step that comes before converting the arrays.
-      do is = 1, dynCnt(iblk)
+      do is = 1, dynCntA(iblk)
          if (skipPhys(dynOff(iblk)+is)) cycle
          ij = dynIJ(dynOff(iblk)+is)
          j  = (ij-1)/nx_block + 1
@@ -1633,7 +1633,7 @@
       subroutine step_radiation (dt, iblk)
          use ice_state, only: aicen_slot, vicen_slot, vsnon_slot, trcrn_slot
 
-        use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys, dynMap, &
+        use ice_grid,  only: dynCnt, dynCntA, dynOff, dynIJ, skipPhys, dynMap, &
            pack_cat_to_slots, unpack_cat_from_slots, &
            pack_trc_to_slots, unpack_trc_from_slots, &
            pack_to_slots, unpack_from_slots
@@ -1727,7 +1727,7 @@
       ! The unpack at the end stays -- restart, history, restoring,
       ! diagnostics and ice_dyn_evp/eap still read the block forms.
 
-      do is = 1, dynCnt(iblk)
+      do is = 1, dynCntA(iblk)
          if (skipPhys(dynOff(iblk)+is)) cycle
          ij = dynIJ(dynOff(iblk)+is)
          j  = (ij-1)/nx_block + 1
@@ -2005,7 +2005,7 @@
       subroutine biogeochemistry (dt, iblk)
          use ice_state, only: aicen_slot, vicen_slot, vsnon_slot, trcrn_slot, aice0_slot
 
-        use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys, dynMap, &
+        use ice_grid,  only: dynCnt, dynCntA, dynOff, dynIJ, skipPhys, dynMap, &
            pack_cat_to_slots, unpack_cat_from_slots, &
            pack_trc_to_slots, unpack_trc_from_slots, &
            pack_to_slots, unpack_from_slots
@@ -2091,7 +2091,7 @@
       ! The unpack at the end stays -- restart, history, restoring,
       ! diagnostics and ice_dyn_evp/eap still read the block forms.
 
-      do is = 1, dynCnt(iblk)
+      do is = 1, dynCntA(iblk)
          if (skipPhys(dynOff(iblk)+is)) cycle
          ij = dynIJ(dynOff(iblk)+is)
          j  = (ij-1)/nx_block + 1

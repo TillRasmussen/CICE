@@ -265,7 +265,7 @@
           dkeel, lfloe, dfloe, Cdn_atm, Cdn_atm_skin, Cdn_atm_floe, &
           Cdn_atm_pond, Cdn_atm_rdg, Cdn_atm_ratio, Cdn_ocn_skin, &
           Cdn_ocn_keel, Cdn_ocn_floe, Cdn_ocn
-      use ice_grid, only: dynCnt, dynOff, dynIJ, dynMaxCnt
+      use ice_grid, only: dynCnt, dynCntA, dynOff, dynIJ, dynMaxCnt
 
       integer (kind=int_kind), intent(in) :: &
            iblk                 ! block index
@@ -295,7 +295,7 @@
       if (f_Cdn_atm     (1:1) /= 'x') &
         call accum_hist_field(n_Cdn_atm, iblk, Cdn_atm(:,:,iblk), a2D)
       if (f_Cdn_ocn     (1:1) /= 'x') then
-        do is = 1, dynCnt(iblk)
+        do is = 1, dynCntA(iblk)
            workas(is) = Cdn_ocn(dynIJ(dynOff(iblk)+is),iblk)
         enddo
         call accum_hist_field_2D_slotin(n_Cdn_ocn, iblk, workas, a2D)

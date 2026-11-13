@@ -101,7 +101,7 @@
 ! based on subroutine evp
 
       subroutine eap (dt)
-use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
+use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
 
 #ifdef CICE_IN_NEMO
 ! Wind stress is set during this routine from the values supplied
@@ -422,7 +422,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
          ! reproduces icellT cell for cell.  ms is assigned BEFORE the
          ! call: in update_state it was the ordering, not the index, that
          ! was wrong, and the symptom appeared two routines downstream.
-         do is = 1, dynCnt(iblk)
+         do is = 1, dynCntA(iblk)
             if (.not. iceTmask_slot(dynOff(iblk)+is)) cycle
             ms = dynOff(iblk) + is
             call icepack_ice_strength(aice     = aice_slot (ms), &
@@ -2384,7 +2384,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
       use ice_domain, only: nblocks
       use ice_domain_size, only: max_blocks
       use ice_grid, only: dynMap, unpack_from_slots
-      use ice_dyn_shared, only: dynOff, dynCnt
+      use ice_dyn_shared, only: dynOff, dynCnt, dynCntA
       use ice_restart, only: write_restart_field
 
       real (kind=dbl_kind), dimension(:), intent(in) :: fld_s
@@ -2417,7 +2417,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynOff
           field_loc_center, field_type_scalar
       use ice_domain, only: nblocks, halo_info
       use ice_grid, only: dynMap, pack_to_slots
-      use ice_dyn_shared, only: dynOff, dynCnt
+      use ice_dyn_shared, only: dynOff, dynCnt, dynCntA
       use ice_restart, only: read_restart_field
 
       ! local variables

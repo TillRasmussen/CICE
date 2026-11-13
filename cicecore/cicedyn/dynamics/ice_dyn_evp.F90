@@ -258,7 +258,7 @@
           iceTmask, iceUmask, iceEmask, iceNmask, &
           dyn_haloUpdate, fld2, fld3, fld4, fld2c
       ! the compressed layout, and the C/CD slot arrays the subcycle runs on
-      use ice_dyn_shared, only: dynMap, dynOff, dynCnt, dynTot, &
+      use ice_dyn_shared, only: dynMap, dynOff, dynCnt, dynCntA, dynTot, &
                                NbrW_Task , NbrSW_Task, NbrS_Task , NbrE_Task , &
                                NbrNE_Task, NbrN_Task , NbrNW_Task, NbrSE_Task
       ! strint* and taub* are diagnostics: history is their only consumer,
@@ -564,7 +564,7 @@
             ! selects on iceTmask.  dyn_prep1 records exactly that set in
             ! iceTmask_slot, the same mask the stress kernel walks, so the slot loop
             ! reproduces icellT cell for cell with no dynMap lookup.
-            do is = 1, dynCnt(iblk)
+            do is = 1, dynCntA(iblk)
                if (.not. iceTmask_slot(dynOff(iblk)+is)) cycle
                ms = dynOff(iblk) + is
                call icepack_ice_strength(aice     = aice_slot (ms), &
@@ -627,7 +627,7 @@
             ! selects on iceTmask.  dyn_prep1 records exactly that set in
             ! iceTmask_slot, the same mask the stress kernel walks, so the slot loop
             ! reproduces icellT cell for cell with no dynMap lookup.
-            do is = 1, dynCnt(iblk)
+            do is = 1, dynCntA(iblk)
                if (.not. iceTmask_slot(dynOff(iblk)+is)) cycle
                ms = dynOff(iblk) + is
                call icepack_ice_strength(aice     = aice_slot (ms), &
@@ -707,7 +707,7 @@
             ! form, so clearing only the block form leaves a cell that has
             ! just lost its ice carrying the previous step's stress forward
             ! through the (1-arlx1i*revp) term.
-            do is = 1, dynCnt(iblk)
+            do is = 1, dynCntA(iblk)
                ms = dynOff(iblk) + is
                if (.not.iceUmask_slot(ms)) then
                   stresspU_slot (ms) = c0
@@ -783,7 +783,7 @@
             ! not be: every iceUmask cell owns a slot, since iceUmask is a
             ! subset of umask and mask_any is tmask .or. umask.
             do iblk = 1, nblocks
-               do is = 1, dynCnt(iblk)
+               do is = 1, dynCntA(iblk)
                   ms = dynOff(iblk) + is
                   if (.not. iceUmask_slot(ms)) cycle
                   ij = dynIJ(ms)
@@ -801,7 +801,7 @@
             ! the block form read at the interior land it stands for.
             !$OMP PARALLEL DO PRIVATE(iblk,is,ms,i,j,ij) SCHEDULE(runtime)
             do iblk = 1, nblocks
-               do is = 1, dynCnt(iblk)
+               do is = 1, dynCntA(iblk)
                   ms = dynOff(iblk) + is
                   if (skipPhys(ms)) cycle
                   if (iceTmask_slot(ms            ) .or. &

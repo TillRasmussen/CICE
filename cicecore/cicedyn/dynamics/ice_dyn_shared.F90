@@ -22,16 +22,16 @@
       ! masks, and keeping it there lets the grid metrics that are compressed
       ! once per run be packed where they are created.  Re-exported here so the
       ! solvers that import it from ice_dyn_shared are unchanged.
-      use ice_grid, only: grid_ice,                                   &
-                          dynOff, dynCnt, dynTot, dynMaxCnt,          &
-                          dynMap, dynIJ,                       &
-                        NbrW_Task , NbrSW_Task, NbrS_Task , NbrE_Task , &
-                        NbrNE_Task, NbrN_Task , NbrNW_Task, NbrSE_Task, &
-                          set_ragged_layout, set_neighbours,          &
-                          set_slot_cells, pack_to_slots,              &
-                          unpack_from_slots,                          &
-                          nbr_W, nbr_SW, nbr_S, nbr_E, nbr_NE, nbr_N, &
-                          nbr_NW, nbr_SE, nbr_num,                     &
+      use ice_grid, only: grid_ice,                                                 &
+                          dynOff, dynCnt, dynCntA, dynTot, dynMaxCnt,               &
+                          dynMap, dynIJ,                                            &
+                        NbrW_Task , NbrSW_Task, NbrS_Task , NbrE_Task ,             &
+                        NbrNE_Task, NbrN_Task , NbrNW_Task, NbrSE_Task,             &
+                          set_ragged_layout, set_neighbours,                        &
+                          set_slot_cells, pack_to_slots,                            &
+                          unpack_from_slots,                                        &
+                          nbr_W, nbr_SW, nbr_S, nbr_E, nbr_NE, nbr_N,               &
+                          nbr_NW, nbr_SE, nbr_num,                                  &
                           uarear_slot, tarear_slot, dxN_slot, dyE_slot, uarea_slot, &
                           tarea_slot, earea_slot, narea_slot, hm_slot, &
                           earear_slot, narear_slot, &
@@ -46,7 +46,7 @@
       private
 
       ! re-exported from ice_grid, which owns the ragged layout
-      public :: dynOff, dynCnt, dynTot, dynMaxCnt, dynMap, dynIJ
+      public :: dynOff, dynCnt, dynCntA, dynTot, dynMaxCnt, dynMap, dynIJ
       public :: NbrW_Task , NbrSW_Task, NbrS_Task , NbrE_Task
       public :: NbrNE_Task, NbrN_Task , NbrNW_Task, NbrSE_Task
       public :: nbr_W, nbr_SW, nbr_S, nbr_E, nbr_NE, nbr_N, nbr_NW, nbr_SE

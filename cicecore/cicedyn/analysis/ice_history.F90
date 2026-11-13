@@ -2205,7 +2205,7 @@
       use ice_domain, only: blocks_ice, nblocks
       use ice_domain_size, only: nfsd
       use ice_grid, only: tmask, lmask_n, lmask_s, dxU, dyU, grid_ice, &
-                          dynMap, dynOff, dynCnt, dynIJ, pack_to_slots, &
+                          dynMap, dynOff, dynCnt, dynCntA, dynIJ, pack_to_slots, &
                           unpack_from_slots, &
                           NbrE_Task, NbrN_Task, NbrS_Task, NbrW_Task,      &
                           dynMaxCnt,                                     &
@@ -2531,7 +2531,7 @@
              ! worka is only written at slot cells below, so the whole
              ! array has to be cleared here rather than per cell.
              worka(:,:) = c0
-             do is = 1, dynCnt(iblk)
+             do is = 1, dynCntA(iblk)
                 msh = dynOff(iblk) + is
                 if (skipPhys(msh)) cycle
                 ij = dynIJ(msh)
@@ -2558,7 +2558,7 @@
             ! temporary every history step.  workas is declared, so
             ! nothing is materialised, and only slot cells are read.
             workas(:) = c0
-            do is = 1, dynCnt(iblk)
+            do is = 1, dynCntA(iblk)
                msh = dynOff(iblk) + is
                if (skipPhys(msh)) cycle
                ij = dynIJ(msh)
@@ -2575,7 +2575,7 @@
             ! temporary every history step.  workas is declared, so
             ! nothing is materialised, and only slot cells are read.
             workas(:) = c0
-            do is = 1, dynCnt(iblk)
+            do is = 1, dynCntA(iblk)
                msh = dynOff(iblk) + is
                if (skipPhys(msh)) cycle
                ij = dynIJ(msh)
@@ -2739,7 +2739,7 @@
             ! temporary every history step.  workas is declared, so
             ! nothing is materialised, and only slot cells are read.
             workas(:) = c0
-            do is = 1, dynCnt(iblk)
+            do is = 1, dynCntA(iblk)
                msh = dynOff(iblk) + is
                if (skipPhys(msh)) cycle
                ij = dynIJ(msh)
@@ -2754,7 +2754,7 @@
             ! temporary every history step.  workas is declared, so
             ! nothing is materialised, and only slot cells are read.
             workas(:) = c0
-            do is = 1, dynCnt(iblk)
+            do is = 1, dynCntA(iblk)
                msh = dynOff(iblk) + is
                if (skipPhys(msh)) cycle
                ij = dynIJ(msh)
@@ -2797,7 +2797,7 @@
             ! array times a 2-D one needed a reshape AND a block-sized
             ! temporary.  workas is declared, so nothing is materialised.
             workas(:) = c0
-            do is = 1, dynCnt(iblk)
+            do is = 1, dynCntA(iblk)
                msh = dynOff(iblk) + is
                if (skipPhys(msh)) cycle
                ij = dynIJ(msh)
@@ -2812,7 +2812,7 @@
             ! array times a 2-D one needed a reshape AND a block-sized
             ! temporary.  workas is declared, so nothing is materialised.
             workas(:) = c0
-            do is = 1, dynCnt(iblk)
+            do is = 1, dynCntA(iblk)
                msh = dynOff(iblk) + is
                if (skipPhys(msh)) cycle
                ij = dynIJ(msh)
@@ -2827,7 +2827,7 @@
             ! array times a 2-D one needed a reshape AND a block-sized
             ! temporary.  workas is declared, so nothing is materialised.
             workas(:) = c0
-            do is = 1, dynCnt(iblk)
+            do is = 1, dynCntA(iblk)
                msh = dynOff(iblk) + is
                if (skipPhys(msh)) cycle
                ij = dynIJ(msh)
@@ -2842,7 +2842,7 @@
             ! array times a 2-D one needed a reshape AND a block-sized
             ! temporary.  workas is declared, so nothing is materialised.
             workas(:) = c0
-            do is = 1, dynCnt(iblk)
+            do is = 1, dynCntA(iblk)
                msh = dynOff(iblk) + is
                if (skipPhys(msh)) cycle
                ij = dynIJ(msh)
@@ -2922,7 +2922,7 @@
 
          if (f_icepresent(1:1) /= 'x') then
            worka(:,:) = c0
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               msh = dynOff(iblk) + is
               if (skipPhys(msh)) cycle
               ij = dynIJ(msh)
@@ -2937,7 +2937,7 @@
 
          if (f_sitimefrac(1:1) /= 'x') then
            worka(:,:) = c0
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               msh = dynOff(iblk) + is
               if (skipPhys(msh)) cycle
               ij = dynIJ(msh)
@@ -2961,7 +2961,7 @@
          sal_ice(:,:) = ice_ref_salinity
 
          if (ktherm == 2) then
-            do is = 1, dynCnt(iblk)
+            do is = 1, dynCntA(iblk)
                msh = dynOff(iblk) + is
                if (skipPhys(msh)) cycle
                ij = dynIJ(msh)
@@ -3026,7 +3026,7 @@
            ! temporary every history step.  workas is declared, so
            ! nothing is materialised, and only slot cells are read.
            workas(:) = c0
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               msh = dynOff(iblk) + is
               if (skipPhys(msh)) cycle
               ij = dynIJ(msh)
@@ -3043,7 +3043,7 @@
               ! needed a reshape AND a block-sized temporary.  workas is a
               ! declared array, so nothing is materialised here.
               workas(:) = c0
-              do is = 1, dynCnt(iblk)
+              do is = 1, dynCntA(iblk)
                  msh = dynOff(iblk) + is
                  if (skipPhys(msh)) cycle
                  ij = dynIJ(msh)
@@ -3060,7 +3060,7 @@
               ! needed a reshape AND a block-sized temporary.  workas is a
               ! declared array, so nothing is materialised here.
               workas(:) = c0
-              do is = 1, dynCnt(iblk)
+              do is = 1, dynCntA(iblk)
                  msh = dynOff(iblk) + is
                  if (skipPhys(msh)) cycle
                  ij = dynIJ(msh)
@@ -3076,7 +3076,7 @@
            ! kdyn <= 0 leaves uvel_slot unallocated; the block velocities it
            ! replaced are c0 there, so the zeroing above is the answer.
            if (allocated(uvel_slot)) then
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               msh = dynOff(iblk) + is
               if (skipPhys(msh)) cycle
               ij = dynIJ(msh)
@@ -3109,7 +3109,7 @@
            worka(:,:) = c0
            ! as sispeed above: no dynamics, no slot velocities, c0 either way
            if (allocated(uvel_slot)) then
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               msh = dynOff(iblk) + is
               if (skipPhys(msh)) cycle
               ij = dynIJ(msh)
@@ -3127,7 +3127,7 @@
            worka(:,:) = c0
            ! as sispeed above: no dynamics, no slot velocities, c0 either way
            if (allocated(vvel_slot)) then
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               msh = dynOff(iblk) + is
               if (skipPhys(msh)) cycle
               ij = dynIJ(msh)
@@ -3143,7 +3143,7 @@
 
          if (f_sistrxdtop(1:1) /= 'x') then
            ! aice is block-shaped and strairxU compressed; product built per slot.
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               ij = dynIJ(dynOff(iblk)+is)
               j  = (ij-1)/nx_block + 1
               i  = ij - (j-1)*nx_block
@@ -3154,7 +3154,7 @@
 
          if (f_sistrydtop(1:1) /= 'x') then
            ! aice is block-shaped and strairyU compressed; product built per slot.
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               ij = dynIJ(dynOff(iblk)+is)
               j  = (ij-1)/nx_block + 1
               i  = ij - (j-1)*nx_block
@@ -3166,7 +3166,7 @@
          if (f_sistrxubot(1:1) /= 'x') then
            ! aice is block-shaped and strocnxU compressed, so the product is built
            ! per slot -- same reason as the siforcetilt fields above.
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               ij = dynIJ(dynOff(iblk)+is)
               j  = (ij-1)/nx_block + 1
               i  = ij - (j-1)*nx_block
@@ -3178,7 +3178,7 @@
          if (f_sistryubot(1:1) /= 'x') then
            ! aice is block-shaped and strocnyU compressed, so the product is built
            ! per slot -- same reason as the siforcetilt fields above.
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               ij = dynIJ(dynOff(iblk)+is)
               j  = (ij-1)/nx_block + 1
               i  = ij - (j-1)*nx_block
@@ -3198,7 +3198,7 @@
          if (f_sihc(1:1) /= 'x') then
            worka(:,:) = c0
            do k = 1,nzilyr
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               msh = dynOff(iblk) + is
               if (skipPhys(msh)) cycle
               ij = dynIJ(msh)
@@ -3213,7 +3213,7 @@
          if (f_sisnhc(1:1) /= 'x') then
            worka(:,:) = c0
            do k = 1,nzslyr
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               msh = dynOff(iblk) + is
               if (skipPhys(msh)) cycle
               ij = dynIJ(msh)
@@ -3238,7 +3238,7 @@
            ! temporary every history step.  workas is declared, so
            ! nothing is materialised, and only slot cells are read.
            workas(:) = c0
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               msh = dynOff(iblk) + is
               if (skipPhys(msh)) cycle
               ij = dynIJ(msh)
@@ -3254,7 +3254,7 @@
            ! temporary every history step.  workas is declared, so
            ! nothing is materialised, and only slot cells are read.
            workas(:) = c0
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               msh = dynOff(iblk) + is
               if (skipPhys(msh)) cycle
               ij = dynIJ(msh)
@@ -3270,7 +3270,7 @@
            ! temporary every history step.  workas is declared, so
            ! nothing is materialised, and only slot cells are read.
            workas(:) = c0
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               msh = dynOff(iblk) + is
               if (skipPhys(msh)) cycle
               ij = dynIJ(msh)
@@ -3286,7 +3286,7 @@
            ! temporary every history step.  workas is declared, so
            ! nothing is materialised, and only slot cells are read.
            workas(:) = c0
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               msh = dynOff(iblk) + is
               if (skipPhys(msh)) cycle
               ij = dynIJ(msh)
@@ -3302,7 +3302,7 @@
            ! temporary every history step.  workas is declared, so
            ! nothing is materialised, and only slot cells are read.
            workas(:) = c0
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               msh = dynOff(iblk) + is
               if (skipPhys(msh)) cycle
               ij = dynIJ(msh)
@@ -3318,7 +3318,7 @@
            ! temporary every history step.  workas is declared, so
            ! nothing is materialised, and only slot cells are read.
            workas(:) = c0
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               msh = dynOff(iblk) + is
               if (skipPhys(msh)) cycle
               ij = dynIJ(msh)
@@ -3334,7 +3334,7 @@
            ! temporary every history step.  workas is declared, so
            ! nothing is materialised, and only slot cells are read.
            workas(:) = c0
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               msh = dynOff(iblk) + is
               if (skipPhys(msh)) cycle
               ij = dynIJ(msh)
@@ -3350,7 +3350,7 @@
            ! temporary every history step.  workas is declared, so
            ! nothing is materialised, and only slot cells are read.
            workas(:) = c0
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               msh = dynOff(iblk) + is
               if (skipPhys(msh)) cycle
               ij = dynIJ(msh)
@@ -3366,7 +3366,7 @@
            ! temporary every history step.  workas is declared, so
            ! nothing is materialised, and only slot cells are read.
            workas(:) = c0
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               msh = dynOff(iblk) + is
               if (skipPhys(msh)) cycle
               ij = dynIJ(msh)
@@ -3382,7 +3382,7 @@
            ! temporary every history step.  workas is declared, so
            ! nothing is materialised, and only slot cells are read.
            workas(:) = c0
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               msh = dynOff(iblk) + is
               if (skipPhys(msh)) cycle
               ij = dynIJ(msh)
@@ -3406,7 +3406,7 @@
            ! temporary every history step.  workas is declared, so
            ! nothing is materialised, and only slot cells are read.
            workas(:) = c0
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               msh = dynOff(iblk) + is
               if (skipPhys(msh)) cycle
               ij = dynIJ(msh)
@@ -3422,7 +3422,7 @@
            ! temporary every history step.  workas is declared, so
            ! nothing is materialised, and only slot cells are read.
            workas(:) = c0
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               msh = dynOff(iblk) + is
               if (skipPhys(msh)) cycle
               ij = dynIJ(msh)
@@ -3438,7 +3438,7 @@
            ! temporary every history step.  workas is declared, so
            ! nothing is materialised, and only slot cells are read.
            workas(:) = c0
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               msh = dynOff(iblk) + is
               if (skipPhys(msh)) cycle
               ij = dynIJ(msh)
@@ -3458,7 +3458,7 @@
            ! temporary every history step.  workas is declared, so
            ! nothing is materialised, and only slot cells are read.
            workas(:) = c0
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               msh = dynOff(iblk) + is
               if (skipPhys(msh)) cycle
               ij = dynIJ(msh)
@@ -3474,7 +3474,7 @@
            ! temporary every history step.  workas is declared, so
            ! nothing is materialised, and only slot cells are read.
            workas(:) = c0
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               msh = dynOff(iblk) + is
               if (skipPhys(msh)) cycle
               ij = dynIJ(msh)
@@ -3492,7 +3492,7 @@
 
          if (f_siflsenstop(1:1) /= 'x') then
            worka(:,:) = c0
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               msh = dynOff(iblk) + is
               if (skipPhys(msh)) cycle
               ij = dynIJ(msh)
@@ -3532,7 +3532,7 @@
 
          if (f_sifb(1:1) /= 'x') then
            worka(:,:) = c0
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               msh = dynOff(iblk) + is
               if (skipPhys(msh)) cycle
               ij = dynIJ(msh)
@@ -3548,7 +3548,7 @@
 
          if (f_siflsaltbot(1:1) /= 'x') then
            worka(:,:) = c0
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               msh = dynOff(iblk) + is
               if (skipPhys(msh)) cycle
               ij = dynIJ(msh)
@@ -3581,7 +3581,7 @@
 
          if (f_siflfwbot(1:1) /= 'x') then
            worka(:,:) = c0
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               msh = dynOff(iblk) + is
               if (skipPhys(msh)) cycle
               ij = dynIJ(msh)
@@ -3604,7 +3604,7 @@
 
          if (f_siflfwdrain(1:1) /= 'x') then
            worka(:,:) = c0
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               msh = dynOff(iblk) + is
               if (skipPhys(msh)) cycle
               ij = dynIJ(msh)
@@ -3620,7 +3620,7 @@
            ! temporary every history step.  workas is declared, so
            ! nothing is materialised, and only slot cells are read.
            workas(:) = c0
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               msh = dynOff(iblk) + is
               if (skipPhys(msh)) cycle
               ij = dynIJ(msh)
@@ -3636,7 +3636,7 @@
            ! temporary every history step.  workas is declared, so
            ! nothing is materialised, and only slot cells are read.
            workas(:) = c0
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               msh = dynOff(iblk) + is
               if (skipPhys(msh)) cycle
               ij = dynIJ(msh)
@@ -3652,7 +3652,7 @@
            ! product cannot be written inline the way the block form did.  Build
            ! it per slot instead -- dynIJ gives this slot's flattened cell, which
            ! is what aice_init is indexed by.  History steps only.
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               worksl(is,iblk) = aice_init(dynIJ(dynOff(iblk)+is),iblk) * strtltxU(dynOff(iblk)+is)
            enddo
            call accum_hist_field_2D_slotin(n_siforcetiltx, iblk, worksl(1:dynCnt(iblk),iblk), a2D)
@@ -3663,7 +3663,7 @@
            ! product cannot be written inline the way the block form did.  Build
            ! it per slot instead -- dynIJ gives this slot's flattened cell, which
            ! is what aice_init is indexed by.  History steps only.
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               worksl(is,iblk) = aice_init(dynIJ(dynOff(iblk)+is),iblk) * strtltyU(dynOff(iblk)+is)
            enddo
            call accum_hist_field_2D_slotin(n_siforcetilty, iblk, worksl(1:dynCnt(iblk),iblk), a2D)
@@ -3671,7 +3671,7 @@
 
          if (f_siforcecoriolx(1:1) /= 'x') then
            worka(:,:) = c0
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               msh = dynOff(iblk) + is
               if (skipPhys(msh)) cycle
               ij = dynIJ(msh)
@@ -3684,7 +3684,7 @@
 
          if (f_siforcecorioly(1:1) /= 'x') then
            worka(:,:) = c0
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               msh = dynOff(iblk) + is
               if (skipPhys(msh)) cycle
               ij = dynIJ(msh)
@@ -3697,7 +3697,7 @@
 
          if (f_siforceintstrx(1:1) /= 'x' .and. allocated(strintxU_slot)) then
            workas(:) = c0
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               msh = dynOff(iblk) + is
               if (skipPhys(msh)) cycle
               workas(is) = aice_slot(msh)*strintxU_slot(msh)
@@ -3707,7 +3707,7 @@
 
          if (f_siforceintstry(1:1) /= 'x' .and. allocated(strintyU_slot)) then
            workas(:) = c0
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               msh = dynOff(iblk) + is
               if (skipPhys(msh)) cycle
               workas(is) = aice_slot(msh)*strintyU_slot(msh)
@@ -3793,7 +3793,7 @@
                ! visited, which is harmless: it keeps the c0 set above, and
                ! accum_hist_field_4D_compressed guards on tmask before it
                ! accumulates, so land never reaches the output.
-               do is = 1, dynCnt(iblk)
+               do is = 1, dynCntA(iblk)
                   if (skipPhys(dynOff(iblk)+is)) cycle
                   ij = dynIJ(dynOff(iblk)+is)
                   j  = (ij-1)/nx_block + 1
@@ -3819,7 +3819,7 @@
                ! visited, which is harmless: it keeps the c0 set above, and
                ! accum_hist_field_4D_compressed guards on tmask before it
                ! accumulates, so land never reaches the output.
-               do is = 1, dynCnt(iblk)
+               do is = 1, dynCntA(iblk)
                   if (skipPhys(dynOff(iblk)+is)) cycle
                   ij = dynIJ(dynOff(iblk)+is)
                   j  = (ij-1)/nx_block + 1
@@ -3848,7 +3848,7 @@
                ! visited, which is harmless: it keeps the c0 set above, and
                ! accum_hist_field_4D_compressed guards on tmask before it
                ! accumulates, so land never reaches the output.
-               do is = 1, dynCnt(iblk)
+               do is = 1, dynCntA(iblk)
                   if (skipPhys(dynOff(iblk)+is)) cycle
                   ij = dynIJ(dynOff(iblk)+is)
                   j  = (ij-1)/nx_block + 1
@@ -4492,7 +4492,7 @@
                endif
             end select
 
-           do is = 1, dynCnt(iblk)
+           do is = 1, dynCntA(iblk)
               msh = dynOff(iblk) + is
               if (skipPhys(msh)) cycle
               ij = dynIJ(msh)

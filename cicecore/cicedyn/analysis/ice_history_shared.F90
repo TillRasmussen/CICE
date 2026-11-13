@@ -1356,7 +1356,7 @@
 
       use ice_blocks, only: nx_block
       use ice_calendar, only: nstreams
-      use ice_grid, only: tmask_slot, dynCnt, dynOff, dynIJ, skipPhys
+      use ice_grid, only: tmask_slot, dynCnt, dynCntA, dynOff, dynIJ, skipPhys
 
       integer (int_kind), dimension(:), intent(in) :: &
          id                ! location in avail_fields array
@@ -1381,7 +1381,7 @@
          idns = id(ns)
          if (idns > 0) then
             do k = 1, ndim
-            do is = 1, dynCnt(iblk)
+            do is = 1, dynCntA(iblk)
                m = dynOff(iblk) + is
                if (skipPhys(m)) cycle
                if (.not. tmask_slot(m)) cycle
@@ -1399,7 +1399,7 @@
 
       use ice_blocks, only: nx_block
       use ice_calendar, only: nstreams
-      use ice_grid, only: tmask_slot, dynCnt, dynOff, dynIJ, skipPhys
+      use ice_grid, only: tmask_slot, dynCnt, dynCntA, dynOff, dynIJ, skipPhys
 
       integer (int_kind), dimension(:), intent(in) :: &
          id                ! location in avail_fields array
@@ -1421,7 +1421,7 @@
       do ns = 1, nstreams
          idns = id(ns)
          if (idns > 0) then
-            do is = 1, dynCnt(iblk)
+            do is = 1, dynCntA(iblk)
                m = dynOff(iblk) + is
                if (skipPhys(m)) cycle
                if (.not. tmask_slot(m)) cycle
@@ -1438,7 +1438,7 @@
 
       use ice_blocks, only: nx_block
       use ice_calendar, only: nstreams
-      use ice_grid, only: tmask, dynCnt, dynOff, dynIJ, skipPhys
+      use ice_grid, only: tmask, dynCnt, dynCntA, dynOff, dynIJ, skipPhys
 
       integer (int_kind), dimension(:), intent(in) :: &
          id                ! location in avail_fields array
@@ -1468,7 +1468,7 @@
       do ns = 1, nstreams
          idns = id(ns)
          if (idns > 0) then
-            do is = 1, dynCnt(iblk)
+            do is = 1, dynCntA(iblk)
                m = dynOff(iblk) + is
                if (skipPhys(m)) cycle
                ij = dynIJ(m)
@@ -1492,7 +1492,7 @@
 
       use ice_blocks, only: nx_block
       use ice_calendar, only: nstreams
-      use ice_grid, only: tmask_slot, dynCnt, dynOff, dynIJ, skipPhys
+      use ice_grid, only: tmask_slot, dynCnt, dynCntA, dynOff, dynIJ, skipPhys
 
       integer (int_kind), dimension(:), intent(in) :: &
          id                ! location in avail_fields array
@@ -1518,7 +1518,7 @@
       do ns = 1, nstreams
          idns = id(ns)
          if (idns > 0) then
-            do is = 1, dynCnt(iblk)
+            do is = 1, dynCntA(iblk)
                m = dynOff(iblk) + is
                if (skipPhys(m)) cycle
                if (.not. tmask_slot(m)) cycle
@@ -1737,7 +1737,7 @@
       use ice_blocks, only: nx_block, ny_block
       use ice_constants, only: spval_dbl
       use ice_domain, only: nblocks
-      use ice_grid, only: dynMap, dynOff, dynCnt, unpack_from_slots
+      use ice_grid, only: dynMap, dynOff, dynCnt, dynCntA, unpack_from_slots
 
       integer (kind=int_kind), intent(in) :: &
          n                 ! which 2D field
@@ -1763,7 +1763,7 @@
       subroutine compress_a2D(n, work)
 
       use ice_domain, only: nblocks
-      use ice_grid, only: dynMap, dynOff, dynCnt, pack_to_slots
+      use ice_grid, only: dynMap, dynOff, dynCnt, dynCntA, pack_to_slots
 
       integer (kind=int_kind), intent(in) :: &
          n                 ! which 2D field
@@ -1791,7 +1791,7 @@
 
       use ice_constants, only: spval_dbl
       use ice_domain, only: nblocks
-      use ice_grid, only: dynMap, dynOff, dynCnt, unpack_from_slots
+      use ice_grid, only: dynMap, dynOff, dynCnt, dynCntA, unpack_from_slots
 
       integer (kind=int_kind), intent(in) :: &
          n                 ! which 3Dc field
@@ -1821,7 +1821,7 @@
       subroutine compress_a3Dc(n, k, work)
 
       use ice_domain, only: nblocks
-      use ice_grid, only: dynMap, dynOff, dynCnt, pack_to_slots
+      use ice_grid, only: dynMap, dynOff, dynCnt, dynCntA, pack_to_slots
 
       integer (kind=int_kind), intent(in) :: &
          n                 ! which 3Dc field
@@ -1853,7 +1853,7 @@
 
       use ice_constants, only: spval_dbl
       use ice_domain, only: nblocks
-      use ice_grid, only: dynMap, dynOff, dynCnt, unpack_from_slots
+      use ice_grid, only: dynMap, dynOff, dynCnt, dynCntA, unpack_from_slots
 
       real (kind=dbl_kind), dimension(:), intent(in) :: &
          comp              ! one plane, all local blocks
@@ -1879,7 +1879,7 @@
       subroutine compress_hist_plane(work, comp)
 
       use ice_domain, only: nblocks
-      use ice_grid, only: dynMap, dynOff, dynCnt, pack_to_slots
+      use ice_grid, only: dynMap, dynOff, dynCnt, dynCntA, pack_to_slots
 
       real (kind=dbl_kind), dimension(:,:), intent(in) :: &
          work

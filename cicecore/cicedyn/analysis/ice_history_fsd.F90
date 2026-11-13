@@ -312,7 +312,7 @@
       use ice_constants, only: c0, c1, c2, c4
       use ice_history_shared, only: a2D, a3Df, a4Df, nfsd_hist, &
          ncat_hist, accum_hist_field, n3Dacum, n4Dscum
-      use ice_grid, only: dynCnt, dynOff, dynIJ, skipPhys
+      use ice_grid, only: dynCnt, dynCntA, dynOff, dynIJ, skipPhys
       use ice_state, only: aicen_slot, vicen_slot, trcrn_slot, aice_slot, &
           trcrn, aicen, vicen, aice
       use ice_arrays_column, only: wave_sig_ht, floe_rad_c, floe_binwidth, &
@@ -368,7 +368,7 @@
          ! replaces wrote every cell of it.  Harmless today only
          ! because a2D is compressed and reads slot cells alone.
          worka(:,:) = c0
-         do is = 1, dynCnt(iblk)
+         do is = 1, dynCntA(iblk)
             if (skipPhys(dynOff(iblk)+is)) cycle
             ij = dynIJ(dynOff(iblk)+is)
             j  = (ij-1)/nx_block + 1
@@ -393,7 +393,7 @@
          ! replaces wrote every cell of it.  Harmless today only
          ! because a2D is compressed and reads slot cells alone.
          worka(:,:) = c0
-         do is = 1, dynCnt(iblk)
+         do is = 1, dynCntA(iblk)
             if (skipPhys(dynOff(iblk)+is)) cycle
             ij = dynIJ(dynOff(iblk)+is)
             j  = (ij-1)/nx_block + 1
@@ -427,7 +427,7 @@
          ! replaces wrote every cell of it.  Harmless today only
          ! because a2D is compressed and reads slot cells alone.
          worka(:,:) = c0
-         do is = 1, dynCnt(iblk)
+         do is = 1, dynCntA(iblk)
             if (skipPhys(dynOff(iblk)+is)) cycle
             ij = dynIJ(dynOff(iblk)+is)
             j  = (ij-1)/nx_block + 1
@@ -459,7 +459,7 @@
          ! replaces wrote every cell of it.  Harmless today only
          ! because a2D is compressed and reads slot cells alone.
          worka(:,:) = c0
-         do is = 1, dynCnt(iblk)
+         do is = 1, dynCntA(iblk)
             if (skipPhys(dynOff(iblk)+is)) cycle
             ij = dynIJ(dynOff(iblk)+is)
             j  = (ij-1)/nx_block + 1
@@ -488,7 +488,7 @@
          ! replaces wrote every cell of it.  Harmless today only
          ! because a2D is compressed and reads slot cells alone.
          worka(:,:) = c0
-         do is = 1, dynCnt(iblk)
+         do is = 1, dynCntA(iblk)
             if (skipPhys(dynOff(iblk)+is)) cycle
             ij = dynIJ(dynOff(iblk)+is)
             j  = (ij-1)/nx_block + 1
@@ -520,7 +520,7 @@
          ! garbage reaches the output through accum_hist_field.  The
          ! pre-zero is what makes the narrower loop safe, not decoration.
          worke(:,:,:) = c0
-         do is = 1, dynCnt(iblk)
+         do is = 1, dynCntA(iblk)
             if (skipPhys(dynOff(iblk)+is)) cycle
             ij = dynIJ(dynOff(iblk)+is)
             j  = (ij-1)/nx_block + 1
@@ -564,7 +564,7 @@
          ! garbage reaches the output through accum_hist_field.  The
          ! pre-zero is what makes the narrower loop safe, not decoration.
          workd(:,:,:,:) = c0
-         do is = 1, dynCnt(iblk)
+         do is = 1, dynCntA(iblk)
             if (skipPhys(dynOff(iblk)+is)) cycle
             ij = dynIJ(dynOff(iblk)+is)
             j  = (ij-1)/nx_block + 1

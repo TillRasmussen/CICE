@@ -915,7 +915,7 @@
       subroutine step_dyn_wave (dt, iblk)
 
       use ice_state, only: aicen_slot, trcrn_slot
-      use ice_grid,  only: dynCnt, dynOff, dynIJ, skipPhys, dynMap, &
+      use ice_grid,  only: dynCnt, dynCntA, dynOff, dynIJ, skipPhys, dynMap, &
           unpack_cat_from_slots, unpack_trc_from_slots
       use ice_arrays_column, only: wave_spectrum, wave_sig_ht, &
           d_afsd_wave, wavefreq, dwavefreq
@@ -950,7 +950,7 @@
       ! history, restoring, diagnostics and ice_dyn_evp/eap still read the
       ! block forms.
 
-      do is = 1, dynCnt(iblk)
+      do is = 1, dynCntA(iblk)
          if (skipPhys(dynOff(iblk)+is)) cycle
          ij = dynIJ(dynOff(iblk)+is)
          j  = (ij-1)/nx_block + 1

@@ -1861,7 +1861,7 @@
           nzblyr, nzalyr
       use ice_state, only: trcrn, trcr, aicen, aice, vicen, &
           aicen_slot, aice_slot, vicen_slot, trcrn_slot, trcr_slot
-      use ice_grid, only: dynCnt, dynOff, dynIJ, skipPhys
+      use ice_grid, only: dynCnt, dynCntA, dynOff, dynIJ, skipPhys
 
       integer (kind=int_kind), intent(in) :: &
            iblk                 ! block index
@@ -2321,7 +2321,7 @@
       endif
       if (f_algalpeak  (1:1) /= 'x') then
          do n=1,n_algae
-            do is = 1, dynCnt(iblk)
+            do is = 1, dynCntA(iblk)
                ms = dynOff(iblk) + is
                if (skipPhys(ms)) cycle
                ij = dynIJ(ms)
@@ -2618,7 +2618,7 @@
       if (f_bTin  (1:1) /= 'x')  then
          workz(:,:,:) = c0
          do n = 1, ncat_hist
-            do is = 1, dynCnt(iblk)
+            do is = 1, dynCntA(iblk)
                ms = dynOff(iblk) + is
                if (skipPhys(ms)) cycle
                ij = dynIJ(ms)
@@ -2637,7 +2637,7 @@
       if (f_bphi  (1:1) /= 'x') then
          workz(:,:,:) = c0
          do n = 1, ncat_hist
-            do is = 1, dynCnt(iblk)
+            do is = 1, dynCntA(iblk)
                ms = dynOff(iblk) + is
                if (skipPhys(ms)) cycle
                ij = dynIJ(ms)
@@ -2656,7 +2656,7 @@
       if (f_zfswin   (1:1) /= 'x') then
          workz(:,:,:) = c0
          do n = 1, ncat_hist
-            do is = 1, dynCnt(iblk)
+            do is = 1, dynCntA(iblk)
                ms = dynOff(iblk) + is
                if (skipPhys(ms)) cycle
                ij = dynIJ(ms)
@@ -2678,7 +2678,7 @@
          workz(:,:,:) = c0
          do n = 1, ncat_hist
             do k = 1,nzblyr-1
-              do is = 1, dynCnt(iblk)
+              do is = 1, dynCntA(iblk)
                  ms = dynOff(iblk) + is
                  if (skipPhys(ms)) cycle
                  ij = dynIJ(ms)
@@ -2699,7 +2699,7 @@
          workz(:,:,:) = c0
          do n = 1, ncat_hist
             do k = 1,nzblyr-1
-            do is = 1, dynCnt(iblk)
+            do is = 1, dynCntA(iblk)
                ms = dynOff(iblk) + is
                if (skipPhys(ms)) cycle
                ij = dynIJ(ms)
@@ -2728,7 +2728,7 @@
       if (f_zaero   (1:1) /= 'x') then
          do k = 1,n_zaero
            workz(:,:,:) = c0
-             do is = 1, dynCnt(iblk)
+             do is = 1, dynCntA(iblk)
                 ms = dynOff(iblk) + is
                 if (skipPhys(ms)) cycle
                 ij = dynIJ(ms)
@@ -2750,7 +2750,7 @@
          do k = 1,n_algae
            workz(:,:,:) = c0
            workz2(:,:,:) = c0
-             do is = 1, dynCnt(iblk)
+             do is = 1, dynCntA(iblk)
                 ms = dynOff(iblk) + is
                 if (skipPhys(ms)) cycle
                 ij = dynIJ(ms)
@@ -2780,7 +2780,7 @@
       if (f_bgc_C   (1:1) /= 'x') then
          do k = 1,n_algae
            workz(:,:,:) = c0
-             do is = 1, dynCnt(iblk)
+             do is = 1, dynCntA(iblk)
                 ms = dynOff(iblk) + is
                 if (skipPhys(ms)) cycle
                 ij = dynIJ(ms)
@@ -2802,7 +2802,7 @@
          do k = 1,n_doc
            workz(:,:,:) = c0
            workz2(:,:,:) = c0
-             do is = 1, dynCnt(iblk)
+             do is = 1, dynCntA(iblk)
                 ms = dynOff(iblk) + is
                 if (skipPhys(ms)) cycle
                 ij = dynIJ(ms)
@@ -2833,7 +2833,7 @@
          do k = 1,n_dic
            workz(:,:,:) = c0
            workz2(:,:,:) = c0
-             do is = 1, dynCnt(iblk)
+             do is = 1, dynCntA(iblk)
                 ms = dynOff(iblk) + is
                 if (skipPhys(ms)) cycle
                 ij = dynIJ(ms)
@@ -2864,7 +2864,7 @@
          do k = 1,n_don
            workz(:,:,:) = c0
            workz2(:,:,:) = c0
-             do is = 1, dynCnt(iblk)
+             do is = 1, dynCntA(iblk)
                 ms = dynOff(iblk) + is
                 if (skipPhys(ms)) cycle
                 ij = dynIJ(ms)
@@ -2895,7 +2895,7 @@
          do k = 1,n_fed
            workz(:,:,:) = c0
            workz2(:,:,:) = c0
-             do is = 1, dynCnt(iblk)
+             do is = 1, dynCntA(iblk)
                 ms = dynOff(iblk) + is
                 if (skipPhys(ms)) cycle
                 ij = dynIJ(ms)
@@ -2926,7 +2926,7 @@
          do k = 1,n_fep
            workz(:,:,:) = c0
            workz2(:,:,:) = c0
-             do is = 1, dynCnt(iblk)
+             do is = 1, dynCntA(iblk)
                 ms = dynOff(iblk) + is
                 if (skipPhys(ms)) cycle
                 ij = dynIJ(ms)
@@ -2956,7 +2956,7 @@
       if (f_bgc_chl   (1:1) /= 'x') then
          do k = 1,n_algae
            workz(:,:,:) = c0
-             do is = 1, dynCnt(iblk)
+             do is = 1, dynCntA(iblk)
                 ms = dynOff(iblk) + is
                 if (skipPhys(ms)) cycle
                 ij = dynIJ(ms)
@@ -2978,7 +2978,7 @@
       if (f_bgc_Nit   (1:1) /= 'x') then
          workz(:,:,:) = c0
          workz2(:,:,:) = c0
-            do is = 1, dynCnt(iblk)
+            do is = 1, dynCntA(iblk)
                ms = dynOff(iblk) + is
                if (skipPhys(ms)) cycle
                ij = dynIJ(ms)
@@ -3008,7 +3008,7 @@
       if (f_bgc_Am   (1:1) /= 'x') then
          workz(:,:,:) = c0
          workz2(:,:,:) = c0
-            do is = 1, dynCnt(iblk)
+            do is = 1, dynCntA(iblk)
                ms = dynOff(iblk) + is
                if (skipPhys(ms)) cycle
                ij = dynIJ(ms)
@@ -3038,7 +3038,7 @@
       if (f_bgc_Sil   (1:1) /= 'x') then
          workz(:,:,:) = c0
          workz2(:,:,:) = c0
-            do is = 1, dynCnt(iblk)
+            do is = 1, dynCntA(iblk)
                ms = dynOff(iblk) + is
                if (skipPhys(ms)) cycle
                ij = dynIJ(ms)
@@ -3069,7 +3069,7 @@
       if (f_bgc_hum   (1:1) /= 'x') then
          workz(:,:,:) = c0
          workz2(:,:,:) = c0
-            do is = 1, dynCnt(iblk)
+            do is = 1, dynCntA(iblk)
                ms = dynOff(iblk) + is
                if (skipPhys(ms)) cycle
                ij = dynIJ(ms)
@@ -3099,7 +3099,7 @@
       if (f_bgc_DMSPd   (1:1) /= 'x') then
          workz(:,:,:) = c0
          workz2(:,:,:) = c0
-            do is = 1, dynCnt(iblk)
+            do is = 1, dynCntA(iblk)
                ms = dynOff(iblk) + is
                if (skipPhys(ms)) cycle
                ij = dynIJ(ms)
@@ -3128,7 +3128,7 @@
 
       if (f_bgc_DMSPp   (1:1) /= 'x') then
          workz(:,:,:) = c0
-            do is = 1, dynCnt(iblk)
+            do is = 1, dynCntA(iblk)
                ms = dynOff(iblk) + is
                if (skipPhys(ms)) cycle
                ij = dynIJ(ms)
@@ -3149,7 +3149,7 @@
       if (f_bgc_DMS   (1:1) /= 'x') then
          workz(:,:,:) = c0
          workz2(:,:,:) = c0
-            do is = 1, dynCnt(iblk)
+            do is = 1, dynCntA(iblk)
                ms = dynOff(iblk) + is
                if (skipPhys(ms)) cycle
                ij = dynIJ(ms)
@@ -3179,7 +3179,7 @@
       if (f_bgc_PON   (1:1) /= 'x') then
          workz(:,:,:) = c0
          workz2(:,:,:) = c0
-            do is = 1, dynCnt(iblk)
+            do is = 1, dynCntA(iblk)
                ms = dynOff(iblk) + is
                if (skipPhys(ms)) cycle
                ij = dynIJ(ms)
