@@ -1844,6 +1844,18 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
       str7(lo:hi) = c0
       str8(lo:hi) = c0
 
+      !$OMP PARALLEL DO SCHEDULE(static) PRIVATE(is,isW,isS,isSW,isE,isN,isNE,ccaimp, &
+      !$OMP          ccb,tmp_str2_E,tmp_str3_N,tmp_str4_NE,tmp_str6_N,tmp_str7_E, &
+      !$OMP          tmp_str8_NE,strintx,strinty,divune,divunw,divuse,divusw,tensionne, &
+      !$OMP          tensionnw,tensionse,tensionsw,shearne,shearnw,shearse,shearsw, &
+      !$OMP          Deltane,Deltanw,Deltase,Deltasw,ssigpn,ssigps,ssigpe,ssigpw, &
+      !$OMP          ssigmn,ssigms,ssigme,ssigmw,ssig12n,ssig12s,ssig12e,ssig12w, &
+      !$OMP          ssigp1,ssigp2,ssigm1,ssigm2,ssig121,ssig122,csigpne,csigpnw, &
+      !$OMP          csigpse,csigpsw,csigmne,csigmnw,csigmse,csigmsw,csig12ne,csig12nw, &
+      !$OMP          csig12se,csig12sw,str12ew,str12we,str12ns,str12sn,strp_tmp, &
+      !$OMP          strm_tmp,stressp_1,stressp_2,stressp_3,stressp_4,stressm_1, &
+      !$OMP          stressm_2,stressm_3,stressm_4,stress12_1,stress12_2,stress12_3, &
+      !$OMP          stress12_4)
       do is = lo, hi
          if (.not. iceTmask_slot(is)) cycle
 
@@ -1992,11 +2004,24 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
               - dyhx(is)*(csigpsw + csigmsw) + dxhy(is)*csig12sw
 
       enddo ! ij - icellT
+      !$OMP END PARALLEL DO
 
       !-----------------------------------------------------------------
       ! Form Au and Av
       !-----------------------------------------------------------------
 
+      !$OMP PARALLEL DO SCHEDULE(static) PRIVATE(is,isW,isS,isSW,isE,isN,isNE,ccaimp, &
+      !$OMP          ccb,tmp_str2_E,tmp_str3_N,tmp_str4_NE,tmp_str6_N,tmp_str7_E, &
+      !$OMP          tmp_str8_NE,strintx,strinty,divune,divunw,divuse,divusw,tensionne, &
+      !$OMP          tensionnw,tensionse,tensionsw,shearne,shearnw,shearse,shearsw, &
+      !$OMP          Deltane,Deltanw,Deltase,Deltasw,ssigpn,ssigps,ssigpe,ssigpw, &
+      !$OMP          ssigmn,ssigms,ssigme,ssigmw,ssig12n,ssig12s,ssig12e,ssig12w, &
+      !$OMP          ssigp1,ssigp2,ssigm1,ssigm2,ssig121,ssig122,csigpne,csigpnw, &
+      !$OMP          csigpse,csigpsw,csigmne,csigmnw,csigmse,csigmsw,csig12ne,csig12nw, &
+      !$OMP          csig12se,csig12sw,str12ew,str12we,str12ns,str12sn,strp_tmp, &
+      !$OMP          strm_tmp,stressp_1,stressp_2,stressp_3,stressp_4,stressm_1, &
+      !$OMP          stressm_2,stressm_3,stressm_4,stress12_1,stress12_2,stress12_3, &
+      !$OMP          stress12_4)
       do is = lo, hi
          if (.not. iceUmask_slot(is)) cycle
 
@@ -2026,6 +2051,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
          Au(is) = ccaimp*uvel(is) - ccb*vvel(is) - strintx
          Av(is) = ccaimp*vvel(is) + ccb*uvel(is) - strinty
       enddo ! ij - icellU
+      !$OMP END PARALLEL DO
 
       end subroutine matvec
 
@@ -3656,6 +3682,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
                          maxouter ,           &
                          solx     , soly    , &
                          nbiter)
+      use ice_dyn_shared, only: nActive_TU
 
       use ice_boundary, only: ice_HaloUpdate3DR8_compressed
       use ice_domain, only: maskhalo_dyn, halo_info
@@ -3875,9 +3902,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
             call ice_timer_stop(timer_bound)
             call unstack_fields(fld2c, workspace_x, workspace_y)
 
-            !$OMP PARALLEL DO PRIVATE(iblk)
-            do iblk = 1, nblocks
-               call matvec (dynOff(iblk)+1, dynOff(iblk)+dynCntA(iblk), iceTmask_slot,                                                    &
+               call matvec (1, nActive_TU, iceTmask_slot,                                                    &
                             iceUmask_slot, NbrW_Task, NbrSW_Task, NbrS_Task, NbrE_Task, NbrNE_Task, NbrN_Task,              &
                             dxT_slot, dyT_slot,       &
                             dxhy_slot, dyhx_slot,     &
@@ -3891,8 +3916,6 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
                             uarear_slot,                                                          &
                             arnoldi_basis_x(:,nextit),                                               &
                             arnoldi_basis_y(:,nextit))
-            enddo
-            !$OMP END PARALLEL DO
 
             ! Orthogonalize the new vector
             call orthogonalize(ortho_type     , initer         , &
@@ -4043,6 +4066,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
                          maxouter ,           &
                          solx     , soly    , &
                          nbiter)
+      use ice_dyn_shared, only: nActive_TU
 
       use ice_boundary, only: ice_HaloUpdate3DR8_compressed
       use ice_domain, only: maskhalo_dyn, halo_info
@@ -4248,9 +4272,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
             call ice_timer_stop(timer_bound)
             call unstack_fields(fld2c, workspace_x, workspace_y)
 
-            !$OMP PARALLEL DO PRIVATE(iblk)
-            do iblk = 1, nblocks
-               call matvec (dynOff(iblk)+1, dynOff(iblk)+dynCntA(iblk), iceTmask_slot,                                                    &
+               call matvec (1, nActive_TU, iceTmask_slot,                                                    &
                             iceUmask_slot, NbrW_Task, NbrSW_Task, NbrS_Task, NbrE_Task, NbrNE_Task, NbrN_Task,              &
                             dxT_slot, dyT_slot,       &
                             dxhy_slot, dyhx_slot,     &
@@ -4264,8 +4286,6 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
                             uarear_slot,                                                          &
                             arnoldi_basis_x(:,nextit),                                               &
                             arnoldi_basis_y(:,nextit))
-            enddo
-            !$OMP END PARALLEL DO
 
             ! Orthogonalize the new vector
             call orthogonalize(ortho_type     , initer         , &
