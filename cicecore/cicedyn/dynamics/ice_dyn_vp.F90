@@ -2230,12 +2230,14 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
       ! compute residual
       !-----------------------------------------------------------------
 
+      !$OMP PARALLEL DO SCHEDULE(static) PRIVATE(is)
       do is = lo, hi
          if (.not. icemask_s(is)) cycle
 
          Fx(is) = bx(is) - Au(is)
          Fy(is) = by(is) - Av(is)
       enddo                     ! is
+      !$OMP END PARALLEL DO
 
       end subroutine residual_vec
 
@@ -3811,9 +3813,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
 
       ! Residual of the initial iterate
 
-      !$OMP PARALLEL DO PRIVATE(iblk)
-      do iblk = 1, nblocks
-         call matvec (dynOff(iblk)+1, dynOff(iblk)+dynCntA(iblk), iceTmask_slot,                                                &
+         call matvec (1, nActive_TU, iceTmask_slot,                                                &
                       iceUmask_slot, NbrW_Task, NbrSW_Task, NbrS_Task, NbrE_Task, NbrNE_Task, NbrN_Task,          &
                       dxT_slot, dyT_slot,   &
                       dxhy_slot, dyhx_slot, &
@@ -3826,13 +3826,11 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
                       umassdti_slot, fmU_slot,    &
                       uarear_slot,                                                      &
                       workspace_x, workspace_y)
-         call residual_vec (dynOff(iblk)+1, dynOff(iblk)+dynCntA(iblk), iceUmask_slot,                                                    &
+         call residual_vec (1, nActive_TU, iceUmask_slot,                                                    &
                             bx, by,                   &
                             workspace_x, workspace_y, &
                             arnoldi_basis_x(:,1),                                                    &
                             arnoldi_basis_y(:,1))
-      enddo
-      !$OMP END PARALLEL DO
 
       ! Start outer (restarts) loop
       do
@@ -4182,9 +4180,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
 
       ! Residual of the initial iterate
 
-      !$OMP PARALLEL DO PRIVATE(iblk)
-      do iblk = 1, nblocks
-         call matvec (dynOff(iblk)+1, dynOff(iblk)+dynCntA(iblk), iceTmask_slot,                                                &
+         call matvec (1, nActive_TU, iceTmask_slot,                                                &
                       iceUmask_slot, NbrW_Task, NbrSW_Task, NbrS_Task, NbrE_Task, NbrNE_Task, NbrN_Task,          &
                       dxT_slot, dyT_slot,   &
                       dxhy_slot, dyhx_slot, &
@@ -4197,13 +4193,11 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
                       umassdti_slot, fmU_slot,    &
                       uarear_slot,                                                      &
                       workspace_x, workspace_y)
-         call residual_vec (dynOff(iblk)+1, dynOff(iblk)+dynCntA(iblk), iceUmask_slot,                                                    &
+         call residual_vec (1, nActive_TU, iceUmask_slot,                                                    &
                             bx, by,                   &
                             workspace_x, workspace_y, &
                             arnoldi_basis_x(:,1),                                                    &
                             arnoldi_basis_y(:,1))
-      enddo
-      !$OMP END PARALLEL DO
 
       ! Start outer (restarts) loop
       do
