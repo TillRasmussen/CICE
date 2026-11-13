@@ -48,7 +48,8 @@
 
       implicit none
       private
-      public :: init_grid1, init_grid2, grid_average_X2Y, makemask, &
+      public :: init_grid1, init_grid2, init_grid_layout, &
+                grid_average_X2Y, makemask, &
                 alloc_grid, dealloc_grid, &
                 grid_neighbor_min, grid_neighbor_max
       ! ragged (compressed) layout, built here because it is derived from the
@@ -1123,6 +1124,33 @@
       ! dynamics will use.  Doing it here rather than in the solvers keeps the
       ! layout with the grid it is derived from, and lets grid metrics that are
       ! compressed once per run be packed at creation.
+      call init_grid_layout
+
+      end subroutine init_grid2
+
+!=======================================================================
+! Build the ragged layout and the compressed state.
+!
+! ⚠ Split out of init_grid2 so the ESMF-mesh path can reach it.  The CMEPS
+! cap skips init_grid2 entirely when grid_format is 'meshnc' -- correctly,
+! because on that path the cap supplies tlon, tlat, area and hm itself and
+! init_grid2 would read a CICE grid file that is not there.  Attaching the
+! layout to init_grid2 therefore tied it to one of the two grid paths, and on
+! the other one dynMap, dynTot and every _slot metric were never built at all.
+!
+! Idempotent: mapl/geos calls init_grid2 twice.
+!
+! The masks must be final before this runs -- it is built from tmask and
+! umask, and it packs the grid metrics once per run.
+
+      subroutine init_grid_layout
+
+      use ice_state, only: alloc_state_slots
+
+      character(len=*), parameter :: subname = '(init_grid_layout)'
+
+      if (allocated(dynOff)) return
+
       call init_ragged_layout
 
       ! The compressed copies of the state live in ice_state but cannot be
@@ -1131,7 +1159,7 @@
       ! drivers' CICE_InitMod.
       call alloc_state_slots(dynTot)
 
-      end subroutine init_grid2
+      end subroutine init_grid_layout
 
 !=======================================================================
 ! POP land mask

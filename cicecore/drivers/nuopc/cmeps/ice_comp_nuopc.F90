@@ -21,7 +21,8 @@ module ice_comp_nuopc
 
   use ice_import_export  , only : ice_import, ice_export, ice_advertise_fields, ice_realize_fields
   use ice_domain_size    , only : nx_global, ny_global
-  use ice_grid           , only : grid_format, init_grid2
+  use ice_grid           , only : grid_format, grid_ice, init_grid2, &
+                                  init_grid_layout, makemask
   use ice_communicate    , only : init_communicate, my_task, master_task, mpi_comm_ice
   use ice_calendar       , only : force_restart_now, write_ic
   use ice_calendar       , only : idate, idate0,  mday, mmonth, myear, year_init, month_init, day_init
@@ -784,6 +785,23 @@ contains
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
           call ice_mesh_init_tlon_tlat_area_hm()
           if (ChkErr(rc,__LINE__,u_FILE_u)) return
+
+          ! ⚠ This path skips init_grid2, so nothing here has built uvm/umask
+          ! or the compressed layout the dynamics runs on.  makemask derives
+          ! the velocity masks from hm, which the call above has just set, and
+          ! init_grid_layout then builds the layout and the compressed state.
+          !
+          ! ⚠ C and CD grids are rejected rather than run: this path supplies
+          ! 15 of the 22 fields the layout packs, and the 7 it does not --
+          ! dxN, dyE, dxU, dyU, narea, earea and the N/E masks -- are exactly
+          ! the ones those grids need.  Packing them would compress whatever
+          ! the arrays happen to hold.
+          if (grid_ice == 'C' .or. grid_ice == 'CD') then
+             call abort_ice(subname//' ERROR: grid_ice '//trim(grid_ice)// &
+                  ' needs the N/E metrics, which grid_format=meshnc does not supply')
+          endif
+          call makemask
+          call init_grid_layout
        else
           ! In this case init_grid2 will initialize tlon, tlat, area and hm
           call init_grid2()
