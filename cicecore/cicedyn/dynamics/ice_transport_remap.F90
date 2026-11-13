@@ -2234,9 +2234,12 @@
       ! ⚠ dynMap returns 0 for a cell with no slot, where Nbr_Local would have
       ! returned the dead slot.  Reading a slot array at 0 is out of bounds,
       ! so resolve it here: this block's dead slot is its last, and it holds
-      ! c0 -- which is what dpx carries at an unmapped cell.  BLOCK-LOCAL,
-      ! so off+mdead reaches the right one in a task-global array.
-      mdead = nslot
+      ! c0 -- which is what dpx carries at an unmapped cell.
+      ! ⚠ TASK-GLOBAL.  map and dpx are both task-global, so the fallback has
+      ! to name this block's dead slot in the SAME space.  nslot alone is a
+      ! COUNT: for iblk > 1 it indexes an active cell of an earlier block and
+      ! reads its real departure point instead of zero.
+      mdead = off + nslot
 
       icellsd = 0
       if (trim(edge) == 'north') then
