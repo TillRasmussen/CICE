@@ -741,10 +741,6 @@
          file=__FILE__, line=__LINE__)
 
       ! close the transitional island -- see the pack above
-      call unpack_cat_from_slots(aicen_slot, dynMap(:,iblk), aicen(:,:,:,iblk))
-      call unpack_cat_from_slots(vicen_slot, dynMap(:,iblk), vicen(:,:,:,iblk))
-      call unpack_cat_from_slots(vsnon_slot, dynMap(:,iblk), vsnon(:,:,:,iblk))
-      call unpack_trc_from_slots(trcrn_slot, dynMap(:,iblk), trcrn(:,:,:,:,iblk))
 
       end subroutine step_therm1
 
@@ -916,11 +912,7 @@
          file=__FILE__, line=__LINE__)
 
       ! close the transitional island -- see the pack above
-      call unpack_cat_from_slots(aicen_slot, dynMap(:,iblk), aicen(:,:,:,iblk))
       call unpack_from_slots(aice0_slot, dynMap(:,iblk), aice0(:,:,iblk))
-      call unpack_cat_from_slots(vicen_slot, dynMap(:,iblk), vicen(:,:,:,iblk))
-      call unpack_cat_from_slots(vsnon_slot, dynMap(:,iblk), vsnon(:,:,:,iblk))
-      call unpack_trc_from_slots(trcrn_slot, dynMap(:,iblk), trcrn(:,:,:,:,iblk))
 
       end subroutine step_therm2
 
@@ -982,9 +974,13 @@
       !-------------------------------------------------------------------
 
       call ice_timer_start(timer_bound)
+      ! The slots already hold what the step above computed -- the block
+      ! copy beside them came FROM the slots -- so the pack inside would
+      ! write each value onto itself.
       call bound_state (aicen,        &
                         vicen, vsnon, &
-                        ntrcr, trcrn)
+                        ntrcr, trcrn, &
+                        slots_current=.true.)
       call ice_timer_stop(timer_bound)
 
       !$OMP PARALLEL DO PRIVATE(iblk,i,j,ij,ms) SCHEDULE(runtime)
@@ -1470,11 +1466,7 @@
       call ice_timer_stop(timer_column,iblk)
 
       ! close the transitional island -- see the pack above
-      call unpack_cat_from_slots(aicen_slot, dynMap(:,iblk), aicen(:,:,:,iblk))
       call unpack_from_slots(aice0_slot, dynMap(:,iblk), aice0(:,:,iblk))
-      call unpack_cat_from_slots(vicen_slot, dynMap(:,iblk), vicen(:,:,:,iblk))
-      call unpack_cat_from_slots(vsnon_slot, dynMap(:,iblk), vsnon(:,:,:,iblk))
-      call unpack_trc_from_slots(trcrn_slot, dynMap(:,iblk), trcrn(:,:,:,:,iblk))
 
       end subroutine step_dyn_ridge
 
@@ -1614,10 +1606,6 @@
       enddo   ! is
 
       ! close the transitional island -- see the pack above
-      call unpack_cat_from_slots(aicen_slot, dynMap(:,iblk), aicen(:,:,:,iblk))
-      call unpack_cat_from_slots(vicen_slot, dynMap(:,iblk), vicen(:,:,:,iblk))
-      call unpack_cat_from_slots(vsnon_slot, dynMap(:,iblk), vsnon(:,:,:,iblk))
-      call unpack_trc_from_slots(trcrn_slot, dynMap(:,iblk), trcrn(:,:,:,:,iblk))
 
       end subroutine step_snow
 
@@ -2176,11 +2164,7 @@
       endif  ! tr_brine .or. skl_bgc
 
       ! close the transitional island -- see the pack above
-      call unpack_cat_from_slots(aicen_slot, dynMap(:,iblk), aicen(:,:,:,iblk))
       call unpack_from_slots(aice0_slot, dynMap(:,iblk), aice0(:,:,iblk))
-      call unpack_cat_from_slots(vicen_slot, dynMap(:,iblk), vicen(:,:,:,iblk))
-      call unpack_cat_from_slots(vsnon_slot, dynMap(:,iblk), vsnon(:,:,:,iblk))
-      call unpack_trc_from_slots(trcrn_slot, dynMap(:,iblk), trcrn(:,:,:,:,iblk))
 
       end subroutine biogeochemistry
 

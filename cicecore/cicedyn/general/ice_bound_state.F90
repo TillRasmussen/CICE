@@ -60,7 +60,7 @@
       subroutine bound_state (aicen,        &
                               vicen, vsnon, &
                               ntrcr, trcrn, &
-                              restore)
+                              restore, slots_current)
 
       use ice_boundary, only: ice_halo, ice_HaloMask, ice_HaloUpdate, &
           ice_HaloDestroy, ice_HaloUpdate3DR8_compressed
@@ -86,7 +86,14 @@
          trcrn     ! ice tracers
 
       logical (kind=log_kind), intent(in), optional :: &
-         restore
+         restore      , & !
+         ! ⚠ PHASE, not a tuning switch.  The compressed branch packs the
+         ! block state into the slots before the halo exchange, which is
+         ! needed at INIT -- init_state calls this before anything has filled
+         ! the slots.  Every per-step caller has just unpacked the slots it
+         ! computed on, so there the pack copies a value onto itself.  Those
+         ! callers say so, and the pack is skipped.
+         slots_current    ! .true. if the slots already hold the state
 
       ! local variables
 
@@ -98,6 +105,7 @@
       type (ice_halo) :: halo_info_aicemask  ! halo mask
 
       logical (kind=log_kind) :: lrestore  ! local restart flag
+      logical (kind=log_kind) :: lpack     ! pack block -> slots first
 
       character(len=*), parameter :: subname = '(bound_state)'
 
@@ -105,6 +113,14 @@
          lrestore = restore
       else
          lrestore = .true.
+      endif
+
+      ! Default is to pack: a caller that has not thought about it gets the
+      ! safe behaviour, and only one that knows the slots are current opts out.
+      if (present(slots_current)) then
+         lpack = .not. slots_current
+      else
+         lpack = .true.
       endif
 
       ! ⚠ The non-masked branch halos the COMPRESSED forms.  That is only
@@ -147,7 +163,7 @@
          call ice_HaloDestroy(halo_info_aicemask)
 
       else
-         call pack_state_slots
+         if (lpack) call pack_state_slots
 
          call ice_HaloUpdate3DR8_compressed(aicen_slot, halo_info,      &
                   field_loc_center, field_type_scalar, dynMap, dynOff)

@@ -643,9 +643,13 @@
 
       call ice_timer_start(timer_bound)
 
+      ! The slots already hold what the step above computed -- the block
+      ! copy beside them came FROM the slots -- so the pack inside would
+      ! write each value onto itself.
       call bound_state (aicen,        &
                         vicen, vsnon, &
-                        ntrcr, trcrn)
+                        ntrcr, trcrn, &
+                        slots_current=.true.)
 
       call ice_timer_stop(timer_bound)
 
@@ -1085,9 +1089,13 @@
 
       call ice_timer_start(timer_bound)
 
+      ! The slots already hold what the step above computed -- the block
+      ! copy beside them came FROM the slots -- so the pack inside would
+      ! write each value onto itself.
       call bound_state (aicen,        &
                         vicen, vsnon, &
-                        ntrcr, trcrn)
+                        ntrcr, trcrn, &
+                        slots_current=.true.)
 
       call ice_timer_stop(timer_bound)
 
