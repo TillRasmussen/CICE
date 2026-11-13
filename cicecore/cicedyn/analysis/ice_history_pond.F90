@@ -519,7 +519,7 @@
          if (allocated(a2D)) then
 
          s1 = dynOff(iblk) + 1
-         s2 = dynOff(iblk) + dynCnt(iblk) + 1
+         s2 = dynOff(iblk) + dynCntA(iblk)
 
          workas(:) = c0
          if (tr_pond_lvl) then
@@ -605,14 +605,14 @@
          if (allocated(a3Dc)) then
          if (f_apondn   (1:1) /= 'x') &
              call accum_hist_field(n_apondn-n2D, iblk, ncat_hist, &
-                  trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,nt_apnd,1:ncat_hist), a3Dc)
+                  trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk),nt_apnd,1:ncat_hist), a3Dc)
          if (f_apeffn (1:1) /= 'x') &
              call accum_hist_field(n_apeffn-n2D,  iblk, ncat_hist, &
                   apeffn(:,:,1:ncat_hist,iblk), a3Dc)
          if (f_hpondn   (1:1) /= 'x') &
              call accum_hist_field(n_hpondn-n2D, iblk, ncat_hist, &
-                    trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,nt_apnd,1:ncat_hist) &
-                  * trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,nt_hpnd,1:ncat_hist), a3Dc)
+                    trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk),nt_apnd,1:ncat_hist) &
+                  * trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk),nt_hpnd,1:ncat_hist), a3Dc)
 
          if (f_dpnd_flushn (1:1) /= 'x') &
              call accum_hist_field(n_dpnd_flushn-n2D  , iblk, ncat_hist, dpnd_flushn  (:,:,1:ncat_hist,iblk), a3Dc)

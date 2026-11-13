@@ -2436,29 +2436,29 @@
 !        if (f_example(1:1) /= 'x') &
 !            call accum_hist_field(n_example,iblk, vice(:,:,iblk), a2D)
          if (f_hi     (1:1) /= 'x') &
-             call accum_hist_field_2D_slotin(n_hi,     iblk, vice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+             call accum_hist_field_2D_slotin(n_hi,     iblk, vice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          if (f_hs     (1:1) /= 'x') &
-             call accum_hist_field_2D_slotin(n_hs,     iblk, vsno_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+             call accum_hist_field_2D_slotin(n_hs,     iblk, vsno_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          if (f_snowfrac(1:1) /= 'x') &
              call accum_hist_field(n_snowfrac, iblk, snowfrac(:,:,iblk), a2D)
          if (f_Tsfc   (1:1) /= 'x') &
              call accum_hist_field_2D_slotin(n_Tsfc,   iblk, &
-                 trcr_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,nt_Tsfc), a2D)
+                 trcr_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk),nt_Tsfc), a2D)
          if (f_aice   (1:1) /= 'x') &
-             call accum_hist_field_2D_slotin(n_aice,   iblk, aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+             call accum_hist_field_2D_slotin(n_aice,   iblk, aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          if (f_aice_init   (1:1) /= 'x') &
              call accum_hist_field(n_aice_init,   iblk, aice_init3d(:,:,iblk), a2D)
          ! kdyn <= 0 leaves the slot unallocated; the block form these read
          ! was c0 there, and accumulating c0 is a no-op, so skipping
          ! reproduces it -- as f_strength below already does.
          if (f_uvel   (1:1) /= 'x' .and. allocated(uvel_slot)) &
-             call accum_hist_field_2D_slotin(n_uvel,   iblk, uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+             call accum_hist_field_2D_slotin(n_uvel,   iblk, uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          if (f_vvel   (1:1) /= 'x' .and. allocated(vvel_slot)) &
-             call accum_hist_field_2D_slotin(n_vvel,   iblk, vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+             call accum_hist_field_2D_slotin(n_vvel,   iblk, vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          if (f_icespd   (1:1) /= 'x' .and. allocated(uvel_slot)) &
              call accum_hist_field_2D_slotin(n_icespd,   iblk, sqrt( &
-                                  (uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)*uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)) + &
-                                  (vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)*vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1))), a2D)
+                                  (uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk))*uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk))) + &
+                                  (vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk))*vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)))), a2D)
          if (f_icedir(1:1) /= 'x') then
            worka(:,:) = c0
            do j = jlo, jhi
@@ -2626,7 +2626,7 @@
 
          if (f_fswabs_ai(1:1)/= 'x') &
              call accum_hist_field_2D_aiflux(n_fswabs_ai, iblk, fswabs(:,:,iblk), &
-                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
 
          if (f_albsni(1:1) /= 'x') then
              call accum_hist_field(n_albsni, iblk, &
@@ -2666,22 +2666,22 @@
              call accum_hist_field(n_flat,   iblk, flat(:,:,iblk), a2D)
          if (f_flat_ai(1:1) /= 'x') &
              call accum_hist_field_2D_aiflux(n_flat_ai, iblk, flat(:,:,iblk), &
-                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          if (f_fsens  (1:1) /= 'x') &
              call accum_hist_field(n_fsens,   iblk, fsens(:,:,iblk), a2D)
          if (f_fsens_ai(1:1)/= 'x') &
              call accum_hist_field_2D_aiflux(n_fsens_ai, iblk, fsens(:,:,iblk), &
-                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          if (f_flwup  (1:1) /= 'x') &
              call accum_hist_field(n_flwup,   iblk, flwout(:,:,iblk), a2D)
          if (f_flwup_ai(1:1)/= 'x') &
              call accum_hist_field_2D_aiflux(n_flwup_ai, iblk, flwout(:,:,iblk), &
-                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          if (f_evap   (1:1) /= 'x') &
              call accum_hist_field(n_evap,   iblk, evap(:,:,iblk), a2D)
          if (f_evap_ai(1:1) /= 'x') &
              call accum_hist_field_2D_aiflux(n_evap_ai, iblk, evap(:,:,iblk), &
-                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
 
          if (f_Tair   (1:1) /= 'x') &
              call accum_hist_field(n_Tair,   iblk, Tair(:,:,iblk), a2D)
@@ -2727,13 +2727,13 @@
              call accum_hist_field(n_fswthru_ai,iblk, fswthru_ai(:,:,iblk), a2D)
 
          if (f_strairx(1:1) /= 'x') &
-             call accum_hist_field_2D_slotin(n_strairx, iblk, strairxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+             call accum_hist_field_2D_slotin(n_strairx, iblk, strairxU(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          if (f_strairy(1:1) /= 'x') &
-             call accum_hist_field_2D_slotin(n_strairy, iblk, strairyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+             call accum_hist_field_2D_slotin(n_strairy, iblk, strairyU(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          if (f_strtltx(1:1) /= 'x') &
-             call accum_hist_field_2D_slotin(n_strtltx, iblk, strtltxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+             call accum_hist_field_2D_slotin(n_strtltx, iblk, strtltxU(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          if (f_strtlty(1:1) /= 'x') &
-             call accum_hist_field_2D_slotin(n_strtlty, iblk, strtltyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+             call accum_hist_field_2D_slotin(n_strtlty, iblk, strtltyU(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          if (f_strcorx(1:1) /= 'x') then
             ! Slot loop: the expression argument cost a block-sized
             ! temporary every history step.  workas is declared, so
@@ -2765,33 +2765,33 @@
             call accum_hist_field_2D_slotin(n_strcory, iblk, workas, a2D)
          endif
          if (f_strocnx(1:1) /= 'x') &
-             call accum_hist_field_2D_slotin(n_strocnx, iblk, strocnxU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+             call accum_hist_field_2D_slotin(n_strocnx, iblk, strocnxU(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          if (f_strocny(1:1) /= 'x') &
-             call accum_hist_field_2D_slotin(n_strocny, iblk, strocnyU(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+             call accum_hist_field_2D_slotin(n_strocny, iblk, strocnyU(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          if (f_strintx(1:1) /= 'x' .and. allocated(strintxU_slot)) &
-             call accum_hist_field_2D_slotin(n_strintx, iblk, strintxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+             call accum_hist_field_2D_slotin(n_strintx, iblk, strintxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          if (f_strinty(1:1) /= 'x' .and. allocated(strintyU_slot)) &
-             call accum_hist_field_2D_slotin(n_strinty, iblk, strintyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+             call accum_hist_field_2D_slotin(n_strinty, iblk, strintyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          if (f_taubx(1:1) /= 'x' .and. allocated(taubxU_slot)) &
-             call accum_hist_field_2D_slotin(n_taubx, iblk, taubxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+             call accum_hist_field_2D_slotin(n_taubx, iblk, taubxU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          if (f_tauby(1:1) /= 'x' .and. allocated(taubyU_slot)) &
-             call accum_hist_field_2D_slotin(n_tauby, iblk, taubyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+             call accum_hist_field_2D_slotin(n_tauby, iblk, taubyU_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          if (f_strairxN(1:1) /= 'x') &
-             call accum_hist_field_2D_slotin(n_strairxN, iblk, strairxN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+             call accum_hist_field_2D_slotin(n_strairxN, iblk, strairxN(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          if (f_strairyN(1:1) /= 'x') &
-             call accum_hist_field_2D_slotin(n_strairyN, iblk, strairyN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+             call accum_hist_field_2D_slotin(n_strairyN, iblk, strairyN(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          if (f_strairxE(1:1) /= 'x') &
-             call accum_hist_field_2D_slotin(n_strairxE, iblk, strairxE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+             call accum_hist_field_2D_slotin(n_strairxE, iblk, strairxE(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          if (f_strairyE(1:1) /= 'x') &
-             call accum_hist_field_2D_slotin(n_strairyE, iblk, strairyE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+             call accum_hist_field_2D_slotin(n_strairyE, iblk, strairyE(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          if (f_strtltxN(1:1) /= 'x') &
-             call accum_hist_field_2D_slotin(n_strtltxN, iblk, strtltxN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+             call accum_hist_field_2D_slotin(n_strtltxN, iblk, strtltxN(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          if (f_strtltyN(1:1) /= 'x') &
-             call accum_hist_field_2D_slotin(n_strtltyN, iblk, strtltyN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+             call accum_hist_field_2D_slotin(n_strtltyN, iblk, strtltyN(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          if (f_strtltxE(1:1) /= 'x') &
-             call accum_hist_field_2D_slotin(n_strtltxE, iblk, strtltxE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+             call accum_hist_field_2D_slotin(n_strtltxE, iblk, strtltxE(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          if (f_strtltyE(1:1) /= 'x') &
-             call accum_hist_field_2D_slotin(n_strtltyE, iblk, strtltyE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+             call accum_hist_field_2D_slotin(n_strtltyE, iblk, strtltyE(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          if (f_strcorxN(1:1) /= 'x') then
             ! Slot loop rather than an expression argument: a flat block
             ! array times a 2-D one needed a reshape AND a block-sized
@@ -2853,13 +2853,13 @@
             call accum_hist_field_2D_slotin(n_strcoryE, iblk, workas, a2D)
          endif
          if (f_strocnxN(1:1) /= 'x') &
-             call accum_hist_field_2D_slotin(n_strocnxN, iblk, strocnxN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+             call accum_hist_field_2D_slotin(n_strocnxN, iblk, strocnxN(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          if (f_strocnyN(1:1) /= 'x') &
-             call accum_hist_field_2D_slotin(n_strocnyN, iblk, strocnyN(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+             call accum_hist_field_2D_slotin(n_strocnyN, iblk, strocnyN(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          if (f_strocnxE(1:1) /= 'x') &
-             call accum_hist_field_2D_slotin(n_strocnxE, iblk, strocnxE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+             call accum_hist_field_2D_slotin(n_strocnxE, iblk, strocnxE(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          if (f_strocnyE(1:1) /= 'x') &
-             call accum_hist_field_2D_slotin(n_strocnyE, iblk, strocnyE(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+             call accum_hist_field_2D_slotin(n_strocnyE, iblk, strocnyE(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          if (f_strintxN(1:1) /= 'x') &
              call accum_hist_field(n_strintxN, iblk, strintxN(:,:,iblk), a2D)
          if (f_strintyN(1:1) /= 'x') &
@@ -2871,17 +2871,17 @@
          ! The slot form is the producer here: evp writes it and the block
          ! arrays exist only because unpack_from_slots fills them afterwards.
          if (f_taubxN(1:1) /= 'x' .and. allocated(taubxN_slot)) &
-             call accum_hist_field_2D_slotin(n_taubxN, iblk, taubxN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+             call accum_hist_field_2D_slotin(n_taubxN, iblk, taubxN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          if (f_taubyN(1:1) /= 'x' .and. allocated(taubyN_slot)) &
-             call accum_hist_field_2D_slotin(n_taubyN, iblk, taubyN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+             call accum_hist_field_2D_slotin(n_taubyN, iblk, taubyN_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          if (f_taubxE(1:1) /= 'x' .and. allocated(taubxE_slot)) &
-             call accum_hist_field_2D_slotin(n_taubxE, iblk, taubxE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+             call accum_hist_field_2D_slotin(n_taubxE, iblk, taubxE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          if (f_taubyE(1:1) /= 'x' .and. allocated(taubyE_slot)) &
-             call accum_hist_field_2D_slotin(n_taubyE, iblk, taubyE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+             call accum_hist_field_2D_slotin(n_taubyE, iblk, taubyE_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          ! kdyn <= 0 leaves the slot unallocated; the block form was c0 there,
          ! and accumulating c0 is a no-op, so skipping reproduces it.
          if (f_strength(1:1)/= 'x' .and. allocated(strength_slot)) &
-             call accum_hist_field_2D_slotin(n_strength,iblk, strength_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+             call accum_hist_field_2D_slotin(n_strength,iblk, strength_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
 
 ! The following fields (divu, shear, vort, sig1, and sig2) will be smeared
 !  if averaged over more than a few days.
@@ -2915,10 +2915,10 @@
 
          if (f_fsurf_ai(1:1)/= 'x') &
              call accum_hist_field_2D_aiflux(n_fsurf_ai, iblk, fsurf(:,:,iblk), &
-                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          if (f_fcondtop_ai(1:1)/= 'x') &
              call accum_hist_field_2D_aiflux(n_fcondtop_ai, iblk, fcondtop(:,:,iblk), &
-                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
 
          if (f_icepresent(1:1) /= 'x') then
            worka(:,:) = c0
@@ -2949,11 +2949,11 @@
          endif
 
          if (f_sithick(1:1) /= 'x') then
-           call accum_hist_field_2D_slotin(n_sithick, iblk, vice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+           call accum_hist_field_2D_slotin(n_sithick, iblk, vice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          endif
 
          if (f_sivol(1:1) /= 'x') then
-           call accum_hist_field_2D_slotin(n_sivol, iblk, vice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+           call accum_hist_field_2D_slotin(n_sivol, iblk, vice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          endif
 
          rho_ice(:,:) = rhoi
@@ -2974,22 +2974,22 @@
 
          if (f_simass(1:1) /= 'x') then
            call accum_hist_field_2D_aiflux(n_simass, iblk, rho_ice(:,:), &
-                 vice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+                 vice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          endif
 
          if (f_sisaltmass(1:1) /= 'x') then
            worka(:,:) = rho_ice(:,:)*sal_ice(:,:)
           call accum_hist_field_2D_aiflux(n_sisaltmass, iblk, worka(:,:), &
-                 vice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+                 vice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          endif
 
          if (f_sisali(1:1) /= 'x') then
            call accum_hist_field_2D_aiflux(n_sisali, iblk, sal_ice(:,:), &
-                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          endif
 
          if (f_siconc(1:1) /= 'x') then
-           call accum_hist_field_2D_slotin(n_siconc, iblk, aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+           call accum_hist_field_2D_slotin(n_siconc, iblk, aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          endif
 
          if (f_sisnconc(1:1) /= 'x') then
@@ -2997,23 +2997,23 @@
          endif
 
          if (f_sisnmass(1:1) /= 'x') then
-           call accum_hist_field_2D_slotin(n_sisnmass, iblk, rhos*vsno_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+           call accum_hist_field_2D_slotin(n_sisnmass, iblk, rhos*vsno_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          endif
 
          if (f_siage(1:1) /= 'x') then
            call accum_hist_field_2D_slotin(n_siage, iblk, &
-               aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) &
-             * trcr_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,nt_iage), a2D)
+               aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)) &
+             * trcr_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk),nt_iage), a2D)
          endif
 
          if (f_sisnthick(1:1) /= 'x') then
-           call accum_hist_field_2D_slotin(n_sisnthick, iblk, vsno_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+           call accum_hist_field_2D_slotin(n_sisnthick, iblk, vsno_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          endif
 
          if (f_sitemptop(1:1) /= 'x') then
            call accum_hist_field_2D_slotin(n_sitemptop, iblk, &
-               aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) &
-             * trcr_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,nt_Tsfc), a2D)
+               aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)) &
+             * trcr_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk),nt_Tsfc), a2D)
          endif
 
          ! Tsnice is already multiplied by aicen in icepack.
@@ -3191,8 +3191,8 @@
            ! kdyn <= 0: see the n_strength note -- the block form was c0 here
            if (allocated(strength_slot)) &
              call accum_hist_field_2D_aiflux_slot(n_sicompstren, iblk, &
-                   strength_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), &
-                   aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+                   strength_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), &
+                   aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          endif
 
          if (f_sihc(1:1) /= 'x') then
@@ -3487,7 +3487,7 @@
 
          if (f_sifllwutop(1:1) /= 'x') then
            call accum_hist_field_2D_aiflux(n_sifllwutop, iblk, flwout(:,:,iblk), &
-                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          endif
 
          if (f_siflsenstop(1:1) /= 'x') then
@@ -3501,27 +3501,27 @@
               worka(i,j) = aice_slot(msh)*fsens(i,j,iblk)
            enddo
            call accum_hist_field_2D_aiflux(n_siflsenstop, iblk, fsens(:,:,iblk), &
-                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          endif
 
          if (f_siflsensbot(1:1) /= 'x') then
            call accum_hist_field_2D_aiflux(n_siflsensbot, iblk, fhocn(:,:,iblk), &
-                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          endif
 
          if (f_sifllattop(1:1) /= 'x') then
            call accum_hist_field_2D_aiflux(n_sifllattop, iblk, flat(:,:,iblk), &
-                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          endif
 
          if (f_siflcondtop(1:1) /= 'x') then
            call accum_hist_field_2D_aiflux(n_siflcondtop, iblk, fcondtop(:,:,iblk), &
-                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          endif
 
          if (f_siflcondbot(1:1) /= 'x') then
            call accum_hist_field_2D_aiflux(n_siflcondbot, iblk, fcondbot(:,:,iblk), &
-                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1), a2D)
+                 aice_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk)), a2D)
          endif
 
          if (f_sipr(1:1) /= 'x') then
@@ -3722,13 +3722,13 @@
          ! 3D category fields
          if (f_aicen   (1:1) /= 'x') &
              call accum_hist_field(n_aicen-n2D, iblk, ncat_hist, &
-                                   aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,1:ncat_hist), a3Dc)
+                                   aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk),1:ncat_hist), a3Dc)
          if (f_vicen   (1:1) /= 'x') &
              call accum_hist_field(n_vicen-n2D, iblk, ncat_hist, &
-                                   vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,1:ncat_hist), a3Dc)
+                                   vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk),1:ncat_hist), a3Dc)
          if (f_vsnon   (1:1) /= 'x') &
              call accum_hist_field(n_vsnon-n2D, iblk, ncat_hist, &
-                                   vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,1:ncat_hist), a3Dc)
+                                   vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk),1:ncat_hist), a3Dc)
          if (f_snowfracn(1:1) /= 'x') &
              call accum_hist_field(n_snowfracn-n2D, iblk, ncat_hist, &
                                    snowfracn(:,:,1:ncat_hist,iblk), a3Dc)
@@ -3758,7 +3758,7 @@
                       *aicen_init(:,:,1:ncat_hist,iblk), a3Dc)
 
          if (f_siitdconc   (1:1) /= 'x') then
-           call accum_hist_field(n_siitdconc-n2D, iblk, ncat_hist, aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), a3Dc)
+           call accum_hist_field(n_siitdconc-n2D, iblk, ncat_hist, aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk),:), a3Dc)
          endif
 
          if (f_siitdsnconc   (1:1) /= 'x') then
@@ -3766,11 +3766,11 @@
          endif
 
          if (f_siitdthick   (1:1) /= 'x') then
-           call accum_hist_field(n_siitdthick-n2D, iblk, ncat_hist, vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), a3Dc)
+           call accum_hist_field(n_siitdthick-n2D, iblk, ncat_hist, vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk),:), a3Dc)
          endif
 
          if (f_siitdsnthick   (1:1) /= 'x') then
-           call accum_hist_field(n_siitdsnthick-n2D, iblk, ncat_hist, vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,:), a3Dc)
+           call accum_hist_field(n_siitdsnthick-n2D, iblk, ncat_hist, vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk),:), a3Dc)
          endif
 
          endif ! if (allocated(a3Dc))

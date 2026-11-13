@@ -1974,7 +1974,7 @@
       jhi = this_block%jhi
 
       s1 = dynOff(iblk) + 1
-      s2 = dynOff(iblk) + dynCnt(iblk) + 1
+      s2 = dynOff(iblk) + dynCntA(iblk)
 
       !---------------------------------------------------------------
       ! increment field
@@ -2606,7 +2606,7 @@
 
       if (f_fbri   (1:1) /= 'x') &
          call accum_hist_field(n_fbri-n2D, iblk, ncat_hist, &
-                               trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1, &
+                               trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk), &
                                           nt_fbri,1:ncat_hist), a3Dc)
      endif
      endif ! allocated(a3Dc)

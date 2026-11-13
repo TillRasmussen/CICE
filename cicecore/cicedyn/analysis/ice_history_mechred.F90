@@ -363,7 +363,7 @@
       use ice_state, only: aice, vice, trcr, aicen, vicen, trcrn, &
           aicen_slot, vicen_slot, trcrn_slot, &
           aice_slot, vice_slot, trcr_slot
-      use ice_grid, only: dynOff, dynCnt
+      use ice_grid, only: dynOff, dynCnt, dynCntA
       use ice_flux, only: dardg1dt, dardg2dt, dvirdgdt, dardg1ndt,&
           dardg2ndt, dvirdgndt, krdgn, aparticn, aredistn, vredistn, &
           araftn, vraftn, opening
@@ -385,7 +385,7 @@
          file=__FILE__, line=__LINE__)
 
       s1 = dynOff(iblk) + 1
-      s2 = dynOff(iblk) + dynCnt(iblk) + 1
+      s2 = dynOff(iblk) + dynCntA(iblk)
 
       !---------------------------------------------------------------
       ! increment field
@@ -431,12 +431,12 @@
 
          if (f_ardgn(1:1)/= 'x') &
              call accum_hist_field(n_ardgn-n2D, iblk, ncat_hist, &
-                                   aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,1:ncat_hist) &
-                                 * (c1 - trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,nt_alvl,1:ncat_hist)), a3Dc)
+                                   aicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk),1:ncat_hist) &
+                                 * (c1 - trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk),nt_alvl,1:ncat_hist)), a3Dc)
          if (f_vrdgn(1:1)/= 'x') &
              call accum_hist_field(n_vrdgn-n2D, iblk, ncat_hist, &
-                                   vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,1:ncat_hist) &
-                                 * (c1 - trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,nt_vlvl,1:ncat_hist)), a3Dc)
+                                   vicen_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk),1:ncat_hist) &
+                                 * (c1 - trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk),nt_vlvl,1:ncat_hist)), a3Dc)
          if (f_dardg1ndt(1:1)/= 'x') &
              call accum_hist_field(n_dardg1ndt-n2D, iblk, ncat_hist, &
                                    dardg1ndt(:,:,1:ncat_hist,iblk), a3Dc)

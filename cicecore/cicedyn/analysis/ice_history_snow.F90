@@ -304,7 +304,7 @@
           accum_hist_field, accum_hist_field_2D_slotin, nzslyr
       use ice_state, only: vsno, vsnon, trcr, trcrn, vsnon_slot, trcrn_slot, &
           vsno_slot, trcr_slot
-      use ice_grid, only: dynOff, dynCnt
+      use ice_grid, only: dynOff, dynCnt, dynCntA
 
       integer (kind=int_kind), intent(in) :: &
            iblk                 ! block index
@@ -343,7 +343,7 @@
       character(len=*), parameter :: subname = '(accum_hist_snow)'
 
       s1 = dynOff(iblk) + 1
-      s2 = dynOff(iblk) + dynCnt(iblk) + 1
+      s2 = dynOff(iblk) + dynCntA(iblk)
 
       !---------------------------------------------------------------
       ! increment field
@@ -425,10 +425,10 @@
             do n = 1, ncat_hist
                do k = 1, nzslyr
                   workbs(:,n) = workbs(:,n) &
-                               + trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,nt_smice+k-1,n)
+                               + trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk),nt_smice+k-1,n)
                enddo
                workbs(:,n) = workbs(:,n) &
-                            * vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,n) / real(nslyr,kind=dbl_kind)
+                            * vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk),n) / real(nslyr,kind=dbl_kind)
             enddo
             call accum_hist_field(n_smassicen-n2D, iblk, ncat_hist, workbs, a3Dc)
          endif
@@ -437,10 +437,10 @@
             do n = 1, ncat_hist
                do k = 1, nzslyr
                   workbs(:,n) = workbs(:,n) &
-                               + trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,nt_smliq+k-1,n)
+                               + trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk),nt_smliq+k-1,n)
                enddo
                workbs(:,n) = workbs(:,n) &
-                            * vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,n) / real(nslyr,kind=dbl_kind)
+                            * vsnon_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk),n) / real(nslyr,kind=dbl_kind)
             enddo
             call accum_hist_field(n_smassliqn-n2D, iblk, ncat_hist, workbs, a3Dc)
          endif
@@ -449,7 +449,7 @@
             do n = 1, ncat_hist
                do k = 1, nzslyr
                   workbs(:,n) = workbs(:,n) &
-                               + trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,nt_rhos+k-1,n)
+                               + trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk),nt_rhos+k-1,n)
                enddo
                workbs(:,n) = workbs(:,n) / real(nslyr,kind=dbl_kind)
             enddo
@@ -460,8 +460,8 @@
             do n = 1, ncat_hist
                do k = 1, nzslyr
                   workbs(:,n) = workbs(:,n) &
-                               + trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,nt_smice+k-1,n) &
-                               + trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,nt_smliq+k-1,n)
+                               + trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk),nt_smice+k-1,n) &
+                               + trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk),nt_smliq+k-1,n)
                enddo
                workbs(:,n) = workbs(:,n) / real(nslyr,kind=dbl_kind)
             enddo
@@ -472,7 +472,7 @@
             do n = 1, ncat_hist
                do k = 1, nzslyr
                   workbs(:,n) = workbs(:,n) &
-                               + trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1,nt_rsnw+k-1,n)
+                               + trcrn_slot(dynOff(iblk)+1:dynOff(iblk)+dynCntA(iblk),nt_rsnw+k-1,n)
                enddo
                workbs(:,n) = workbs(:,n) / real(nslyr,kind=dbl_kind)
             enddo
