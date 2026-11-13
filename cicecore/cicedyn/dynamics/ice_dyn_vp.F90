@@ -97,8 +97,6 @@
       real (kind=dbl_kind), dimension(:), allocatable :: &
          Cw_s     , & ! ocean-ice neutral drag coefficient, compressed
          TbU_s    , & ! seabed stress factor (N/m^2), compressed
-         ulin_s   , & ! uvel used to linearize vrel, compressed
-         vlin_s   , & ! vvel used to linearize vrel, compressed
          vrel_s   , & ! coeff for tauw, compressed
          Cb_s     , & ! seabed stress coefficient, compressed
          taubx_s  , & ! seabed stress, x-direction (N/m^2), compressed
@@ -125,8 +123,6 @@
          byfix_s  , & ! part of by constant during Picard, compressed
          bx_s     , & ! b vector, x, compressed
          by_s     , & ! b vector, y, compressed
-         mvu_s    , & ! matvec input velocity, x, compressed
-         mvv_s    , & ! matvec input velocity, y, compressed
          mvAu_s   , & ! matvec output, x, compressed
          mvAv_s   , & ! matvec output, y, compressed
          ! Krylov-side vectors.  Fx/Fy never leave the slot world; solx/soly,
@@ -186,8 +182,7 @@
 
       ! init_dyn_shared above has built the compressed layout, so dynTot is set
       allocate(Cw_s  (dynTot), TbU_s (dynTot), &
-               ulin_s(dynTot), &
-               vlin_s(dynTot), vrel_s(dynTot), Cb_s  (dynTot), &
+               vrel_s(dynTot), Cb_s  (dynTot), &
                taubx_s(dynTot), tauby_s(dynTot))
       allocate(zetax2_s(dynTot,4), etax2_s(dynTot,4), &
                repprs_s(dynTot,4), stPr_s (dynTot,8))
@@ -201,11 +196,9 @@
       byfix_s  = c0
       bx_s     = c0
       by_s    = c0
-      allocate(mvu_s(dynTot), mvv_s(dynTot), mvAu_s(dynTot), mvAv_s(dynTot))
+      allocate(mvAu_s(dynTot), mvAv_s(dynTot))
       allocate(str1(dynTot), str2(dynTot), str3(dynTot), str4(dynTot), &
                str5(dynTot), str6(dynTot), str7(dynTot), str8(dynTot))
-      mvu_s = c0
-      mvv_s = c0
       mvAu_s = c0
       mvAv_s = c0
       ! Krylov-side vectors.  solx/soly and diagx/diagy are packed per
@@ -223,8 +216,6 @@
       soly_s = c0
       Cw_s   = c0
       TbU_s = c0
-      ulin_s = c0
-      vlin_s = c0
       vrel_s = c0
       Cb_s  = c0
       taubx_s = c0
@@ -438,6 +429,10 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
          call grid_average_X2Y('F',strairyT,'T',strairyU,'U')
       endif
 
+      ! One statement for the task: the per-block ranges partition the
+      ! whole array, and the pack this replaces cleared the inactive
+      ! cells and the dead slot as a side effect of copying the block.
+      strength_slot(:) = c0
       !$OMP PARALLEL DO PRIVATE(iblk,ilo,ihi,jlo,jhi,this_block,ij,i,j,is,ms)
       do iblk = 1, nblocks
 
@@ -489,9 +484,6 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
       ! ice strength
       !-----------------------------------------------------------------
 
-         ! and the slots: the pack this replaces cleared the inactive
-         ! ones and the dead slot as a side effect of copying the block
-         strength_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = c0
          ! ⚠ iceTmask_slot, not skipPhys.  icellT is built over jlo..jhi+1 x
          ! ilo..ihi+1 -- the physical domain PLUS one north and east ghost
          ! row, where stresses are needed -- and selects on iceTmask alone.
@@ -643,14 +635,13 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
       ! Compute seabed stress (diagnostic)
       !-----------------------------------------------------------------
       if (seabed_stress) then
+         ! The shared kernel EVP already uses.  It carries Cb in the taub
+         ! array -- reads it, overwrites it with the stress -- so taubx_s is
+         ! seeded with Cb rather than passed alongside it.  One statement for
+         ! the task: the per-block ranges partition the whole array.
+         taubx_s = Cb_s
          !$OMP PARALLEL DO PRIVATE(iblk)
          do iblk = 1, nblocks
-            ! The shared kernel EVP already uses.  It carries Cb in the
-            ! taub array -- reads it, overwrites it with the stress -- so
-            ! taubx_s is seeded with Cb rather than passed alongside it.
-            taubx_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = &
-               Cb_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
-
             ! uvel_slot/vvel_slot are already the converged velocity
             call calc_seabed_stress_slot(dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceUmask_slot, &
                  uvel_slot,                                 &
@@ -936,10 +927,11 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
       do iblk = 1, nblocks
          call pack_to_slots(uvel(:,iblk), dynMap(:,iblk), uvel_slot)
          call pack_to_slots(vvel(:,iblk), dynMap(:,iblk), vvel_slot)
-         uprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
-         vprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
       enddo
       !$OMP END PARALLEL DO
+      ! Every block is packed by now, so this is one pass, not nblocks of them.
+      uprev_k = uvel_slot
+      vprev_k = vvel_slot
 
       ! Start iterations
       ! umassdti and fmU do not change during the solve, so they are compressed
@@ -950,27 +942,24 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
          !-----------------------------------------------------------------
          ! Calc zetax2, etax2, dPr/dx, dPr/dy, Cb and vrel = f(uprev_k, vprev_k)
          !-----------------------------------------------------------------
+         ! ⚠ ulin reads uprev_k BEFORE it is advanced, so these two keep
+         ! their order.  Whole-array: the per-block ranges partition it.
+         if (use_mean_vrel) then
+            ulin = p5*uprev_k + p5*uvel_slot
+            vlin = p5*vprev_k + p5*vvel_slot
+         else
+            ulin = uvel_slot
+            vlin = vvel_slot
+         endif
+         uprev_k = uvel_slot
+         vprev_k = vvel_slot
+
          !$OMP PARALLEL DO PRIVATE(iblk)
          do iblk = 1, nblocks
 
-            if (use_mean_vrel) then
-               ulin(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = p5*uprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) + p5*uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
-               vlin(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = p5*vprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) + p5*vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
-            else
-               ulin(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
-               vlin(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
-            endif
-            uprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = uvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
-            vprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = vvel_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
-
-            ! The T-cell metrics are packed once per run in ice_dyn_shared
-            ! and ice_grid, so only what changes per iteration is packed here.
-            ulin_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = uprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
-            vlin_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = vprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
-
             call calc_zeta_dPr (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceTmask_slot, &
-                                ulin_s,    &
-                                vlin_s,    &
+                                uprev_k,    &
+                                vprev_k,    &
                                 dxT_slot,    &
                                 dyT_slot,    &
                                 dxhy_slot,    &
@@ -992,8 +981,6 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
             ! here and written back.  The pair disappears as those consumers
             ! convert.
             call pack_to_slots(cdn_ocn(:,iblk), dynMap(:,iblk), Cw_s)
-            ulin_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = ulin(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
-            vlin_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = vlin(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
 
             call calc_vrel_Cb (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceUmask_slot, &
                                Cw_s,             &
@@ -1001,8 +988,8 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
                                TbU_s,             &
                                uocnU_slot,             &
                                vocnU_slot,             &
-                               ulin_s,             &
-                               vlin_s,             &
+                               ulin,               &
+                               vlin,               &
                                vrel_s,             &
                                Cb_s)
 
@@ -1026,15 +1013,13 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
 
 
             ! Compute nonlinear residual norm (PDE residual)
-            mvu_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = uprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
-            mvv_s(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = vprev_k(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1)
             call matvec (dynOff(iblk)+1, dynOff(iblk)+dynCnt(iblk), iceTmask_slot,                                                &
                          iceUmask_slot, NbrW_Task, NbrSW_Task, NbrS_Task, NbrE_Task, NbrNE_Task, NbrN_Task,          &
                          dxT_slot, dyT_slot,   &
                          dxhy_slot, dyhx_slot, &
                          cxp_slot, cyp_slot,   &
                          cxm_slot, cym_slot,   &
-                         mvu_s, mvv_s,         &
+                         uprev_k, vprev_k,     &
                          vrel_s, Cb_s,         &
                          zetax2_s,                                                       &
                          etax2_s,                                                       &

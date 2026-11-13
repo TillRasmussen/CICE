@@ -319,6 +319,10 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
          call grid_average_X2Y('F', strairyT, 'T', strairyU, 'U')
       endif
 
+      ! One statement for the task: the per-block ranges partition the
+      ! whole array, and the pack this replaces cleared the inactive
+      ! cells and the dead slot as a side effect of copying the block.
+      strength_slot(:) = c0
       !$OMP PARALLEL DO PRIVATE(iblk,ilo,ihi,jlo,jhi,this_block,ij,i,j,is,ms) SCHEDULE(runtime)
       do iblk = 1, nblocks
 
@@ -412,9 +416,6 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
          ! New strength used in Ukita Moritz rheology
          !-----------------------------------------------------------------
 
-         ! and the slots: the pack this replaces cleared the inactive
-         ! ones and the dead slot as a side effect of copying the block
-         strength_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = c0
          ! ⚠ iceTmask_slot, not skipPhys.  icellT is built over jlo..jhi+1 x
          ! ilo..ihi+1 -- the physical domain PLUS one north and east ghost
          ! row, where stresses are needed -- and selects on iceTmask alone.

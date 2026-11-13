@@ -510,6 +510,10 @@
       endif
 
       if (trim(grid_ice) == 'B') then
+         ! One statement for the task: the per-block ranges partition the
+         ! whole array, and the pack this replaces cleared the inactive
+         ! cells and the dead slot as a side effect of copying the block.
+         strength_slot(:) = c0
          !$OMP PARALLEL DO PRIVATE(iblk,ilo,ihi,jlo,jhi,this_block,ij,i,j,is,ms) SCHEDULE(runtime)
          do iblk = 1, nblocks
 
@@ -555,9 +559,6 @@
             ! ice strength
             !-----------------------------------------------------------------
 
-            ! and the slots: the pack this replaces cleared the inactive
-            ! ones and the dead slot as a side effect of copying the block
-            strength_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = c0
             ! ⚠ iceTmask_slot, not skipPhys.  icellT is built over jlo..jhi+1 x
             ! ilo..ihi+1 -- the physical domain PLUS one north and east ghost
             ! row, deliberately, because stresses are needed there -- and it
@@ -578,6 +579,10 @@
          enddo  ! iblk
          !$OMP END PARALLEL DO
       elseif (trim(grid_ice) == 'CD' .or. grid_ice == 'C') then
+         ! One statement for the task: the per-block ranges partition the
+         ! whole array, and the pack this replaces cleared the inactive
+         ! cells and the dead slot as a side effect of copying the block.
+         strength_slot(:) = c0
          !$OMP PARALLEL DO PRIVATE(iblk,ilo,ihi,jlo,jhi,this_block,ij,i,j,is,ms) SCHEDULE(runtime)
          do iblk = 1, nblocks
 
@@ -618,9 +623,6 @@
             ! ice strength
             !-----------------------------------------------------------------
 
-            ! and the slots: the pack this replaces cleared the inactive
-            ! ones and the dead slot as a side effect of copying the block
-            strength_slot(dynOff(iblk)+1:dynOff(iblk)+dynCnt(iblk)+1) = c0
             ! ⚠ iceTmask_slot, not skipPhys.  icellT is built over jlo..jhi+1 x
             ! ilo..ihi+1 -- the physical domain PLUS one north and east ghost
             ! row, deliberately, because stresses are needed there -- and it
