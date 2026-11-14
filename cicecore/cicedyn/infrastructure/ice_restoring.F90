@@ -929,6 +929,7 @@
    subroutine restore_cells(iblk,i1,i2,j1,j2,halo,setfld,uvel_s,vvel_s)
 
       use ice_grid, only: dynMap, dynOff
+      use ice_state, only: aicen_slot, vicen_slot, vsnon_slot, trcrn_slot
 
       integer(kind=int_kind), intent(in) :: &
          iblk,      & ! block id
@@ -948,7 +949,8 @@
       ! local variable
 
       integer(kind=int_kind) :: &
-         i, j, n, nt, ntrcr ! local indices
+         i, j, n, nt, ntrcr, & ! local indices
+         ms                    ! slot of (i,j), 0 if the cell has none
 
       real(kind=dbl_kind) :: &
          vr1, vv2     ! restoring weights
@@ -967,12 +969,20 @@
          if (halo) then   ! set values explicitly
             do i = i1,i2
             do j = j1,j2
+               ms = dynMap((j-1)*nx_block+i,iblk)
                do n = 1, ncat
                   aicen (i,j,n,iblk) = aicen_restoring(i,j,n,iblk)
                   vicen (i,j,n,iblk) = vicen_restoring(i,j,n,iblk)
                   vsnon (i,j,n,iblk) = vsnon_restoring(i,j,n,iblk)
                   do nt = 1, ntrcr
                      trcrn(i,j,nt,n,iblk) = trcrn_restoring(i,j,nt,n,iblk)
+                  enddo
+                  if (ms < 1) cycle
+                  aicen_slot(ms,n) = aicen(i,j,n,iblk)
+                  vicen_slot(ms,n) = vicen(i,j,n,iblk)
+                  vsnon_slot(ms,n) = vsnon(i,j,n,iblk)
+                  do nt = 1, ntrcr
+                     trcrn_slot(ms,nt,n) = trcrn(i,j,nt,n,iblk)
                   enddo
                enddo
             enddo
@@ -983,13 +993,32 @@
                if (mask_restoring(i,j,iblk)) then
                   vr1 = fval_restoring(i,j,iblk)
                   vv2 = c1 - vr1
+                  ms  = dynMap((j-1)*nx_block+i,iblk)
                   do n = 1, ncat
-                     aicen (i,j,n,iblk) = aicen_restoring(i,j,n,iblk)*vr1 + aicen (i,j,n,iblk)*vv2
-                     vicen (i,j,n,iblk) = vicen_restoring(i,j,n,iblk)*vr1 + vicen (i,j,n,iblk)*vv2
-                     vsnon (i,j,n,iblk) = vsnon_restoring(i,j,n,iblk)*vr1 + vsnon (i,j,n,iblk)*vv2
-                     do nt = 1, ntrcr
-                        trcrn(i,j,nt,n,iblk) = trcrn_restoring(i,j,nt,n,iblk)*vr1 + trcrn(i,j,nt,n,iblk)*vv2
-                     enddo
+                     if (ms > 0) then
+                        ! ⚠ Blend against the SLOT.  The block copy is only
+                        ! refreshed at bound_state, so by the time restoring
+                        ! runs the thermo has moved the slots and left it
+                        ! stale; blending the block value would restore
+                        ! towards last step's state.
+                        aicen_slot(ms,n) = aicen_restoring(i,j,n,iblk)*vr1 + aicen_slot(ms,n)*vv2
+                        vicen_slot(ms,n) = vicen_restoring(i,j,n,iblk)*vr1 + vicen_slot(ms,n)*vv2
+                        vsnon_slot(ms,n) = vsnon_restoring(i,j,n,iblk)*vr1 + vsnon_slot(ms,n)*vv2
+                        aicen (i,j,n,iblk) = aicen_slot(ms,n)
+                        vicen (i,j,n,iblk) = vicen_slot(ms,n)
+                        vsnon (i,j,n,iblk) = vsnon_slot(ms,n)
+                        do nt = 1, ntrcr
+                           trcrn_slot(ms,nt,n) = trcrn_restoring(i,j,nt,n,iblk)*vr1 + trcrn_slot(ms,nt,n)*vv2
+                           trcrn(i,j,nt,n,iblk) = trcrn_slot(ms,nt,n)
+                        enddo
+                     else
+                        aicen (i,j,n,iblk) = aicen_restoring(i,j,n,iblk)*vr1 + aicen (i,j,n,iblk)*vv2
+                        vicen (i,j,n,iblk) = vicen_restoring(i,j,n,iblk)*vr1 + vicen (i,j,n,iblk)*vv2
+                        vsnon (i,j,n,iblk) = vsnon_restoring(i,j,n,iblk)*vr1 + vsnon (i,j,n,iblk)*vv2
+                        do nt = 1, ntrcr
+                           trcrn(i,j,nt,n,iblk) = trcrn_restoring(i,j,nt,n,iblk)*vr1 + trcrn(i,j,nt,n,iblk)*vv2
+                        enddo
+                     endif
                   enddo
                endif
             enddo
@@ -1001,8 +1030,10 @@
          if (halo) then   ! set values explicitly
             do i = i1,i2
             do j = j1,j2
+               ms = dynMap((j-1)*nx_block+i,iblk)
                do n = 1, ncat
                   aicen (i,j,n,iblk) = aicen_restoring(i,j,n,iblk)
+                  if (ms > 0) aicen_slot(ms,n) = aicen(i,j,n,iblk)
                enddo
             enddo
             enddo
@@ -1012,8 +1043,14 @@
                if (mask_restoring(i,j,iblk)) then
                   vr1 = fval_restoring(i,j,iblk)
                   vv2 = c1 - vr1
+                  ms  = dynMap((j-1)*nx_block+i,iblk)
                   do n = 1, ncat
-                     aicen (i,j,n,iblk) = aicen_restoring(i,j,n,iblk)*vr1 + aicen (i,j,n,iblk)*vv2
+                     if (ms > 0) then
+                        aicen_slot(ms,n) = aicen_restoring(i,j,n,iblk)*vr1 + aicen_slot(ms,n)*vv2
+                        aicen (i,j,n,iblk) = aicen_slot(ms,n)
+                     else
+                        aicen (i,j,n,iblk) = aicen_restoring(i,j,n,iblk)*vr1 + aicen (i,j,n,iblk)*vv2
+                     endif
                   enddo
                endif
             enddo
@@ -1025,8 +1062,10 @@
          if (halo) then   ! set values explicitly
             do i = i1,i2
             do j = j1,j2
+               ms = dynMap((j-1)*nx_block+i,iblk)
                do n = 1, ncat
                   vicen (i,j,n,iblk) = vicen_restoring(i,j,n,iblk)
+                  if (ms > 0) vicen_slot(ms,n) = vicen(i,j,n,iblk)
                enddo
             enddo
             enddo
@@ -1036,8 +1075,14 @@
                if (mask_restoring(i,j,iblk)) then
                   vr1 = fval_restoring(i,j,iblk)
                   vv2 = c1 - vr1
+                  ms  = dynMap((j-1)*nx_block+i,iblk)
                   do n = 1, ncat
-                     vicen (i,j,n,iblk) = vicen_restoring(i,j,n,iblk)*vr1 + vicen (i,j,n,iblk)*vv2
+                     if (ms > 0) then
+                        vicen_slot(ms,n) = vicen_restoring(i,j,n,iblk)*vr1 + vicen_slot(ms,n)*vv2
+                        vicen (i,j,n,iblk) = vicen_slot(ms,n)
+                     else
+                        vicen (i,j,n,iblk) = vicen_restoring(i,j,n,iblk)*vr1 + vicen (i,j,n,iblk)*vv2
+                     endif
                   enddo
                endif
             enddo
@@ -1050,8 +1095,10 @@
          if (halo) then   ! set values explicitly
             do i = i1,i2
             do j = j1,j2
+               ms = dynMap((j-1)*nx_block+i,iblk)
                do n = 1, ncat
                   vsnon (i,j,n,iblk) = vsnon_restoring(i,j,n,iblk)
+                  if (ms > 0) vsnon_slot(ms,n) = vsnon(i,j,n,iblk)
                enddo
             enddo
             enddo
@@ -1061,8 +1108,14 @@
                if (mask_restoring(i,j,iblk)) then
                   vr1 = fval_restoring(i,j,iblk)
                   vv2 = c1 - vr1
+                  ms  = dynMap((j-1)*nx_block+i,iblk)
                   do n = 1, ncat
-                     vsnon (i,j,n,iblk) = vsnon_restoring(i,j,n,iblk)*vr1 + vsnon (i,j,n,iblk)*vv2
+                     if (ms > 0) then
+                        vsnon_slot(ms,n) = vsnon_restoring(i,j,n,iblk)*vr1 + vsnon_slot(ms,n)*vv2
+                        vsnon (i,j,n,iblk) = vsnon_slot(ms,n)
+                     else
+                        vsnon (i,j,n,iblk) = vsnon_restoring(i,j,n,iblk)*vr1 + vsnon (i,j,n,iblk)*vv2
+                     endif
                   enddo
                endif
             enddo
@@ -1074,9 +1127,11 @@
          if (halo) then   ! set values explicitly
             do i = i1,i2
             do j = j1,j2
+               ms = dynMap((j-1)*nx_block+i,iblk)
                do n = 1, ncat
                   do nt = 1, ntrcr
                      trcrn(i,j,nt,n,iblk) = trcrn_restoring(i,j,nt,n,iblk)
+                     if (ms > 0) trcrn_slot(ms,nt,n) = trcrn(i,j,nt,n,iblk)
                   enddo
                enddo
             enddo
@@ -1087,9 +1142,15 @@
                if (mask_restoring(i,j,iblk)) then
                   vr1 = fval_restoring(i,j,iblk)
                   vv2 = c1 - vr1
+                  ms  = dynMap((j-1)*nx_block+i,iblk)
                   do n = 1, ncat
                      do nt = 1, ntrcr
-                        trcrn(i,j,nt,n,iblk) = trcrn_restoring(i,j,nt,n,iblk)*vr1 + trcrn(i,j,nt,n,iblk)*vv2
+                        if (ms > 0) then
+                           trcrn_slot(ms,nt,n) = trcrn_restoring(i,j,nt,n,iblk)*vr1 + trcrn_slot(ms,nt,n)*vv2
+                           trcrn(i,j,nt,n,iblk) = trcrn_slot(ms,nt,n)
+                        else
+                           trcrn(i,j,nt,n,iblk) = trcrn_restoring(i,j,nt,n,iblk)*vr1 + trcrn(i,j,nt,n,iblk)*vv2
+                        endif
                      enddo
                   enddo
                endif
