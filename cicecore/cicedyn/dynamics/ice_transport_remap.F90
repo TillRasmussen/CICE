@@ -431,13 +431,13 @@
       ! producer kept them current, which is the assumption that cost
       ! 797772a.  Each block writes a disjoint range, so this is SHARED
       ! across threads rather than private, as str1..8 are in matvec.
-      real (kind=dbl_kind), dimension(dynTot) ::  &
+      real (kind=dbl_kind), allocatable, dimension (:) ::  &
          uvel_s, vvel_s
 
       ! Compressed, and they stay that way across the halo exchange: the
       ! whole path from departure_points to locate_triangles is slots now.
       ! (dynTot) rather than (nx_block,ny_block,max_blocks).
-      real (kind=dbl_kind), dimension (dynTot) ::     &
+      real (kind=dbl_kind), allocatable, dimension (:) ::     &
          dpx            , & ! x coordinates of departure points at cell corners
          dpy            , & ! y coordinates of departure points at cell corners
          dx             , & ! dpx scaled by dxu -- locate_triangles reads it
@@ -446,7 +446,7 @@
       ! Compressed.  construct_fields already computed these as slots and
       ! then unpacked them; transport_integrals reads them at the DONOR
       ! cell, which is now a slot, so the block form has no reader left.
-      real (kind=dbl_kind), dimension(dynTot,0:ncat) :: &
+      real (kind=dbl_kind), allocatable, dimension (:,:) :: &
          mc             , & ! mass at geometric center of cell
          mx, my             ! limited derivative of mass wrt x and y
 
@@ -457,7 +457,7 @@
       ! means they must span the task.  The cost is nblocks/nthreads times
       ! the memory; what it buys is the retirement of and with
       ! it the per-block dead slot.
-      real (kind=dbl_kind), dimension(dynTot,0:ncat) :: &
+      real (kind=dbl_kind), allocatable, dimension (:,:) :: &
          massmask           ! = 1. where mass is present, = 0. where not
 
 
@@ -466,11 +466,11 @@
       ! remapping ice_HaloUpdate3DR8_compressed uses internally.  One call
       ! per field, not one per category, so the collective count is
       ! unchanged.
-      real (kind=dbl_kind), dimension (dynTot,ntrace,ncat), target :: &
+      real (kind=dbl_kind), allocatable, dimension (:,:,:), target :: &
          tc             , & ! tracer values at geometric center of cell
          tx, ty             ! limited derivative of tracer wrt x and y
 
-      real (kind=dbl_kind), dimension (dynTot,ntrace,ncat) ::     &
+      real (kind=dbl_kind), allocatable, dimension (:,:,:) ::     &
          trcmask            ! = 1. where this tracer is present, = 0. where not
 
       ! Compressed and TASK-GLOBAL: update_fields reads these at a
@@ -482,10 +482,10 @@
       ! copy instead of one per thread, so nblocks/nthreads times, and
       ! mtflxe/mtflxn carry ntrace and ncat.  Nothing else in the chain
       ! needs it, which is why it is paid here and nowhere else.
-      real (kind=dbl_kind), dimension (dynTot,0:ncat) ::     &
+      real (kind=dbl_kind), allocatable, dimension (:,:) ::     &
          mflxe, mflxn       ! mass transports across E and N cell edges
 
-      real (kind=dbl_kind), dimension (dynTot,ntrace,ncat) :: &
+      real (kind=dbl_kind), allocatable, dimension (:,:,:) :: &
          mtflxe, mtflxn     ! mass*tracer transports across E and N cell edges
 
       ! Slot-indexed now: (slot, group) and (slot, vertex, group).
@@ -525,6 +525,16 @@
          this_block         ! block information for current block
 
       character(len=*), parameter :: subname = '(horizontal_remap)'
+
+      ! ⚠ ALLOCATABLE, not automatic.  At dynTot x ntrace x ncat these run to
+      ! tens of MB each; as automatics they sit on the stack, so four MPI tasks
+      ! segfault before the first step completes against the usual 8 MB limit.
+      ! Reproduced locally with MPI=1 -- the heap has no such ceiling.
+      allocate(uvel_s(dynTot), vvel_s(dynTot), dpx(dynTot), dpy(dynTot), dx(dynTot), &
+               dy(dynTot), mc(dynTot,0:ncat), mx(dynTot,0:ncat), my(dynTot,0:ncat), &
+               massmask(dynTot,0:ncat), tc(dynTot,ntrace,ncat), tx(dynTot,ntrace,ncat), &
+               ty(dynTot,ntrace,ncat), trcmask(dynTot,ntrace,ncat), mflxe(dynTot,0:ncat), &
+               mflxn(dynTot,0:ncat), mtflxe(dynTot,ntrace,ncat), mtflxn(dynTot,ntrace,ncat))
 
       !-------------------------------------------------------------------
       ! Remap the ice area and associated tracers.
@@ -1007,6 +1017,9 @@
       enddo                     ! iblk
       !$OMP END PARALLEL DO
 
+
+      deallocate(uvel_s, vvel_s, dpx, dpy, dx, dy, mc, mx, my, massmask, tc, tx, ty, &
+                 trcmask, mflxe, mflxn, mtflxe, mtflxn)
       end subroutine horizontal_remap
 
 !=======================================================================
