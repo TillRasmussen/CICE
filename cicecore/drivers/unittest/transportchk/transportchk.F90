@@ -13,12 +13,16 @@
       !   tracers_to_state where a cell is ice-free before and after
       !   round trip for a block with no ice
       !
-      ! ⚠ Both routines work in the COMPRESSED layout: their state arguments
-      ! are this block's slot slice, nc+1 long -- the stored cells followed by
-      ! the dead slot.  The hardwired state is still built from (i,j), because
-      ! that is what makes the pattern cycle through the cases, but it is built
-      ! AT each slot via dynIJ rather than over the whole block.  Cells with no
-      ! slot are not part of either routine's contract and are not tested.
+      ! ⚠ Both routines work in the COMPRESSED layout, and they index the
+      ! TASK's slot space, not a per-block slice: state_to_tracers is given
+      ! global bounds lo:hi, and tracers_to_state walks the block through
+      ! dynMap, whose entries for a ring cell sit in the trailing ring
+      ! segment -- far above this block's own range.  So every argument is
+      ! dynTot long and the block under test occupies lo:hi inside it.
+      ! The hardwired state is still built from (i,j), because that is what
+      ! makes the pattern cycle through the cases, but it is built AT each
+      ! slot via dynIJ rather than over the whole block.  Cells with no slot
+      ! are not part of either routine's contract and are not tested.
       !
       ! The dead slot is tested, because a stencil that lands on it must read
       ! c0, and because the two routines treat it differently: state_to_tracers
@@ -33,7 +37,7 @@
       use ice_exit, only: abort_ice, end_run
       use ice_fileunits, only: nu_diag
       use ice_global_reductions, only: global_maxval
-      use ice_grid, only: dynMap, dynOff, dynCntA, dynIJ
+      use ice_grid, only: dynMap, dynOff, dynCntA, dynIJ, dynTot, deadSlot
       use ice_transport_driver, only: state_to_tracers, tracers_to_state
       use icepack_intfc, only: icepack_warnings_flush, icepack_warnings_aborted
       use icepack_intfc, only: icepack_query_parameters
@@ -42,11 +46,11 @@
       implicit none
 
       integer(int_kind) :: i, j, n, it, ntrcr, ntrace, nt_qsno
-      integer(int_kind) :: nc, off, ms, ij, nd
+      integer(int_kind) :: nc, off, ms, ij, nd, lo, hi
       integer(int_kind) :: cnt(3)
       real(dbl_kind) :: puny, rhos, Lfresh, errmax
 
-      ! this block's slots: 1..nc are stored cells, nc+1 is the dead slot
+      ! the task's slot space; this block's stored cells are lo..hi
       real(dbl_kind), allocatable :: &
          aice0(:), aicen(:,:), vicen(:,:), vsnon(:,:), trcrn(:,:,:), &
          aice0r(:), aicenr(:,:), vicenr(:,:), vsnonr(:,:), trcrnr(:,:,:), &
@@ -85,7 +89,9 @@
 
       nc  = dynCntA(1)
       off = dynOff(1)
-      nd  = nc + 1              ! the dead slot
+      lo  = off + 1             ! this block's first stored slot
+      hi  = off + nc            ! and its last
+      nd  = deadSlot            ! the task's one dead slot
 
       errorflag = passflag
       stringflag(1) = 'state_to_tracers aim and trm'
@@ -113,11 +119,11 @@
       if (nc < 1) call abort_ice(error_message=subname//' block 1 has no slots', &
          file=__FILE__, line=__LINE__)
 
-      allocate(aice0 (nd), aicen (nd,ncat), vicen (nd,ncat), vsnon (nd,ncat), &
-               trcrn (nd,ntrcr,ncat), &
-               aice0r(nd), aicenr(nd,ncat), vicenr(nd,ncat), vsnonr(nd,ncat), &
-               trcrnr(nd,ntrcr,ncat), &
-               aim(nd,0:ncat), trm(nd,ntrace,ncat), &
+      allocate(aice0 (dynTot), aicen (dynTot,ncat), vicen (dynTot,ncat), &
+               vsnon (dynTot,ncat), trcrn (dynTot,ntrcr,ncat), &
+               aice0r(dynTot), aicenr(dynTot,ncat), vicenr(dynTot,ncat), &
+               vsnonr(dynTot,ncat), trcrnr(dynTot,ntrcr,ncat), &
+               aim(dynTot,0:ncat), trm(dynTot,ntrace,ncat), &
                aice0b(nx_block,ny_block))
 
       !-----------------------------------------------------------------
@@ -138,11 +144,11 @@
       call state_to_tracers (off+1, off+nc, ntrcr, ntrace, &
                              aice0, aicen, trcrn, vicen, vsnon, aim, trm)
 
-      if (any(aim(:,0) /= aice0)) errorflag(1) = failflag
-      if (any(aim(1:nc,1:ncat) /= aicen(1:nc,:))) errorflag(1) = failflag
+      if (any(aim(lo:hi,0) /= aice0(lo:hi))) errorflag(1) = failflag
+      if (any(aim(lo:hi,1:ncat) /= aicen(lo:hi,:))) errorflag(1) = failflag
       errmax = c0
       do n = 1, ncat
-      do ms = 1, nc
+      do ms = lo, hi
          if (aicen(ms,n) > puny) then
             errmax = max(errmax, relerr(trm(ms,1,n), vicen(ms,n)/aicen(ms,n)))
             errmax = max(errmax, relerr(trm(ms,2,n), vsnon(ms,n)/aicen(ms,n)))
@@ -157,10 +163,12 @@
       if (errmax > errtol) errorflag(1) = failflag
       if (my_task == master_task) write(6,*) ' test 1 max relative error hice, hsno = ', errmax
 
-      ! state_to_tracers writes the dead slot: the areas and tracers it
-      ! carries must be c0, whatever the state arrays held there
-      if (any(aim(nd,1:ncat) /= c0)) errorflag(8) = failflag
-      if (any(trm(nd,:,:) /= c0))    errorflag(8) = failflag
+      ! state_to_tracers does NOT write the dead slot -- it defines lo:hi and
+      ! nothing else.  That is why the caller clears aim and trm whole before
+      ! the block loop; pinning it here is what makes dropping that clear a
+      ! test failure rather than a silent garbage read at a ring neighbour.
+      if (any(aim(nd,:) /= fillval)) errorflag(8) = failflag
+      if (any(trm(nd,:,:) /= fillval)) errorflag(8) = failflag
 
       !-----------------------------------------------------------------
       ! Tests 2 and 3: round trip state -> tracers -> state
@@ -178,12 +186,12 @@
       call tracers_to_state (off, nc, nx_block, ny_block, dynMap(:,1), ntrcr, ntrace, &
                              aim, trm, aice0b, aice0r, aicenr, trcrnr, vicenr, vsnonr)
 
-      if (any(aice0r(1:nc) /= aice0(1:nc))) errorflag(2) = failflag
-      if (any(aicenr(1:nc,:) /= aicen(1:nc,:))) errorflag(2) = failflag
+      if (any(aice0r(lo:hi) /= aice0(lo:hi))) errorflag(2) = failflag
+      if (any(aicenr(lo:hi,:) /= aicen(lo:hi,:))) errorflag(2) = failflag
       errmax = c0
       cnt = 0
       do n = 1, ncat
-      do ms = 1, nc
+      do ms = lo, hi
          if (aicen(ms,n) > puny) then
             cnt(1) = cnt(1) + 1
             errmax = max(errmax, relerr(vicenr(ms,n), vicen(ms,n)))
@@ -222,7 +230,7 @@
 
       ! the block copy of aice0 is written through dynMap, at every cell that
       ! owns a slot and nowhere else
-      do ms = 1, nc
+      do ms = lo, hi
          ij = dynIJ(ms)
          j  = (ij-1)/nx_block + 1
          i  = ij - (j-1)*nx_block
@@ -239,7 +247,7 @@
       !-----------------------------------------------------------------
 
       do n = 1, ncat
-      do ms = 1, nc
+      do ms = lo, hi
          ij = dynIJ(ms)
          j  = (ij-1)/nx_block + 1
          i  = ij - (j-1)*nx_block
@@ -266,7 +274,7 @@
 
       cnt = 0
       do n = 1, ncat
-      do ms = 1, nc
+      do ms = lo, hi
          if (aicen(ms,n) > c0 .and. aim(ms,n) == c0) then
             ! ice removed: area and volumes zeroed, tracers unchanged
             cnt(1) = cnt(1) + 1
@@ -291,7 +299,7 @@
          endif
       enddo
       enddo
-      if (any(aice0r(1:nc) /= aim(1:nc,0))) errorflag(4) = failflag
+      if (any(aice0r(lo:hi) /= aim(lo:hi,0))) errorflag(4) = failflag
       if (cnt(1) == 0) errorflag(4) = failflag
       if (cnt(2) == 0) errorflag(5) = failflag
       if (cnt(3) == 0) errorflag(6) = failflag
@@ -314,8 +322,8 @@
       trm = fillval
       call state_to_tracers (off+1, off+nc, ntrcr, ntrace, &
                              aice0, aicen, trcrn, vicen, vsnon, aim, trm)
-      if (any(aim(:,0) /= c1) .or. any(aim(1:nc,1:ncat) /= c0)) errorflag(7) = failflag
-      if (any(trm /= c0)) errorflag(7) = failflag
+      if (any(aim(lo:hi,0) /= c1) .or. any(aim(lo:hi,1:ncat) /= c0)) errorflag(7) = failflag
+      if (any(trm(lo:hi,:,:) /= c0)) errorflag(7) = failflag
 
       aice0r = fillval
       aicenr = fillval
@@ -324,10 +332,10 @@
       trcrnr = trcrn
       call tracers_to_state (off, nc, nx_block, ny_block, dynMap(:,1), ntrcr, ntrace, &
                              aim, trm, aice0b, aice0r, aicenr, trcrnr, vicenr, vsnonr)
-      if (any(aice0r(1:nc) /= c1)) errorflag(7) = failflag
-      if (any(aicenr(1:nc,:) /= c0) .or. any(vicenr(1:nc,:) /= c0) &
-          .or. any(vsnonr(1:nc,:) /= c0)) errorflag(7) = failflag
-      if (any(trcrnr /= trcrn)) errorflag(7) = failflag
+      if (any(aice0r(lo:hi) /= c1)) errorflag(7) = failflag
+      if (any(aicenr(lo:hi,:) /= c0) .or. any(vicenr(lo:hi,:) /= c0) &
+          .or. any(vsnonr(lo:hi,:) /= c0)) errorflag(7) = failflag
+      if (any(trcrnr(lo:hi,:,:) /= trcrn(lo:hi,:,:))) errorflag(7) = failflag
 
       !-----------------------------------------------------------------
       ! Report
@@ -387,7 +395,7 @@
       trcrn = c0
 
       do n = 1, ncat
-      do ms = 1, nc
+      do ms = lo, hi
          ij = dynIJ(ms)
          j  = (ij-1)/nx_block + 1
          i  = ij - (j-1)*nx_block
