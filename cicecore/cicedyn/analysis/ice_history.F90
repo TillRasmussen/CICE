@@ -3143,10 +3143,10 @@
 
          if (f_sistrxdtop(1:1) /= 'x') then
            ! aice is block-shaped and strairxU compressed; product built per slot.
+           ! skipPhys: the accumulator discards ghost slots, so filling them
+           ! is work nothing reads.
            do is = 1, dynCntA(iblk)
-              ij = dynIJ(dynOff(iblk)+is)
-              j  = (ij-1)/nx_block + 1
-              i  = ij - (j-1)*nx_block
+              if (skipPhys(dynOff(iblk)+is)) cycle
               worksl(is,iblk) = aice_slot(dynOff(iblk)+is) * strairxU(dynOff(iblk)+is)
            enddo
            call accum_hist_field_2D_slotin(n_sistrxdtop, iblk, worksl(1:dynCntA(iblk),iblk), a2D)
@@ -3154,10 +3154,10 @@
 
          if (f_sistrydtop(1:1) /= 'x') then
            ! aice is block-shaped and strairyU compressed; product built per slot.
+           ! skipPhys: the accumulator discards ghost slots, so filling them
+           ! is work nothing reads.
            do is = 1, dynCntA(iblk)
-              ij = dynIJ(dynOff(iblk)+is)
-              j  = (ij-1)/nx_block + 1
-              i  = ij - (j-1)*nx_block
+              if (skipPhys(dynOff(iblk)+is)) cycle
               worksl(is,iblk) = aice_slot(dynOff(iblk)+is) * strairyU(dynOff(iblk)+is)
            enddo
            call accum_hist_field_2D_slotin(n_sistrydtop, iblk, worksl(1:dynCntA(iblk),iblk), a2D)
@@ -3166,10 +3166,10 @@
          if (f_sistrxubot(1:1) /= 'x') then
            ! aice is block-shaped and strocnxU compressed, so the product is built
            ! per slot -- same reason as the siforcetilt fields above.
+           ! skipPhys: the accumulator discards ghost slots, so filling them
+           ! is work nothing reads.
            do is = 1, dynCntA(iblk)
-              ij = dynIJ(dynOff(iblk)+is)
-              j  = (ij-1)/nx_block + 1
-              i  = ij - (j-1)*nx_block
+              if (skipPhys(dynOff(iblk)+is)) cycle
               worksl(is,iblk) = aice_slot(dynOff(iblk)+is) * strocnxU(dynOff(iblk)+is)
            enddo
            call accum_hist_field_2D_slotin(n_sistrxubot, iblk, worksl(1:dynCntA(iblk),iblk), a2D)
@@ -3178,10 +3178,10 @@
          if (f_sistryubot(1:1) /= 'x') then
            ! aice is block-shaped and strocnyU compressed, so the product is built
            ! per slot -- same reason as the siforcetilt fields above.
+           ! skipPhys: the accumulator discards ghost slots, so filling them
+           ! is work nothing reads.
            do is = 1, dynCntA(iblk)
-              ij = dynIJ(dynOff(iblk)+is)
-              j  = (ij-1)/nx_block + 1
-              i  = ij - (j-1)*nx_block
+              if (skipPhys(dynOff(iblk)+is)) cycle
               worksl(is,iblk) = aice_slot(dynOff(iblk)+is) * strocnyU(dynOff(iblk)+is)
            enddo
            call accum_hist_field_2D_slotin(n_sistryubot, iblk, worksl(1:dynCntA(iblk),iblk), a2D)
@@ -3652,7 +3652,10 @@
            ! product cannot be written inline the way the block form did.  Build
            ! it per slot instead -- dynIJ gives this slot's flattened cell, which
            ! is what aice_init is indexed by.  History steps only.
+           ! skipPhys: the accumulator discards ghost slots, so filling them
+           ! is work nothing reads.
            do is = 1, dynCntA(iblk)
+              if (skipPhys(dynOff(iblk)+is)) cycle
               worksl(is,iblk) = aice_init(dynIJ(dynOff(iblk)+is),iblk) * strtltxU(dynOff(iblk)+is)
            enddo
            call accum_hist_field_2D_slotin(n_siforcetiltx, iblk, worksl(1:dynCntA(iblk),iblk), a2D)
@@ -3663,7 +3666,10 @@
            ! product cannot be written inline the way the block form did.  Build
            ! it per slot instead -- dynIJ gives this slot's flattened cell, which
            ! is what aice_init is indexed by.  History steps only.
+           ! skipPhys: the accumulator discards ghost slots, so filling them
+           ! is work nothing reads.
            do is = 1, dynCntA(iblk)
+              if (skipPhys(dynOff(iblk)+is)) cycle
               worksl(is,iblk) = aice_init(dynIJ(dynOff(iblk)+is),iblk) * strtltyU(dynOff(iblk)+is)
            enddo
            call accum_hist_field_2D_slotin(n_siforcetilty, iblk, worksl(1:dynCntA(iblk),iblk), a2D)
