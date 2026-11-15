@@ -62,13 +62,13 @@
                               ntrcr, trcrn, &
                               restore, slots_current)
 
-      use ice_boundary, only: ice_halo, ice_HaloMask, ice_HaloUpdate, &
+      use ice_boundary, only: ice_halo, ice_HaloMask_compressed, &
           ice_HaloDestroy, ice_HaloUpdate3DR8_compressed
       use ice_domain_size, only: max_blocks, ncat
       use ice_blocks, only: nx_block, ny_block
       use ice_domain, only: halo_info, maskhalo_bound, nblocks
-      use ice_grid, only: dynMap, dynOff,       &
-          pack_cat_to_slots, pack_trc_to_slots, &
+      use ice_grid, only: dynMap, dynOff, dynTot, &
+          pack_cat_to_slots, pack_trc_to_slots,   &
           unpack_cat_from_slots, unpack_trc_from_slots
       use ice_state, only: aicen_slot, vicen_slot, vsnon_slot, trcrn_slot, &
           trcrn_flat
@@ -97,12 +97,12 @@
 
       ! local variables
 
-      integer (kind=int_kind) :: i, j, n, iblk
+      integer (kind=int_kind) :: i, j, n, iblk, ms
 
-      integer (kind=int_kind), &
-         dimension(nx_block,ny_block,max_blocks) :: halomask
+      integer (kind=int_kind), dimension(dynTot) :: halomask_slot
 
       type (ice_halo) :: halo_info_aicemask  ! halo mask
+      type (ice_halo) :: hinfo               ! the handle actually used
 
       logical (kind=log_kind) :: lrestore  ! local restart flag
       logical (kind=log_kind) :: lpack     ! pack block -> slots first
@@ -135,76 +135,54 @@
       ! this a pack + halo + unpack where it used to be a halo + pack --
       ! the same number of passes.  The saving arrives when the exit
       ! unpacks in ice_step_mod can be gated, which this unblocks.
+      if (lpack) call pack_state_slots
+
+      ! aicen always takes the FULL halo: the mask is built from it.
+      call ice_HaloUpdate3DR8_compressed(aicen_slot, halo_info,      &
+               field_loc_center, field_type_scalar, dynMap, dynOff)
+
+      ! maskhalo_bound selects the HALO HANDLE, not a separate code path.
+      ! The two branches this replaces did the same exchange, one on the
+      ! block forms and one on the slots; only the handle ever differed.
       if (maskhalo_bound) then
-         ! ⚠ This branch halos the BLOCK arrays and never touches the slots,
-         ! so it needs the block form to be current on entry.  The step_*
-         ! exit unpacks used to provide that; they are gone, because on the
-         ! compressed path below bound_state re-packs anyway.  Refresh here
-         ! instead, so the two branches do not depend on each other.
-         if (.not. lpack) then
-            !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
-            do iblk = 1, nblocks
-               call unpack_cat_from_slots(aicen_slot, dynMap(:,iblk), aicen(:,:,:,iblk))
-               call unpack_cat_from_slots(vicen_slot, dynMap(:,iblk), vicen(:,:,:,iblk))
-               call unpack_cat_from_slots(vsnon_slot, dynMap(:,iblk), vsnon(:,:,:,iblk))
-               call unpack_trc_from_slots(trcrn_slot, dynMap(:,iblk), trcrn(:,:,:,:,iblk))
+         halomask_slot = 0
+         !$OMP PARALLEL DO PRIVATE(ms,n) SCHEDULE(runtime)
+         do ms = 1, dynTot
+            do n = 1, ncat
+               if (aicen_slot(ms,n) > c0) halomask_slot(ms) = 1
             enddo
-            !$OMP END PARALLEL DO
-         endif
-
-         call ice_HaloUpdate (aicen,            halo_info, &
-                              field_loc_center, field_type_scalar)
-         halomask(:,:,:) = 0
-
-         !$OMP PARALLEL DO PRIVATE(iblk,n,i,j)
-         do iblk = 1, nblocks
-         do n = 1, ncat
-         do j = 1, ny_block
-         do i = 1, nx_block
-            if (aicen(i,j,n,iblk) > c0) halomask(i,j,iblk) = 1
-         enddo
-         enddo
-         enddo
          enddo
          !$OMP END PARALLEL DO
-
-         call ice_HaloMask(halo_info_aicemask, halo_info, halomask)
-
-         call ice_HaloUpdate (trcrn(:,:,:,:,:), halo_info_aicemask, &
-                              field_loc_center, field_type_scalar)
-         call ice_HaloUpdate (vicen,            halo_info_aicemask, &
-                              field_loc_center, field_type_scalar)
-         call ice_HaloUpdate (vsnon,            halo_info_aicemask, &
-                              field_loc_center, field_type_scalar)
-         call ice_HaloDestroy(halo_info_aicemask)
-
+         call ice_HaloMask_compressed(halo_info_aicemask, halo_info, &
+                                      halomask_slot, dynMap)
+         hinfo = halo_info_aicemask
       else
-         if (lpack) call pack_state_slots
-
-         call ice_HaloUpdate3DR8_compressed(aicen_slot, halo_info,      &
-                  field_loc_center, field_type_scalar, dynMap, dynOff)
-         call ice_HaloUpdate3DR8_compressed(vicen_slot, halo_info,      &
-                  field_loc_center, field_type_scalar, dynMap, dynOff)
-         call ice_HaloUpdate3DR8_compressed(vsnon_slot, halo_info,      &
-                  field_loc_center, field_type_scalar, dynMap, dynOff)
-         ! trcrn_slot is (slot,ntrcr,ncat); trcrn_flat is its contiguous
-         ! (slot, ntrcr*ncat) view, so all levels go in ONE call.
-         call ice_HaloUpdate3DR8_compressed(trcrn_flat, halo_info,      &
-                  field_loc_center, field_type_scalar, dynMap, dynOff)
-
-         !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
-         do iblk = 1, nblocks
-            call unpack_cat_from_slots(aicen_slot, &
-                 dynMap(:,iblk), aicen(:,:,:,iblk))
-            call unpack_cat_from_slots(vicen_slot, &
-                 dynMap(:,iblk), vicen(:,:,:,iblk))
-            call unpack_cat_from_slots(vsnon_slot, &
-                 dynMap(:,iblk), vsnon(:,:,:,iblk))
-            call unpack_trc_from_slots(trcrn_slot, &
-                 dynMap(:,iblk), trcrn(:,:,:,:,iblk))
-         enddo
-         !$OMP END PARALLEL DO
+         hinfo = halo_info
       endif
+
+      call ice_HaloUpdate3DR8_compressed(vicen_slot, hinfo,          &
+               field_loc_center, field_type_scalar, dynMap, dynOff)
+      call ice_HaloUpdate3DR8_compressed(vsnon_slot, hinfo,          &
+               field_loc_center, field_type_scalar, dynMap, dynOff)
+      ! trcrn_slot is (slot,ntrcr,ncat); trcrn_flat is its contiguous
+      ! (slot, ntrcr*ncat) view, so all levels go in ONE call.
+      call ice_HaloUpdate3DR8_compressed(trcrn_flat, hinfo,          &
+               field_loc_center, field_type_scalar, dynMap, dynOff)
+
+      !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
+      do iblk = 1, nblocks
+         call unpack_cat_from_slots(aicen_slot, &
+              dynMap(:,iblk), aicen(:,:,:,iblk))
+         call unpack_cat_from_slots(vicen_slot, &
+              dynMap(:,iblk), vicen(:,:,:,iblk))
+         call unpack_cat_from_slots(vsnon_slot, &
+              dynMap(:,iblk), vsnon(:,:,:,iblk))
+         call unpack_trc_from_slots(trcrn_slot, &
+              dynMap(:,iblk), trcrn(:,:,:,:,iblk))
+      enddo
+      !$OMP END PARALLEL DO
+
+      if (maskhalo_bound) call ice_HaloDestroy(halo_info_aicemask)
 
       if (lrestore) then
          call ice_restoring_halo(setfld='state')
