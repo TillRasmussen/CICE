@@ -253,7 +253,8 @@
 use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
 
       use ice_arrays_column, only: Cdn_ocn
-      use ice_boundary, only: ice_HaloMask, ice_HaloUpdate, &
+      use ice_boundary, only: ice_HaloMask_compressed, ice_HaloUpdate, &
+          ice_HaloUpdate2DI4_compressed, &
           ice_HaloUpdate2DR8_compressed, &
           ice_HaloUpdate_stress_compressed, &
           ice_HaloDestroy, ice_HaloUpdate_stress
@@ -320,8 +321,8 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
 
       logical (kind=log_kind) :: calc_strair
 
-      integer (kind=int_kind), dimension (nx_block,ny_block,max_blocks) :: &
-         halomask     ! generic halo mask
+      integer (kind=int_kind), dimension (dynTot) :: &
+         halomask_slot  ! generic halo mask
 
       type (ice_halo) :: &
          halo_info_mask !  ghost cell update info for masked halo
@@ -543,18 +544,20 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
 
       if (maskhalo_dyn) then
          call ice_timer_start(timer_bound)
-         halomask = 0
+         halomask_slot = 0
          do iblk = 1, nblocks
-            do j = 1, ny_block
-            do i = 1, nx_block
-               if (iceUmask((j-1)*nx_block+i,iblk)) halomask(i,j,iblk) = 1
-            enddo
+            do is = 1, dynCntA(iblk)
+               ms = dynOff(iblk) + is
+               if (.not. iceUmask_slot(ms)) cycle
+               halomask_slot(ms) = 1
             enddo
          enddo
-         call ice_HaloUpdate (halomask,          halo_info, &
-                              field_loc_center,  field_type_scalar)
+         call ice_HaloUpdate2DI4_compressed(halomask_slot,    halo_info, &
+                              field_loc_center, field_type_scalar,       &
+                              dynMap, dynOff)
          call ice_timer_stop(timer_bound)
-         call ice_HaloMask(halo_info_mask, halo_info, halomask)
+         call ice_HaloMask_compressed(halo_info_mask, halo_info, &
+                                      halomask_slot, dynMap)
       endif
 
       !-----------------------------------------------------------------
@@ -679,8 +682,9 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
          ! set halomask to zero because ice_HaloMask always keeps
          ! local copies AND tripole zipper communication
          !-------------------------------------------------------
-         halomask = 0
-         call ice_HaloMask(halo_info_mask, halo_info, halomask)
+         halomask_slot = 0
+         call ice_HaloMask_compressed(halo_info_mask, halo_info, &
+                                      halomask_slot, dynMap)
 
          call ice_HaloUpdate_stress_compressed(stressp_1_slot, stressp_3_slot, halo_info_mask, &
                               field_loc_center,  field_type_scalar, &

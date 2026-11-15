@@ -112,7 +112,8 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
 #endif
 
       use ice_arrays_column, only: Cdn_ocn
-      use ice_boundary, only: ice_halo, ice_HaloMask, ice_HaloUpdate, &
+      use ice_boundary, only: ice_halo, ice_HaloMask_compressed, ice_HaloUpdate, &
+          ice_HaloUpdate2DI4_compressed, &
           ice_HaloUpdate2DR8_compressed, ice_HaloUpdate3DR8_compressed, &
           ice_HaloDestroy
       use ice_blocks, only: block, get_block
@@ -201,8 +202,8 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
          ldiag   , & ! a stream wants the eap strain/stress diagnostics
          calc_strair
 
-      integer (kind=int_kind), dimension (nx_block,ny_block,max_blocks) :: &
-         halomask       ! ice mask for halo update
+      integer (kind=int_kind), dimension (dynTot) :: &
+         halomask_slot  ! ice mask for halo update
 
       type (ice_halo) :: &
          halo_info_mask !  ghost cell update info for masked halo
@@ -469,18 +470,20 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
 
       if (maskhalo_dyn) then
          call ice_timer_start(timer_bound)
-         halomask = 0
+         halomask_slot = 0
          do iblk = 1, nblocks
-            do j = 1, ny_block
-            do i = 1, nx_block
-               if (iceUmask((j-1)*nx_block+i,iblk)) halomask(i,j,iblk) = 1
-            enddo
+            do is = 1, dynCntA(iblk)
+               ms = dynOff(iblk) + is
+               if (.not. iceUmask_slot(ms)) cycle
+               halomask_slot(ms) = 1
             enddo
          enddo
-         call ice_HaloUpdate (halomask,          halo_info, &
-                              field_loc_center,  field_type_scalar)
+         call ice_HaloUpdate2DI4_compressed(halomask_slot,    halo_info, &
+                              field_loc_center, field_type_scalar,       &
+                              dynMap, dynOff)
          call ice_timer_stop(timer_bound)
-         call ice_HaloMask(halo_info_mask, halo_info, halomask)
+         call ice_HaloMask_compressed(halo_info_mask, halo_info, &
+                                      halomask_slot, dynMap)
       endif
 
       !-----------------------------------------------------------------

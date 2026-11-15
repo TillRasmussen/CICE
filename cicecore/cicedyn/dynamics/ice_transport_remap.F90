@@ -341,7 +341,8 @@
                                    l_dp_midpt,               &
                                    uvelE,          vvelN)
 
-      use ice_boundary, only: ice_halo, ice_HaloMask, ice_HaloUpdate, &
+      use ice_boundary, only: ice_halo, ice_HaloMask_compressed, ice_HaloUpdate, &
+          ice_HaloUpdate2DI4_compressed, &
           ice_HaloDestroy
       use ice_domain, only: nblocks, blocks_ice, halo_info, maskhalo_remap
       use ice_blocks, only: block, get_block, nghost
@@ -506,8 +507,8 @@
       integer (kind=int_kind), dimension(:,:), allocatable ::     &
          indxsng              ! the slot each of those cells owns
 
-      integer (kind=int_kind), dimension(nx_block,ny_block,max_blocks) :: &
-         halomask           ! temporary mask for fast halo updates
+      integer (kind=int_kind), dimension(dynTot) :: &
+         halomask_slot      ! temporary mask for fast halo updates
 
       logical (kind=log_kind) ::     &
          l_stop             ! if true, abort the model
@@ -699,38 +700,31 @@
 
          ! tracer fields
          if (maskhalo_remap) then
-            halomask(:,:,:) = 0
-            !$OMP PARALLEL DO PRIVATE(iblk,this_block,ilo,ihi,jlo,jhi,n,m,j,i) SCHEDULE(runtime)
+            halomask_slot(:) = 0
+            !$OMP PARALLEL DO PRIVATE(iblk,n,m,is) SCHEDULE(runtime)
             do iblk = 1, nblocks
-               this_block = get_block(blocks_ice(iblk),iblk)
-               ilo = this_block%ilo
-               ihi = this_block%ihi
-               jlo = this_block%jlo
-               jhi = this_block%jhi
-
                ! ⚠ The slot loop must carry the block form's bounds: it ran
-               ! ilo..ihi, jlo..jhi, and a slot loop would widen that to the
-               ! whole block including the ghost rim.  skipRmp is exactly
-               ! that range at nghost 1 and wider at nghost 2, so the cell
-               ! is tested through dynIJ rather than through the mask.
+               ! ilo..ihi, jlo..jhi, and an unguarded slot loop would widen
+               ! that to the whole block including the ghost rim.  skipPhys
+               ! is exactly that range -- note skipRmp is NOT, being wider at
+               ! nghost 2, so it is the wrong mask here.
                do n = 1, ncat
                do m = 1, ntrace
                do is = dynOff(iblk)+1, dynOff(iblk)+dynCntA(iblk)
-                  ijb = dynIJ(is)
-                  i = mod(ijb-1, nx_block) + 1
-                  j = (ijb-1) / nx_block + 1
-                  if (i < ilo .or. i > ihi .or. j < jlo .or. j > jhi) cycle
-                  if (tc(is,m,n) /= c0) halomask(i,j,iblk) = 1
-                  if (tx(is,m,n) /= c0) halomask(i,j,iblk) = 1
-                  if (ty(is,m,n) /= c0) halomask(i,j,iblk) = 1
+                  if (skipPhys(is)) cycle
+                  if (tc(is,m,n) /= c0) halomask_slot(is) = 1
+                  if (tx(is,m,n) /= c0) halomask_slot(is) = 1
+                  if (ty(is,m,n) /= c0) halomask_slot(is) = 1
                enddo
                enddo
                enddo
             enddo
             !$OMP END PARALLEL DO
-            call ice_HaloUpdate (halomask,         halo_info, &
-                                 field_loc_center, field_type_scalar)
-            call ice_HaloMask(halo_info_tracer, halo_info, halomask)
+            call ice_HaloUpdate2DI4_compressed(halomask_slot,  halo_info, &
+                                 field_loc_center, field_type_scalar,      &
+                                 dynMap, dynOff)
+            call ice_HaloMask_compressed(halo_info_tracer, halo_info, &
+                                 halomask_slot, dynMap)
 
             p2(1:dynTot,1:ntrace*ncat) => tc
             call ice_HaloUpdate3DR8_compressed(p2, halo_info_tracer, &
