@@ -889,6 +889,61 @@ EOF2
 
 done    # foreach intfc
 
+#-----------------------------------------------------------------------
+# COMPRESSED variants.
+#
+# These address the slot layout, not (i,j,iblk), so they cannot come from
+# the block template above -- they have their own, kept beside this script.
+# They are generated here so that regenerating ice_boundary.F90 does not
+# silently delete them: before this they lived INSIDE the autogenerate
+# block while this script had no notion of them.
+#
+# The substitution variables are the same ones the block template uses, so
+# the integer variant truncates in exactly the places the block integer
+# variant does -- which is what makes the logical variant correct under
+# linear_extrap.  See HaloUpdate_compressed_2DL1.subr.in.
+#-----------------------------------------------------------------------
+
+for intfc in 3DR8 3DI4; do
+
+  file=HaloUpdate${intfc}_compressed.subr
+  echo "generate ${file}"
+
+  if [[ ${intfc} =~ R8 ]]; then
+    ctype1="real"  ; ctype2="dbl_kind" ; dtype="real (dbl_kind)"
+    mtype="mpiR8"  ; zero="0._dbl_kind"; half="(0.5_dbl_kind"
+    intfc2="2DR8"
+  elif [[ ${intfc} =~ I4 ]]; then
+    ctype1="int"   ; ctype2="int_kind" ; dtype="integer (int_kind)"
+    mtype="MPI_INTEGER" ; zero="0"     ; half="nint(0.5_dbl_kind"
+    intfc2="2DI4"
+  else
+    echo "ERROR, unmatched ${intfc} vs type"
+    exit -9
+  fi
+
+  sed -e "s|\${intfc}|${intfc}|g"   -e "s|\${ctype1}|${ctype1}|g" \
+      -e "s|\${ctype2}|${ctype2}|g" -e "s|\${dtype}|${dtype}|g"   \
+      -e "s|\${mtype}|${mtype}|g"   -e "s|\${zero}|${zero}|g"     \
+      -e "s|\${half}|${half}|g"                                     \
+      HaloUpdate_compressed_3d.template > ${file}
+
+  sed -e "s|\${intfc2}|${intfc2}|g" -e "s|\${intfc3}|${intfc}|g" \
+      -e "s|\${dtype}|${dtype}|g"                                  \
+      HaloUpdate_compressed_2d.template >> ${file}
+
+  cat ${file} >> ${fileall}
+  cat <<EOF3 >> ${fileall}
+!***********************************************************************
+EOF3
+
+done    # foreach compressed intfc
+
+# the logical variant is not generated from the templates: it carries the
+# field as an integer and delegates, exactly as ice_HaloUpdate2DL1 does
+echo "generate HaloUpdate2DL1_compressed.subr"
+cp HaloUpdate_compressed_2DL1.subr.in HaloUpdate2DL1_compressed.subr
+cat HaloUpdate2DL1_compressed.subr >> ${fileall}
 
 exit -9
 

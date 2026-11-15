@@ -1,0 +1,85 @@
+
+ subroutine ice_HaloUpdate2DL1_compressed(array, halo,         &
+                                          fieldLoc, fieldKind, &
+                                          map, off, fillValue)
+
+!  This routine updates ghost cells for a COMPRESSED 2d logical array.
+!
+!  It follows ice_HaloUpdate2DL1: a logical field is carried through the
+!  halo as an integer, because the boundary conditions are not all simple
+!  copies.  ⚠ The integer form is load-bearing, not a convenience -- for
+!  linear_extrap the ghost value is COMPUTED from its neighbours, and the
+!  integer path truncates that arithmetic where a real one would not.
+!  Routing a logical through ice_HaloUpdate2DR8_compressed instead would
+!  therefore differ under bclinearextrap.
+
+   type (ice_halo), intent(in) :: &
+      halo                 ! precomputed halo structure
+
+   integer (int_kind), intent(in) :: &
+      fieldKind,          &! id for type of field (scalar, vector, angle)
+      fieldLoc             ! id for location on horizontal grid
+
+   integer (int_kind), dimension(:,:), intent(in) :: &
+      map                  ! block-local slot of each cell
+
+   integer (int_kind), dimension(:), intent(in) :: &
+      off                  ! first slot of each block, minus one
+
+   logical (log_kind), intent(in), optional :: &
+      fillValue            ! value to put in ghost cells with no neighbour
+
+   logical (log_kind), dimension(:), intent(inout) :: &
+      array                ! compressed field whose halo needs updating
+
+!-----------------------------------------------------------------------
+
+   integer (int_kind) :: &
+      istat                ! allocate return status
+
+   integer (int_kind), dimension(:), allocatable :: &
+      iarray               ! the same field, carried as an integer
+
+   integer (int_kind) :: &
+      ifillValue           ! fill value
+
+   character(len=*), parameter :: subname = '(ice_HaloUpdate2DL1_compressed)'
+
+!-----------------------------------------------------------------------
+
+   allocate(iarray(size(array)),stat=istat)
+   if (istat > 0) then
+      call abort_ice(subname//'ERROR: allocating iarray')
+      return
+   endif
+
+   iarray = 0
+   where (array) iarray = 1
+   if (present(fillValue)) then
+      ifillValue = 0
+      if (fillValue) ifillValue = 1
+      call ice_HaloUpdate2DI4_compressed(iarray, halo,        &
+                                         fieldLoc, fieldKind, &
+                                         map, off, ifillValue)
+   else
+      call ice_HaloUpdate2DI4_compressed(iarray, halo,        &
+                                         fieldLoc, fieldKind, &
+                                         map, off)
+   endif
+
+   ! tcraig, for most BCs, the mod is not needed, iarray will always be 0 or 1.
+   ! for linear_extrap, the bc is not a simple copy, it's a computation from neighbor
+   ! points.  Use the mod to provide a more consistent result for linear_extrap bcs for
+   ! logicals.
+   array = .false.
+   where (mod(abs(iarray),2) /= 0) array = .true.
+
+   deallocate(iarray, stat=istat)
+   if (istat > 0) then
+      call abort_ice(subname//'ERROR: deallocating iarray')
+      return
+   endif
+
+ end subroutine ice_HaloUpdate2DL1_compressed
+
+!***********************************************************************

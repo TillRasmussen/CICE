@@ -1,0 +1,38 @@
+ subroutine ice_HaloUpdate${intfc2}_compressed(array, halo,         &
+                                          fieldLoc, fieldKind, &
+                                          map, off, fillValue)
+
+   type (ice_halo), intent(in) :: &
+      halo                 ! precomputed halo structure
+
+   integer (int_kind), intent(in) :: &
+      fieldKind,          &! id for type of field (scalar, vector, angle)
+      fieldLoc             ! id for location on horizontal grid
+
+   integer (int_kind), dimension(:,:), intent(in) :: &
+      map                  ! block-local slot of each cell
+
+   integer (int_kind), dimension(:), intent(in) :: &
+      off                  ! first slot of each block, minus one
+
+   ${dtype}, intent(in), optional :: &
+      fillValue            ! value to put in ghost cells with no neighbour
+
+   ! TARGET and CONTIGUOUS are required to alias this to rank 2 below
+   ${dtype}, dimension(:), intent(inout), target, contiguous :: &
+      array                ! compressed field whose halo needs updating
+
+   ${dtype}, pointer :: &
+      array_2d(:,:)        ! one-field bundle view of array
+
+   character(len=*), parameter :: subname = '(ice_HaloUpdate${intfc2}_compressed)'
+
+   ! 1-based to match the compressed layout: the target has size(array)
+   ! elements, so a 0:ubound view would ask for one more than exists and
+   ! would hand the 3d routine a 0-based array it no longer expects.
+   array_2d(1:size(array),1:1) => array
+
+   call ice_HaloUpdate${intfc3}_compressed(array_2d, halo, fieldLoc, fieldKind, &
+                                      map, off, fillValue)
+
+ end subroutine ice_HaloUpdate${intfc2}_compressed

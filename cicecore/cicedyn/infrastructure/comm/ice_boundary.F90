@@ -130,6 +130,10 @@
              ice_HaloUpdate, &
              ice_HaloUpdate2DR8_compressed, &
              ice_HaloUpdate3DR8_compressed, &
+             ice_HaloUpdate2DI4_compressed, &
+             ice_HaloUpdate3DI4_compressed, &
+             ice_HaloUpdate2DL1_compressed, &
+             ice_HaloUpdate_compressed, &
              ice_HaloUpdate_stress, &
              ice_HaloExtrapolate, &
              ice_HaloExtrapolate2DR8_compressed, &
@@ -149,6 +153,18 @@
                        ice_HaloUpdate4DR8, &
                        ice_HaloUpdate4DR4, &
                        ice_HaloUpdate4DI4
+   end interface
+
+   ! Generic interface for the COMPRESSED halo.  ⚠ Deliberately separate
+   ! from ice_HaloUpdate: a compressed field is rank 1, and folding these
+   ! in would let a block array resolve to a compressed routine silently.
+   ! Same convention as the _slotin history accumulators.
+   interface ice_HaloUpdate_compressed
+      module procedure ice_HaloUpdate2DR8_compressed, &
+                       ice_HaloUpdate3DR8_compressed, &
+                       ice_HaloUpdate2DI4_compressed, &
+                       ice_HaloUpdate3DI4_compressed, &
+                       ice_HaloUpdate2DL1_compressed
    end interface
 
    interface ice_HaloUpdate_stress  ! generic interface
@@ -4192,6 +4208,899 @@ contains
 
  end subroutine ice_HaloUpdate2DR8_compressed
 
+ subroutine ice_HaloUpdate3DI4_compressed(array, halo,         &
+                                          fieldLoc, fieldKind, &
+                                          map, off, fillValue)
+
+   type (ice_halo), intent(in) :: &
+      halo                 ! precomputed halo structure
+
+   integer (int_kind), intent(in) :: &
+      fieldKind,          &! id for type of field (scalar, vector, angle)
+      fieldLoc             ! id for location on horizontal grid
+
+   ! map is flattened: element (i,j,iblk) is at ((j-1)*nx_block + i, iblk),
+   ! and holds that cell's block-local slot, or 0 if the cell is not stored
+   integer (int_kind), dimension(:,:), intent(in) :: &
+      map                  ! block-local slot of each cell
+
+   integer (int_kind), dimension(:), intent(in) :: &
+      off                  ! first slot of each block, minus one
+
+   integer (int_kind), intent(in), optional :: &
+      fillValue            ! value to put in ghost cells with no neighbour
+
+   ! element 0 of dimension 1 is the "not stored" slot, held at zero;
+   ! dimension 2 is the field index within the bundle
+   integer (int_kind), dimension(:,:), intent(inout) :: &
+      array                ! compressed field(s) whose halo needs updating
+
+!-----------------------------------------------------------------------
+!
+!  local variables
+!
+!-----------------------------------------------------------------------
+
+   integer (int_kind) ::           &
+      i,j,n,nmsg,         &! dummy loop indices
+      ilo,ihi,jlo,jhi,    &! block sizes for fill
+      iblk,iblock,jblock, &! global block indices
+      iSrc,jSrc,          &! source addresses for message
+      iDst,jDst,          &! dest   addresses for message
+      srcBlock,           &! local block number for source
+      dstBlock,           &! local block number for destination
+      isrcs, idsts,       &! source and destination slots
+      k, l,               &! field index within the bundle; buffer 4th index
+      nz, nt,             &! number of fields bundled; always 1 here
+      nxGlobal,           &! global domain size in x (tripole)
+      ioffset, joffset,   &! address shifts for tripole
+      isign,              &! sign factor for tripole grids
+      istatc               ! allocate status, tripole buffer (always declared)
+
+   integer (int_kind) :: &
+      fill                 ! value to use for unknown points
+
+   integer (int_kind) :: &
+      x1, x2, xavg         ! for tripole mid-point averaging
+
+   integer (int_kind), dimension(:,:,:,:), allocatable :: &
+      bufTripole           ! 4d tripole buffer
+
+   logical (log_kind) :: &
+      ewfillouter,        &! fill outer boundary ew
+      nsfillouter          ! fill outer boundary ns
+
+#ifndef NO_MPI
+   integer (int_kind) :: &
+      ierr,               &! error or status flag for MPI,alloc
+      istat,              &! allocate status flag
+      len                  ! length of message
+
+   integer (int_kind), dimension(:), allocatable :: &
+      sndRequest,         &! MPI request ids
+      rcvRequest           ! MPI request ids
+
+   integer (int_kind), dimension(:,:), allocatable :: &
+      sndStatus,          &! MPI status flags
+      rcvStatus            ! MPI status flags
+
+   integer (int_kind), dimension(:,:), allocatable :: &
+      bufSend, bufRecv     ! send,recv buffers
+#endif
+
+   character(len=*), parameter :: subname = '(ice_HaloUpdate3DI4_compressed)'
+
+!-----------------------------------------------------------------------
+!
+!  abort or return on unknown or noupdate field_loc or field_type
+!
+!-----------------------------------------------------------------------
+
+   if (fieldLoc  == field_loc_unknown .or. &
+       fieldKind == field_type_unknown) then
+      call abort_ice(subname//'ERROR: use of field_loc/type_unknown not allowed')
+      return
+   endif
+
+   if (fieldLoc  == field_loc_noupdate .or. &
+       fieldKind == field_type_noupdate) then
+      return
+   endif
+
+!-----------------------------------------------------------------------
+!
+!  initialize fill value
+!
+!-----------------------------------------------------------------------
+
+   ewfillouter = .true.
+   nsfillouter = .true.
+
+   ! do not fill outer boundary if open or closed
+   if (halo%ewBoundaryType == 'open' .or. &
+       halo%ewBoundaryType == 'closed') ewfillouter=.false.
+   if (halo%nsBoundaryType == 'open' .or. &
+       halo%nsBoundaryType == 'closed') nsfillouter=.false.
+
+   if (present(fillValue)) then
+      fill = fillValue
+      ! always fill outer boundary if fillValue is passed
+      ewfillouter = .true.
+      nsfillouter = .true.
+   else
+      fill = 0
+   endif
+
+   nz = size(array, dim=2)
+
+   ! Every block's dead slot must stay zero: the stencils read it whenever a
+   ! neighbour is missing.  Blocks are packed with spacing cnt+1, so block n's
+   ! dead slot sits at off(n+1), and the last block's is the final element.
+   !
+   ! off is dimensioned max_blocks but set_ragged_layout fills only 1..nblocks,
+   ! leaving the tail at the 0 it was initialised to -- so entries beyond the
+   ! real block count must be skipped, not written.
+   !
+   ! This was "array(0,:) = 0" under the old 0-based layout, which only ever
+   ! covered block 1 -- off(1) is 0 -- so the cover is now complete rather than
+   ! partial.  The invariant is really maintained by pack_to_slots, which zeroes
+   ! comp(size(comp)); this is belt and braces.
+   do iblk = 2, size(off)
+      if (off(iblk) > 0) array(off(iblk),:) = 0
+   enddo
+   array(size(array,1),:) = 0
+
+!-----------------------------------------------------------------------
+!
+!  allocate the tripole buffer
+!
+!  The fold is expressed on a GLOBAL buffer indexed by global i, not on the
+!  compressed array, so the compressed layout does not obstruct it: the array
+!  is only ever read at (iSrc,jSrc,srcBlock) and written at
+!  (iDst,jDst,dstBlock), and both map through cslot like any other address.
+!  That is why this can be a real fold rather than the block-layout
+!  round-trip it used to be.
+!
+!-----------------------------------------------------------------------
+
+   nt = 1
+   nxGlobal = 0
+   if (nxGlobal_size > 0) then
+      nxGlobal = nxGlobal_size
+      allocate(bufTripole(nxGlobal,halo%tripoleRows,nz,nt),stat=istatc)
+      if (istatc > 0) then
+         call abort_ice(subname//'ERROR: allocating bufTripole array')
+         return
+      endif
+      bufTripole = fill
+   endif
+
+#ifndef NO_MPI
+!-----------------------------------------------------------------------
+!
+!  post receives, then pack and send
+!
+!-----------------------------------------------------------------------
+
+   allocate(sndRequest(halo%numMsgSend), &
+            rcvRequest(halo%numMsgRecv), &
+            sndStatus(MPI_STATUS_SIZE,halo%numMsgSend), &
+            rcvStatus(MPI_STATUS_SIZE,halo%numMsgRecv), stat=istat)
+   if (istat > 0) then
+      call abort_ice(subname//'ERROR: allocating req,status arrays')
+      return
+   endif
+
+   allocate(bufSend(bufSizeSend*nz, halo%numMsgSend),   &
+            bufRecv(bufSizeRecv*nz, halo%numMsgRecv),   stat=istat)
+   if (istat > 0) then
+      call abort_ice(subname//'ERROR: allocating buffers')
+      return
+   endif
+
+   do nmsg=1,halo%numMsgRecv
+      len = halo%SizeRecv(nmsg)*nz
+      call MPI_IRECV(bufRecv(1,nmsg), len, MPI_INTEGER,  &
+                     halo%recvTask(nmsg),          &
+                     mpitagHalo + halo%recvTask(nmsg), &
+                     halo%communicator, rcvRequest(nmsg), ierr)
+   end do
+
+   do nmsg=1,halo%numMsgSend
+      i = 0
+      do n=1,halo%sizeSend(nmsg)
+         iSrc     = halo%sendAddr(1,n,nmsg)
+         jSrc     = halo%sendAddr(2,n,nmsg)
+         srcBlock = halo%sendAddr(3,n,nmsg)
+
+         ! A source cell with no slot is land.  Under the old 0-based layout
+         ! array(0) was the dead slot and read as zero; now there is no element
+         ! 0, so say the zero out loud.  Zero is what the block layout carries
+         ! at land, so this matches ice_HaloUpdate2DR8 either way.
+         isrcs = cslot(iSrc,jSrc,srcBlock)
+         if (isrcs > 0) then
+            do k=1,nz
+               i = i + 1
+               bufSend(i,nmsg) = array(isrcs,k)
+            end do
+         else
+            do k=1,nz
+               i = i + 1
+               bufSend(i,nmsg) = c0
+            end do
+         endif
+      end do
+
+      do n=i+1,bufSizeSend*nz
+         bufSend(n,nmsg) = fill  ! fill remainder of buffer
+      end do
+
+      len = halo%SizeSend(nmsg)*nz
+      call MPI_ISEND(bufSend(1,nmsg), len, MPI_INTEGER, &
+                     halo%sendTask(nmsg),         &
+                     mpitagHalo + my_task,        &
+                     halo%communicator, sndRequest(nmsg), ierr)
+   end do
+#endif
+
+!-----------------------------------------------------------------------
+!
+!  fill the outer boundary where there is no neighbour to supply it
+!
+!-----------------------------------------------------------------------
+
+   do iblk = 1, halo%numLocalBlocks
+      call get_block_parameter(halo%blockGlobalID(iblk),     &
+                               ilo=ilo,       ihi=ihi,       &
+                               jlo=jlo,       jhi=jhi,       &
+                               iblock=iblock, jblock=jblock)
+      if (ewfillouter .or. iblock > 1) then              ! west edge
+         do i = 1,nghost
+         do j = jlo,jhi
+            call cfill(ilo-i,j,iblk)
+         enddo
+         enddo
+      endif
+      if (ewfillouter .or. iblock < nblocks_x) then      ! east edge
+         do i = 1,nghost
+         do j = jlo,jhi
+            call cfill(ihi+i,j,iblk)
+         enddo
+         enddo
+      endif
+      if (nsfillouter .or. jblock > 1) then              ! south edge
+         do j = 1,nghost
+         do i = ilo,ihi
+            call cfill(i,jlo-j,iblk)
+         enddo
+         enddo
+      endif
+      if (nsfillouter .or. jblock < nblocks_y) then      ! north edge
+         do j = 1,nghost
+         do i = ilo,ihi
+            call cfill(i,jhi+j,iblk)
+         enddo
+         enddo
+      endif
+      if ((ewfillouter .or. iblock > 1) .and. &          ! southwest corner
+          (nsfillouter .or. jblock > 1)) then
+         do j = 1,nghost
+         do i = 1,nghost
+            call cfill(ilo-i,jlo-j,iblk)
+         enddo
+         enddo
+      endif
+      if ((ewfillouter .or. iblock > 1) .and. &          ! northwest corner
+          (nsfillouter .or. jblock < nblocks_y)) then
+         do j = 1,nghost
+         do i = 1,nghost
+            call cfill(ilo-i,jhi+j,iblk)
+         enddo
+         enddo
+      endif
+      if ((ewfillouter .or. iblock < nblocks_x) .and. &  ! southeast corner
+          (nsfillouter .or. jblock > 1)) then
+         do j = 1,nghost
+         do i = 1,nghost
+            call cfill(ihi+i,jlo-j,iblk)
+         enddo
+         enddo
+      endif
+      if ((ewfillouter .or. iblock < nblocks_x) .and. &  ! northeast corner
+          (nsfillouter .or. jblock < nblocks_y)) then
+         do j = 1,nghost
+         do i = 1,nghost
+            call cfill(ihi+i,jhi+j,iblk)
+         enddo
+         enddo
+      endif
+   enddo ! iblk
+
+!-----------------------------------------------------------------------
+!
+!  local copies
+!
+!  a zero srcBlock denotes an eliminated land block or a closed boundary
+!  where ghost cell values are undefined; a negative one is a copy OUT of the
+!  tripole buffer and is handled after the fold, further down
+!
+!-----------------------------------------------------------------------
+
+   do nmsg=1,halo%numLocalCopies
+      iSrc     = halo%srcLocalAddr(1,nmsg)
+      jSrc     = halo%srcLocalAddr(2,nmsg)
+      srcBlock = halo%srcLocalAddr(3,nmsg)
+      iDst     = halo%dstLocalAddr(1,nmsg)
+      jDst     = halo%dstLocalAddr(2,nmsg)
+      dstBlock = halo%dstLocalAddr(3,nmsg)
+
+      if (srcBlock > 0) then
+         if (dstBlock > 0) then
+            idsts = cslot(iDst,jDst,dstBlock)
+            if (idsts > 0) then
+               isrcs = cslot(iSrc,jSrc,srcBlock)
+               if (isrcs > 0) then
+                  array(idsts,:) = array(isrcs,:)
+               else
+                  array(idsts,:) = c0   ! source is land
+               endif
+            endif
+         else if (dstBlock < 0) then ! tripole copy into buffer
+            isrcs = cslot(iSrc,jSrc,srcBlock)
+            do l=1,nt
+            do k=1,nz
+               if (isrcs > 0) then
+                  bufTripole(iDst,jDst,k,l) = array(isrcs,k)
+               else
+                  bufTripole(iDst,jDst,k,l) = c0   ! source is land
+               endif
+            end do
+            end do
+         endif
+      else if (srcBlock == 0) then
+         if (dstBlock > 0) then
+            idsts = cslot(iDst,jDst,dstBlock)
+            if (idsts > 0) array(idsts,:) = fill
+         endif
+      endif
+   end do
+
+#ifndef NO_MPI
+!-----------------------------------------------------------------------
+!
+!  wait for receives, then unpack into ghost slots
+!
+!-----------------------------------------------------------------------
+
+   call MPI_WAITALL(halo%numMsgRecv, rcvRequest, rcvStatus, ierr)
+
+   do nmsg=1,halo%numMsgRecv
+      i = 0
+      do n=1,halo%sizeRecv(nmsg)
+         iDst     = halo%recvAddr(1,n,nmsg)
+         jDst     = halo%recvAddr(2,n,nmsg)
+         dstBlock = halo%recvAddr(3,n,nmsg)
+
+         if (dstBlock > 0) then
+            idsts = cslot(iDst,jDst,dstBlock)
+            do k=1,nz
+               i = i + 1
+               ! a ghost cell outside the static mask has no slot; drop it
+               if (idsts > 0) array(idsts,k) = bufRecv(i,nmsg)
+            end do
+         else if (dstBlock < 0) then ! tripole
+            ! the counter must advance here too, or everything after this
+            ! entry in the message is read from the wrong buffer slot
+            do l=1,nt
+            do k=1,nz
+               i = i + 1
+               bufTripole(iDst,jDst,k,l) = bufRecv(i,nmsg)
+            end do
+            end do
+         endif
+      end do
+   end do
+
+!-----------------------------------------------------------------------
+!
+!  wait for sends to complete and deallocate buffers
+!
+!-----------------------------------------------------------------------
+
+   call MPI_WAITALL(halo%numMsgSend, sndRequest, sndStatus, ierr)
+
+   deallocate(sndRequest, rcvRequest, sndStatus, rcvStatus, stat=ierr)
+   if (ierr > 0) then
+      call abort_ice(subname//'ERROR: deallocating req,status arrays')
+      return
+   endif
+
+   deallocate(bufSend, bufRecv, stat=ierr)
+   if (ierr > 0) then
+      call abort_ice(subname//'ERROR: deallocating buffers')
+      return
+   endif
+#endif
+
+!-----------------------------------------------------------------------
+!
+! Compute zero_gradient and linear_extrap BCs
+! BCs in corner can be computed in either direction first
+! Do full length of edges in both directions to address edge box corners, those halo points will be
+! computed independently for each box.  Second pass (north/south) will clean global corners
+! Needs to come after halo update because want halo to be filled by other methods (cyclic) first
+! before applying zero_gradient/linear_extrap in other direction
+!
+! Mirrors the block-layout routine exactly.  A ghost cell with no slot is
+! skipped; an interior cell with no slot reads as zero, which cval returns
+! explicitly -- the layout is 1-based, so there is no element 0 to lean on --
+! and zero is what the block layout carries at land.
+!
+!-----------------------------------------------------------------------
+
+   if (halo%ewBoundaryType == 'zero_gradient' .or. halo%ewBoundaryType == 'linear_extrap' .or. &
+       halo%nsBoundaryType == 'zero_gradient' .or. halo%nsBoundaryType == 'linear_extrap') then
+      do iblk = 1, halo%numLocalBlocks
+         call get_block_parameter(halo%blockGlobalID(iblk),     &
+                                  ilo=ilo,       ihi=ihi,       &
+                                  jlo=jlo,       jhi=jhi,       &
+                                  iblock=iblock, jblock=jblock)
+
+         if (iblock == 1) then                      ! west edge
+            if (halo%ewBoundaryType == 'zero_gradient'  ) then
+               do j = jlo-nghost,jhi+nghost
+               do i = 1,nghost
+                  do k = 1,nz
+                     call cset(i,j,iblk,k, cval(ilo,j,iblk,k))
+                  enddo
+               enddo
+               enddo
+            elseif (halo%ewBoundaryType == 'linear_extrap'  ) then
+               do j = jlo-nghost,jhi+nghost
+               do i = 1,nghost
+                  do k = 1,nz
+                     call cset(i,j,iblk,k, cval(ilo,j,iblk,k) - &
+                        int((nghost-i+1),int_kind)*(cval(ilo+1,j,iblk,k)-cval(ilo,j,iblk,k)))
+                  enddo
+               enddo
+               enddo
+            endif
+         endif
+
+         if (iblock == nblocks_x) then              ! east edge
+            if (halo%ewBoundaryType == 'zero_gradient'  ) then
+               do j = jlo-nghost,jhi+nghost
+               do i = 1,nghost
+                  do k = 1,nz
+                     call cset(ihi+i,j,iblk,k, cval(ihi,j,iblk,k))
+                  enddo
+               enddo
+               enddo
+            elseif (halo%ewBoundaryType == 'linear_extrap') then
+               do j = jlo-nghost,jhi+nghost
+               do i = 1,nghost
+                  do k = 1,nz
+                     call cset(ihi+i,j,iblk,k, cval(ihi,j,iblk,k) + &
+                        int((i),int_kind)*(cval(ihi,j,iblk,k)-cval(ihi-1,j,iblk,k)))
+                  enddo
+               enddo
+               enddo
+            endif
+         endif
+
+         if (jblock == 1) then                      ! south edge
+            if (halo%nsBoundaryType == 'zero_gradient'  ) then
+               do j = 1,nghost
+               do i = ilo-nghost,ihi+nghost
+                  do k = 1,nz
+                     call cset(i,j,iblk,k, cval(i,jlo,iblk,k))
+                  enddo
+               enddo
+               enddo
+            elseif (halo%nsBoundaryType == 'linear_extrap'  ) then
+               do j = 1,nghost
+               do i = ilo-nghost,ihi+nghost
+                  do k = 1,nz
+                     call cset(i,j,iblk,k, cval(i,jlo,iblk,k) - &
+                        int((nghost-j+1),int_kind)*(cval(i,jlo+1,iblk,k)-cval(i,jlo,iblk,k)))
+                  enddo
+               enddo
+               enddo
+            endif
+         endif
+
+         if (jblock == nblocks_y) then              ! north edge
+            if (halo%nsBoundaryType == 'zero_gradient'  ) then
+               do j = 1,nghost
+               do i = ilo-nghost,ihi+nghost
+                  do k = 1,nz
+                     call cset(i,jhi+j,iblk,k, cval(i,jhi,iblk,k))
+                  enddo
+               enddo
+               enddo
+            elseif (halo%nsBoundaryType == 'linear_extrap') then
+               do j = 1,nghost
+               do i = ilo-nghost,ihi+nghost
+                  do k = 1,nz
+                     call cset(i,jhi+j,iblk,k, cval(i,jhi,iblk,k) + &
+                        int((j),int_kind)*(cval(i,jhi,iblk,k)-cval(i,jhi-1,iblk,k)))
+                  enddo
+               enddo
+               enddo
+            endif
+         endif
+
+      enddo  ! iblk
+   endif  ! zero_gradient or linear_extrap
+
+!-----------------------------------------------------------------------
+!
+!  take care of northern boundary in tripole case
+!  bufTripole array contains the top nghost+1 rows (u-fold) or nghost+2 rows
+!  (T-fold) of physical domain for entire (global) top row
+!
+!-----------------------------------------------------------------------
+
+   if (nxGlobal > 0) then
+
+      select case (fieldKind)
+      case (field_type_scalar)
+         isign =  1
+      case (field_type_vector)
+         isign = -1
+      case (field_type_angle)
+         isign = -1
+      case default
+         call abort_ice(subname//'ERROR: Unknown field kind')
+      end select
+
+      if (halo%tripoleTFlag) then
+
+        select case (fieldLoc)
+        case (field_loc_center)   ! cell center location
+
+           ioffset = -1
+           joffset = 0
+
+           !*** top row is degenerate, so must enforce symmetry
+           !***   use average of two degenerate points for value
+
+           do l=1,nt
+           do k=1,nz
+           do i = 2,nxGlobal/2
+              iDst = nxGlobal - i + 2
+              x1 = bufTripole(i   ,halo%tripoleRows,k,l)
+              x2 = bufTripole(iDst,halo%tripoleRows,k,l)
+              xavg = nint(0.5_dbl_kind*(x1 + isign*x2))
+              bufTripole(i   ,halo%tripoleRows,k,l) = xavg
+              bufTripole(iDst,halo%tripoleRows,k,l) = isign*xavg
+           end do
+           end do
+           end do
+
+        case (field_loc_NEcorner)   ! cell corner location
+
+           ioffset = 0
+           joffset = 1
+
+        case (field_loc_Eface)   ! cell center location
+
+           ioffset = 0
+           joffset = 0
+
+           !*** top row is degenerate, so must enforce symmetry
+           !***   use average of two degenerate points for value
+
+           do l=1,nt
+           do k=1,nz
+           do i = 1,nxGlobal/2
+              iDst = nxGlobal + 1 - i
+              x1 = bufTripole(i   ,halo%tripoleRows,k,l)
+              x2 = bufTripole(iDst,halo%tripoleRows,k,l)
+              xavg = nint(0.5_dbl_kind*(x1 + isign*x2))
+              bufTripole(i   ,halo%tripoleRows,k,l) = xavg
+              bufTripole(iDst,halo%tripoleRows,k,l) = isign*xavg
+           end do
+           end do
+           end do
+
+        case (field_loc_Nface)   ! cell corner (velocity) location
+
+           ioffset = -1
+           joffset = 1
+
+        case default
+           call abort_ice(subname//'ERROR: Unknown field location')
+        end select
+
+      else ! tripole u-fold
+
+        select case (fieldLoc)
+        case (field_loc_center)   ! cell center location
+
+           ioffset = 0
+           joffset = 0
+
+        case (field_loc_NEcorner)   ! cell corner location
+
+           ioffset = 1
+           joffset = 1
+
+           !*** top row is degenerate, so must enforce symmetry
+           !***   use average of two degenerate points for value
+
+           do l=1,nt
+           do k=1,nz
+           do i = 1,nxGlobal/2 - 1
+              iDst = nxGlobal - i
+              x1 = bufTripole(i   ,halo%tripoleRows,k,l)
+              x2 = bufTripole(iDst,halo%tripoleRows,k,l)
+              xavg = nint(0.5_dbl_kind*(x1 + isign*x2))
+              bufTripole(i   ,halo%tripoleRows,k,l) = xavg
+              bufTripole(iDst,halo%tripoleRows,k,l) = isign*xavg
+           end do
+           end do
+           end do
+
+        case (field_loc_Eface)   ! cell center location
+
+           ioffset = 1
+           joffset = 0
+
+        case (field_loc_Nface)   ! cell corner (velocity) location
+
+           ioffset = 0
+           joffset = 1
+
+           !*** top row is degenerate, so must enforce symmetry
+           !***   use average of two degenerate points for value
+
+           do l=1,nt
+           do k=1,nz
+           do i = 1,nxGlobal/2
+              iDst = nxGlobal + 1 - i
+              x1 = bufTripole(i   ,halo%tripoleRows,k,l)
+              x2 = bufTripole(iDst,halo%tripoleRows,k,l)
+              xavg = nint(0.5_dbl_kind*(x1 + isign*x2))
+              bufTripole(i   ,halo%tripoleRows,k,l) = xavg
+              bufTripole(iDst,halo%tripoleRows,k,l) = isign*xavg
+           end do
+           end do
+           end do
+
+        case default
+           call abort_ice(subname//'ERROR: Unknown field location')
+        end select
+
+      endif
+
+      !*** copy out of global tripole buffer into local
+      !*** ghost cells
+
+      !*** look through local copies to find the copy out
+      !*** messages (srcBlock < 0)
+
+      do nmsg=1,halo%numLocalCopies
+         srcBlock = halo%srcLocalAddr(3,nmsg)
+
+         if (srcBlock < 0) then
+
+            iSrc     = halo%srcLocalAddr(1,nmsg) ! tripole buffer addr
+            jSrc     = halo%srcLocalAddr(2,nmsg)
+
+            iDst     = halo%dstLocalAddr(1,nmsg) ! local block addr
+            jDst     = halo%dstLocalAddr(2,nmsg)
+            dstBlock = halo%dstLocalAddr(3,nmsg)
+
+            !*** correct for offsets
+            iSrc = iSrc - ioffset
+            jSrc = jSrc - joffset
+            if (iSrc < 1       ) iSrc = iSrc + nxGlobal
+            if (iSrc > nxGlobal) iSrc = iSrc - nxGlobal
+
+            !*** for center and Eface on u-fold, and NE corner and Nface
+            !*** on T-fold, do not need to replace
+            !*** top row of physical domain, so jSrc should be
+            !*** out of range and skipped
+            !*** otherwise do the copy
+
+            if (jSrc <= halo%tripoleRows .and. jSrc>0 .and. jDst>0) then
+               idsts = cslot(iDst,jDst,dstBlock)
+               ! a ghost cell outside the static mask has no slot; drop it
+               if (idsts > 0) then
+                  do l=1,nt
+                  do k=1,nz
+                     array(idsts,k) = isign*bufTripole(iSrc,jSrc,k,l)
+                  end do
+                  end do
+               endif
+            endif
+
+         endif
+      end do
+
+   endif
+
+   if (allocated(bufTripole)) then
+      deallocate(bufTripole, stat=istatc)
+      if (istatc > 0) then
+         call abort_ice(subname//'ERROR: deallocating bufTripole array')
+         return
+      endif
+   endif
+
+ contains
+
+   ! value of field kk at cell (i,j) of block blk, zero if it has no slot.
+   ! The zero is explicit now: the compressed arrays are 1-based, so there is
+   ! no element 0 to read.  A cell with no slot is land, which is what the
+   ! block layout holds there, so this matches ice_HaloUpdate2DR8.
+   integer (int_kind) function cval(ii,jj,blk,kk)
+      integer (int_kind), intent(in) :: ii,jj,blk,kk
+      integer (int_kind) :: s
+      s = cslot(ii,jj,blk)
+      if (s > 0) then
+         cval = array(s,kk)
+      else
+         cval = c0
+      endif
+   end function cval
+
+   ! store v in field kk at cell (i,j) of block blk, if it has a slot
+   subroutine cset(ii,jj,blk,kk,v)
+      integer (int_kind), intent(in) :: ii,jj,blk,kk
+      integer (int_kind), intent(in) :: v
+      integer (int_kind) :: s
+      s = cslot(ii,jj,blk)
+      if (s > 0) array(s,kk) = v
+   end subroutine cset
+
+   ! slot of cell (i,j) in block blk, or 0 if the cell is not stored
+   integer (int_kind) function cslot(ii,jj,blk)
+      integer (int_kind), intent(in) :: ii,jj,blk
+      integer (int_kind) :: m
+      m = map((jj-1)*nx_block + ii, blk)
+      if (m == 0) then
+         cslot = 0
+      else
+         cslot = m
+      endif
+   end function cslot
+
+   ! write the fill value at cell (i,j) of block blk, if it has a slot
+   subroutine cfill(ii,jj,blk)
+      integer (int_kind), intent(in) :: ii,jj,blk
+      integer (int_kind) :: s
+      s = cslot(ii,jj,blk)
+      if (s > 0) array(s,:) = fill
+   end subroutine cfill
+
+ end subroutine ice_HaloUpdate3DI4_compressed
+ subroutine ice_HaloUpdate2DI4_compressed(array, halo,         &
+                                          fieldLoc, fieldKind, &
+                                          map, off, fillValue)
+
+   type (ice_halo), intent(in) :: &
+      halo                 ! precomputed halo structure
+
+   integer (int_kind), intent(in) :: &
+      fieldKind,          &! id for type of field (scalar, vector, angle)
+      fieldLoc             ! id for location on horizontal grid
+
+   integer (int_kind), dimension(:,:), intent(in) :: &
+      map                  ! block-local slot of each cell
+
+   integer (int_kind), dimension(:), intent(in) :: &
+      off                  ! first slot of each block, minus one
+
+   integer (int_kind), intent(in), optional :: &
+      fillValue            ! value to put in ghost cells with no neighbour
+
+   ! TARGET and CONTIGUOUS are required to alias this to rank 2 below
+   integer (int_kind), dimension(:), intent(inout), target, contiguous :: &
+      array                ! compressed field whose halo needs updating
+
+   integer (int_kind), pointer :: &
+      array_2d(:,:)        ! one-field bundle view of array
+
+   character(len=*), parameter :: subname = '(ice_HaloUpdate2DI4_compressed)'
+
+   ! 1-based to match the compressed layout: the target has size(array)
+   ! elements, so a 0:ubound view would ask for one more than exists and
+   ! would hand the 3d routine a 0-based array it no longer expects.
+   array_2d(1:size(array),1:1) => array
+
+   call ice_HaloUpdate3DI4_compressed(array_2d, halo, fieldLoc, fieldKind, &
+                                      map, off, fillValue)
+
+ end subroutine ice_HaloUpdate2DI4_compressed
+
+!***********************************************************************
+
+ subroutine ice_HaloUpdate2DL1_compressed(array, halo,         &
+                                          fieldLoc, fieldKind, &
+                                          map, off, fillValue)
+
+!  This routine updates ghost cells for a COMPRESSED 2d logical array.
+!
+!  It follows ice_HaloUpdate2DL1: a logical field is carried through the
+!  halo as an integer, because the boundary conditions are not all simple
+!  copies.  ⚠ The integer form is load-bearing, not a convenience -- for
+!  linear_extrap the ghost value is COMPUTED from its neighbours, and the
+!  integer path truncates that arithmetic where a real one would not.
+!  Routing a logical through ice_HaloUpdate2DR8_compressed instead would
+!  therefore differ under bclinearextrap.
+
+   type (ice_halo), intent(in) :: &
+      halo                 ! precomputed halo structure
+
+   integer (int_kind), intent(in) :: &
+      fieldKind,          &! id for type of field (scalar, vector, angle)
+      fieldLoc             ! id for location on horizontal grid
+
+   integer (int_kind), dimension(:,:), intent(in) :: &
+      map                  ! block-local slot of each cell
+
+   integer (int_kind), dimension(:), intent(in) :: &
+      off                  ! first slot of each block, minus one
+
+   logical (log_kind), intent(in), optional :: &
+      fillValue            ! value to put in ghost cells with no neighbour
+
+   logical (log_kind), dimension(:), intent(inout) :: &
+      array                ! compressed field whose halo needs updating
+
+!-----------------------------------------------------------------------
+
+   integer (int_kind) :: &
+      istat                ! allocate return status
+
+   integer (int_kind), dimension(:), allocatable :: &
+      iarray               ! the same field, carried as an integer
+
+   integer (int_kind) :: &
+      ifillValue           ! fill value
+
+   character(len=*), parameter :: subname = '(ice_HaloUpdate2DL1_compressed)'
+
+!-----------------------------------------------------------------------
+
+   allocate(iarray(size(array)),stat=istat)
+   if (istat > 0) then
+      call abort_ice(subname//'ERROR: allocating iarray')
+      return
+   endif
+
+   iarray = 0
+   where (array) iarray = 1
+   if (present(fillValue)) then
+      ifillValue = 0
+      if (fillValue) ifillValue = 1
+      call ice_HaloUpdate2DI4_compressed(iarray, halo,        &
+                                         fieldLoc, fieldKind, &
+                                         map, off, ifillValue)
+   else
+      call ice_HaloUpdate2DI4_compressed(iarray, halo,        &
+                                         fieldLoc, fieldKind, &
+                                         map, off)
+   endif
+
+   ! tcraig, for most BCs, the mod is not needed, iarray will always be 0 or 1.
+   ! for linear_extrap, the bc is not a simple copy, it's a computation from neighbor
+   ! points.  Use the mod to provide a more consistent result for linear_extrap bcs for
+   ! logicals.
+   array = .false.
+   where (mod(abs(iarray),2) /= 0) array = .true.
+
+   deallocate(iarray, stat=istat)
+   if (istat > 0) then
+      call abort_ice(subname//'ERROR: deallocating iarray')
+      return
+   endif
+
+ end subroutine ice_HaloUpdate2DL1_compressed
+
+!***********************************************************************
 !***********************************************************************
 
 !***********************************************************************
