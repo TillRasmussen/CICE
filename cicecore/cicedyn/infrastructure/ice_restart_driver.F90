@@ -415,7 +415,13 @@
          return
       endif
 
-      work(:,:,:,:) = c0
+      ! ⚠ Seeded from the block form, not c0.  The slots carry only the
+      ! cells that have one, so a land cell would otherwise be written as
+      ! zero where the block path writes whatever it holds -- in a box
+      ! config the initial condition, painted without consulting the land
+      ! mask.  Slot-backed cells are overwritten below, so the slots stay
+      ! authoritative wherever they exist.
+      work(:,:,:,:) = blk(:,:,:,:)
       do iblk = 1, nblocks
          call unpack_cat_from_slots(comp, &
                                     dynMap(:,iblk), work(:,:,:,iblk))
