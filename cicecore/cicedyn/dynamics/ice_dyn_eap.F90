@@ -154,7 +154,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
           dxhy_slot, dyhx_slot, cxp_slot, cyp_slot, cxm_slot, cym_slot, &
           strength_slot, &
           pack_to_slots, unpack_from_slots, &
-          dyn_prep1, dyn_prep2, stepu, dyn_finish, &
+          dyn_prep1, dyn_prep1_dilate, dyn_prep2, stepu, dyn_finish, &
           seabed_stress_factor_LKD, seabed_stress_factor_prob, &
           seabed_stress_method, seabed_stress, &
           stack_fields, unstack_fields, iceTmask, iceUmask, &
@@ -267,6 +267,10 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
 
       enddo                     ! iblk
       !$OMP END PARALLEL DO
+
+      ! the dilation half of dyn_prep1: task-level, because in slot space
+      ! a neighbour can live in another block (see dyn_prep1_dilate)
+      call dyn_prep1_dilate
 
       call ice_timer_start(timer_bound)
       call ice_HaloUpdate (iceTmask,          halo_info, &

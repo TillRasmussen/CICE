@@ -45,7 +45,7 @@
           p222, p25, p333, p5, c1
       use ice_domain, only: nblocks, distrb_info
       use ice_domain_size, only: max_blocks
-      use ice_dyn_shared, only: dyn_prep1, dyn_prep2, dyn_finish, &
+      use ice_dyn_shared, only: dyn_prep1, dyn_prep1_dilate, dyn_prep2, dyn_finish, &
           cosw, sinw, uvel_init, vvel_init, dynOff, dynCnt, dynCntA, dynMap, dynIJ, dynMaxCnt, iceTmask_slot, iceUmask_slot, &
           dynTot, pack_to_slots, unpack_from_slots, calc_seabed_stress_slot, &
           nbr_W, nbr_S, nbr_SW, nbr_E, nbr_N, nbr_NE, uarear_slot, &
@@ -387,6 +387,10 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
 
       enddo                     ! iblk
       !$OMP END PARALLEL DO
+
+      ! the dilation half of dyn_prep1: task-level, because in slot space
+      ! a neighbour can live in another block (see dyn_prep1_dilate)
+      call dyn_prep1_dilate
 
       call ice_timer_start(timer_bound)
       call ice_HaloUpdate (iceTmask,          halo_info, &

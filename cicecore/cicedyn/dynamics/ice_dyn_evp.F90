@@ -46,7 +46,7 @@
           calc_seabed_stress_slot, calc_strint_slot, &
           str1_slot, str2_slot, str3_slot, str4_slot, &
           str5_slot, str6_slot, str7_slot, str8_slot, &
-          dyn_prep1, dyn_prep2, dyn_finish, &
+          dyn_prep1, dyn_prep1_dilate, dyn_prep2, dyn_finish, &
           ndte, yield_curve, ecci, denom1, arlx1i, &
           uvel_init, vvel_init, uvelE_init, vvelE_init, uvelN_init, vvelN_init, &
           dynOff, dynCnt, dynCntA, dynMap, &
@@ -414,6 +414,10 @@
 
       enddo                     ! iblk
       !$OMP END PARALLEL DO
+
+      ! the dilation half of dyn_prep1: task-level, because in slot space
+      ! a neighbour can live in another block (see dyn_prep1_dilate)
+      call dyn_prep1_dilate
 
       call ice_timer_start(timer_bound)
       call ice_HaloUpdate (iceTmask,          halo_info, &

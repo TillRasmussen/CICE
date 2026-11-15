@@ -66,7 +66,7 @@
       public :: grid_average_X2YA_compressed, grid_average_X2YS_compressed
       public :: set_evp_parameters, stepu, stepuv_CD, stepu_C, stepv_C, &
                 calc_seabed_stress_slot, calc_strint_slot, &
-                principal_stress, init_dyn_shared, dyn_prep1, dyn_prep2, dyn_finish, &
+                principal_stress, init_dyn_shared, dyn_prep1, dyn_prep1_dilate, dyn_prep2, dyn_finish, &
                 seabed_stress_factor_LKD, seabed_stress_factor_prob, &
                 deformations, deformationsC_T, deformationsCD_T, &
                 strain_rates, strain_rates_U, &
@@ -184,6 +184,14 @@
       ! carries no ice of that kind this step, so the kernels leave it alone
       logical (kind=log_kind), dimension (:), allocatable, public :: &
          iceTmask_slot, iceUmask_slot, iceNmask_slot, iceEmask_slot
+
+      ! ⚠ Slot-shaped, and the reason dyn_prep1 is split in two.  The mask
+      ! it dilates is read at the EIGHT neighbours of each cell, and in slot
+      ! space a neighbour can belong to another block -- so it cannot be a
+      ! per-block local written inside the block loop, or a block would
+      ! dilate against neighbours nobody had filled yet.
+      logical (kind=log_kind), dimension (:), allocatable, public :: &
+         tmphm_slot
 
       ! ---------------------------------------------------------------------
       ! Neighbour slots.
@@ -519,7 +527,8 @@
       ! at the end of init_grid2, because it is derived from the grid masks and
       ! because the grid metrics compressed once per run are packed there too.
       ! By the time any solver calls this, dynTot and dynMap are set.
-      allocate(iceTmask_slot(dynTot), iceUmask_slot(dynTot), stat=ierr)
+      allocate(iceTmask_slot(dynTot), iceUmask_slot(dynTot), &
+               tmphm_slot(dynTot), stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
       iceTmask_slot = .false.
       iceUmask_slot = .false.
@@ -1332,8 +1341,6 @@
       real (kind=dbl_kind) :: &
          rhoi, rhos
 
-      logical (kind=log_kind), dimension(nx_block*ny_block) :: &
-         tmphm               ! temporary mask
 
       character(len=*), parameter :: subname = '(dyn_prep1)'
 
@@ -1375,7 +1382,7 @@
          !-----------------------------------------------------------------
          ! ice extent mask (T-cells)
          !-----------------------------------------------------------------
-           tmphm(ij) = Tmask(ij) .and. (aice (ms) > dyn_area_min) &
+           tmphm_slot(ms) = Tmask(ij) .and. (aice (ms) > dyn_area_min) &
                                 .and. (Tmass(ij)  > dyn_mass_min)
 
          !-----------------------------------------------------------------
@@ -1385,29 +1392,60 @@
 
       enddo
 
-      ! physical domain only: ilo:ihi within 1:nx_block, jlo:jhi within 1:ny_block,
-      ! so ijsub runs over the subdomain and ij is its index in the full block
-      nisub = ihi - ilo + 1
-      njsub = jhi - jlo + 1
+      end subroutine dyn_prep1
 
-      do ijsub = 1, nisub*njsub
+!=======================================================================
+! Second half of dyn_prep1: dilate the ice mask by one cell.
+!
+! ⚠ This is a TASK-level loop, not a per-block one, and that is forced
+! rather than stylistic.  The dilation reads the eight neighbours of
+! each cell; in slot space a neighbour can belong to a different block,
+! so running this inside the per-block OMP loop would let one block
+! dilate against neighbours another block had not yet written.  The
+! block form avoided that by reading its own GHOST copies, which the
+! slot layout does not have.
+!
+! The neighbour ring returns the dead slot where a neighbour has none.
+! That is correct here rather than merely safe: a cell with no slot is
+! land (dynMap is tmask .or. umask), Tmask is false there, so phase A
+! left tmphm_slot false -- which is exactly what the block form read at
+! the same cell.
+!=======================================================================
 
-         j  = (ijsub-1)/nisub + jlo
-         i  = ijsub - (j-jlo)*nisub + ilo - 1
-         ij = (j-1)*nx_block + i
+      subroutine dyn_prep1_dilate
+
+      use ice_grid, only: dynIJ, dynBlk, skipPhys, tmask, nActive_TU, &
+                          NbrW_Task, NbrE_Task, NbrN_Task, NbrS_Task,  &
+                          NbrNW_Task, NbrNE_Task, NbrSW_Task, NbrSE_Task
+
+      integer (kind=int_kind) :: ms, ij, iblk
+
+      character(len=*), parameter :: subname = '(dyn_prep1_dilate)'
+
+      !$OMP PARALLEL DO PRIVATE(ms,ij,iblk) SCHEDULE(runtime)
+      do ms = 1, nActive_TU
+         ! physical domain only, as the block form's ilo:ihi x jlo:jhi was
+         if (skipPhys(ms)) cycle
+         iblk = dynBlk(ms)
+         if (iblk == 0) cycle
+         ij = dynIJ(ms)
 
          ! extend ice extent mask (T-cells) to points around pack
-         if (tmphm(ij+nx_block-1) .or. tmphm(ij+nx_block) .or. tmphm(ij+nx_block+1) .or. &
-             tmphm(ij-1)          .or. tmphm(ij)          .or. tmphm(ij+1)          .or. &
-             tmphm(ij-nx_block-1) .or. tmphm(ij-nx_block) .or. tmphm(ij-nx_block+1) ) then
-            iceTmask(ij) = .true.
+         if (tmphm_slot(ms)              .or. &
+             tmphm_slot(NbrW_Task (ms))  .or. tmphm_slot(NbrE_Task (ms)) .or. &
+             tmphm_slot(NbrN_Task (ms))  .or. tmphm_slot(NbrS_Task (ms)) .or. &
+             tmphm_slot(NbrNW_Task(ms))  .or. tmphm_slot(NbrNE_Task(ms)) .or. &
+             tmphm_slot(NbrSW_Task(ms))  .or. tmphm_slot(NbrSE_Task(ms))) then
+            iceTmask(ij,iblk) = .true.
          endif
 
-         if (.not.Tmask(ij)) iceTmask(ij) = .false.
+         if (.not.tmask(ij,iblk)) iceTmask(ij,iblk) = .false.
 
       enddo
+      !$OMP END PARALLEL DO
 
-      end subroutine dyn_prep1
+      end subroutine dyn_prep1_dilate
+
 
 !=======================================================================
 ! Computes quantities needed in the stress tensor (sigma)
