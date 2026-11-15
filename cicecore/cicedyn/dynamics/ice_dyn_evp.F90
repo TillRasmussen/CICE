@@ -110,11 +110,10 @@
 ! Elastic-viscous-plastic dynamics driver
 !
       subroutine init_evp
-      use ice_blocks, only: get_block, nx_block, ny_block, block
+      use ice_blocks, only: nx_block, ny_block
       use ice_domain_size, only: max_blocks
-      use ice_domain, only: nblocks, blocks_ice
       use ice_grid, only: grid_ice, dxN, dyE
-      use ice_grid, only: dynIJ, dynBlk
+      use ice_grid, only: skipPhys
       use ice_calendar, only: dt_dyn
       use ice_dyn_shared, only: init_dyn_shared, evp_algorithm, &
           dynTot, dynOff, dynCnt, dynCntA, dynMap, dxN_slot, dyE_slot
@@ -126,14 +125,8 @@
 
       character(len=*), parameter :: subname = '(init_evp)'
 
-     type (block) :: &
-         this_block   ! block information for current block
-
       integer (kind=int_kind) :: &
-         i, j, iblk            , & ! block index
-         ijb                   , & ! 1D index of (i,j) in the flattened block layout
-         is                    , & ! slot index
-         ilo,ihi,jlo,jhi           ! beginning and end of physical domain
+         is                        ! slot index
 
 
       call init_dyn_shared(dt_dyn)
@@ -188,18 +181,13 @@
          ! mask_any that cell had no slot -- Nbr*_Task resolved it to the
          ! shared dead slot and read c1 instead of the cell's value.
          !
-         ! The interior test stays.  It is what keeps the loop off the
-         ! padding, where the metric is genuinely zero and the division
-         ! would trap; it is not about neighbours.
+         ! The interior test stays -- it keeps the loop off the padding,
+         ! where the metric is genuinely zero and the division would trap.
+         ! skipPhys IS that test: init_ragged_layout clears it exactly over
+         ! jlo..jhi x ilo..ihi, and the dead slot is never mapped there, so
+         ! it also subsumes the ijb == 0 guard.
          do is = 1, dynTot
-            ijb = dynIJ(is)
-            if (ijb == 0) cycle                  ! dead slot
-            iblk = dynBlk(is)
-            this_block = get_block(blocks_ice(iblk),iblk)
-            j = (ijb-1)/nx_block + 1
-            i = ijb - (j-1)*nx_block
-            if (i < this_block%ilo .or. i > this_block%ihi .or. &
-                j < this_block%jlo .or. j > this_block%jhi) cycle
+            if (skipPhys(is)) cycle
             ratiodxN_slot (is) = - dxN_slot(NbrE_Task(is)) / dxN_slot(is)
             ratiodyE_slot (is) = - dyE_slot(NbrN_Task(is)) / dyE_slot(is)
             ratiodxNr_slot(is) =   c1 / ratiodxN_slot(is)
