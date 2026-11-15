@@ -293,7 +293,9 @@
           grid_average_X2YA_compressed, fld3c, fld4c
       use ice_grid, only: pack_to_slots, unpack_from_slots
       use ice_boundary, only: ice_HaloUpdate2DR8_compressed, &
-          ice_HaloUpdate3DR8_compressed
+          ice_HaloUpdate3DR8_compressed, &
+          ice_HaloUpdate2DI4_compressed, &
+          ice_HaloMask_compressed
       use ice_domain, only: maskhalo_dyn
       use ice_dyn_evp1d, only: dyn_evp1d_run
 
@@ -319,8 +321,8 @@
          lstrint , & ! a history stream wants strintx/strinty this step
          ltaub       ! a history stream wants taubx/tauby this step
 
-      integer (kind=int_kind), dimension (nx_block,ny_block,max_blocks) :: &
-         halomask     ! generic halo mask
+      integer (kind=int_kind), dimension (dynTot) :: &
+         halomask_slot     ! generic halo mask
 
       type (ice_halo) :: &
          halo_info_mask !  ghost cell update info for masked halo
@@ -770,20 +772,15 @@
       call ice_timer_stop(timer_bound)
 
       if (maskhalo_dyn) then
-         halomask = 0
+         halomask_slot = 0
          if (grid_ice == 'B') then
-            ! Slot-driven.  halomask itself stays block-shaped -- ice_HaloMask
-            ! builds communication structures from it -- but its SOURCE need
-            ! not be: every iceUmask cell owns a slot, since iceUmask is a
-            ! subset of umask and mask_any is tmask .or. umask.
+            ! Every iceUmask cell owns a slot, since iceUmask is a subset
+            ! of umask and mask_any is tmask .or. umask.
             do iblk = 1, nblocks
                do is = 1, dynCntA(iblk)
                   ms = dynOff(iblk) + is
                   if (.not. iceUmask_slot(ms)) cycle
-                  ij = dynIJ(ms)
-                  j  = (ij-1)/nx_block + 1
-                  i  = ij - (j-1)*nx_block
-                  halomask(i,j,iblk) = 1
+                  halomask_slot(ms) = 1
                enddo
             enddo
          elseif (grid_ice == 'C' .or. grid_ice == 'CD') then
@@ -793,7 +790,7 @@
             ! whole 3x3 -- which contains this cell.  A neighbour outside the
             ! stored set lands on the dead slot, .false. there, which is what
             ! the block form read at the interior land it stands for.
-            !$OMP PARALLEL DO PRIVATE(iblk,is,ms,i,j,ij) SCHEDULE(runtime)
+            !$OMP PARALLEL DO PRIVATE(iblk,is,ms) SCHEDULE(runtime)
             do iblk = 1, nblocks
                do is = 1, dynCntA(iblk)
                   ms = dynOff(iblk) + is
@@ -803,20 +800,19 @@
                       iceTmask_slot(NbrE_Task(ms) ) .or. &
                       iceTmask_slot(NbrS_Task(ms) ) .or. &
                       iceTmask_slot(NbrN_Task(ms) )) then
-                     ij = dynIJ(ms)
-                     j  = (ij-1)/nx_block + 1
-                     i  = ij - (j-1)*nx_block
-                     halomask(i,j,iblk) = 1
+                     halomask_slot(ms) = 1
                   endif
                enddo
             enddo
             !$OMP END PARALLEL DO
          endif
          call ice_timer_start(timer_bound)
-         call ice_HaloUpdate (halomask,         halo_info, &
-                              field_loc_center, field_type_scalar)
+         call ice_HaloUpdate2DI4_compressed(halomask_slot,    halo_info, &
+                              field_loc_center, field_type_scalar,       &
+                              dynMap, dynOff)
          call ice_timer_stop(timer_bound)
-         call ice_HaloMask(halo_info_mask, halo_info, halomask)
+         call ice_HaloMask_compressed(halo_info_mask, halo_info, &
+                                      halomask_slot, dynMap)
       endif
 
       !-----------------------------------------------------------------
@@ -1684,8 +1680,9 @@
          ! set halomask to zero because ice_HaloMask always keeps
          ! local copies AND tripole zipper communication
          !-------------------------------------------------------
-         halomask = 0
-         call ice_HaloMask(halo_info_mask, halo_info, halomask)
+         halomask_slot = 0
+         call ice_HaloMask_compressed(halo_info_mask, halo_info, &
+                                      halomask_slot, dynMap)
 
          call ice_HaloUpdate_stress_compressed(stressp_1_slot, stressp_3_slot, halo_info_mask, &
                                      field_loc_center,  field_type_scalar, &

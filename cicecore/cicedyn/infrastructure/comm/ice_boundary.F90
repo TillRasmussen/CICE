@@ -127,6 +127,7 @@
 
    public :: ice_HaloCreate, &
              ice_HaloMask, &
+             ice_HaloMask_compressed, &
              ice_HaloUpdate, &
              ice_HaloUpdate2DR8_compressed, &
              ice_HaloUpdate3DR8_compressed, &
@@ -1088,6 +1089,201 @@ contains
 !-----------------------------------------------------------------------
 
  end subroutine ice_HaloMask
+
+!***********************************************************************
+
+ subroutine ice_HaloMask_compressed(halo, basehalo, mask, map)
+
+!  This routine creates a halo type with info necessary for
+!  performing a halo (ghost cell) update.  It follows ice_HaloMask
+!  exactly; only the mask lookup differs.
+!
+!  The mask is carried COMPRESSED.  It is read at the addresses the
+!  base halo already holds, so the block shape was never a property of
+!  the algorithm -- only of where the lookup lived.  map translates
+!  those addresses to slots, and is a dummy argument for the same
+!  reason as in the compressed HaloUpdate family: ice_grid sits above
+!  this module and cannot be used from it.
+!
+!  A cell with no slot reads as 0, which is what the block form read
+!  at the interior land it stands for.
+
+   type (ice_halo) :: &
+      basehalo           ! basehalo to mask
+
+   integer (int_kind), intent(in) ::  &
+      mask(:)            ! compressed mask of live points
+
+   integer (int_kind), dimension(:,:), intent(in) :: &
+      map                ! block-local slot of each cell
+
+   type (ice_halo) :: &
+      halo               ! a new halo type with info for halo updates
+
+!-----------------------------------------------------------------------
+!
+!  local variables
+!
+!-----------------------------------------------------------------------
+
+   integer (int_kind) :: &
+      istat,                    &! allocate status flag
+      communicator,             &! communicator for message passing
+      numLocalCopies,           &! num local copies for halo update
+      numLocalBlocks,           &! num local blocks for halo fill
+      tripoleRows                ! number of rows in tripole buffer
+
+   logical (log_kind) :: &
+      tripoleTFlag,             &! flag for processing tripole buffer as T-fold
+      tmpflag                    ! temporary flag for setting halomask along T-fold
+
+#ifndef NO_MPI
+   integer (int_kind) :: &
+      n,nmsg,scnt,              &! counters
+      icel,jcel,nblock,         &! gridcell index
+      ms,                       &! slot of that gridcell
+      numMsgSend, numMsgRecv,   &! number of messages for this halo
+      lbufSizeSend,             &! buffer size for send messages
+      lbufSizeRecv               ! buffer size for recv messages
+#endif
+
+   character(len=*), parameter :: subname = '(ice_HaloMask_compressed)'
+
+!-----------------------------------------------------------------------
+!
+!  allocate and initialize halo
+!  halos are not masked for local copies
+!
+!-----------------------------------------------------------------------
+
+   communicator   = basehalo%communicator
+   tripoleRows    = basehalo%tripoleRows
+   tripoleTFlag   = basehalo%tripoleTFlag
+   numLocalCopies = basehalo%numLocalCopies
+   numLocalBlocks = basehalo%numLocalBlocks
+
+   allocate(halo%srcLocalAddr(3,numLocalCopies), &
+            halo%dstLocalAddr(3,numLocalCopies), &
+            halo%blockGlobalID(numLocalBlocks), &
+            stat = istat)
+
+   if (istat > 0) then
+      call abort_ice(subname//'ERROR: allocating src,dst LocalAddr arrays')
+      return
+   endif
+
+   halo%communicator   = communicator
+   halo%tripoleRows    = tripoleRows
+   halo%tripoleTFlag   = tripoleTFlag
+   halo%numLocalCopies = numLocalCopies
+   halo%numLocalBlocks = numLocalBlocks
+
+   halo%srcLocalAddr   = basehalo%srcLocalAddr(:,1:numLocalCopies)
+   halo%dstLocalAddr   = basehalo%dstLocalAddr(:,1:numLocalCopies)
+
+   halo%blockGlobalID  = basehalo%blockGlobalID
+
+#ifndef NO_MPI
+!-----------------------------------------------------------------------
+!
+!  mask communication part of halo
+!  always keep tripole zipper msgs!
+!
+!-----------------------------------------------------------------------
+
+   numMsgSend     = basehalo%numMsgSend
+   numMsgRecv     = basehalo%numMsgRecv
+   lbufSizeSend   = size(basehalo%sendAddr,dim=2)
+   lbufSizeRecv   = size(basehalo%recvAddr,dim=2)
+
+   allocate(halo%sendTask(numMsgSend), &
+            halo%recvTask(numMsgRecv), &
+            halo%sizeSend(numMsgSend), &
+            halo%sizeRecv(numMsgRecv), &
+            halo%tripSend(numMsgSend), &
+            halo%tripRecv(numMsgRecv), &
+            halo%sendAddr(3,lbufSizeSend,numMsgSend), &
+            halo%recvAddr(3,lbufSizeRecv,numMsgRecv), &
+            stat = istat)
+
+   if (istat > 0) then
+      call abort_ice(subname//'ERROR: allocating halo send,recv arrays')
+      return
+   endif
+
+   numMsgSend = 0
+   do nmsg=1,basehalo%numMsgSend
+      scnt = 0
+      do n=1,basehalo%sizeSend(nmsg)
+         icel     = basehalo%sendAddr(1,n,nmsg)
+         jcel     = basehalo%sendAddr(2,n,nmsg)
+         nblock   = basehalo%sendAddr(3,n,nmsg)
+! the tripole test stays FIRST: the addresses are out of range for the
+! block mask when tripSend /= 0, and so for map as well
+         tmpflag = .false.
+         if (basehalo%tripSend(nmsg) /= 0) then
+            tmpflag = .true.
+         else
+            ms = map((jcel-1)*nx_block + icel, abs(nblock))
+            if (ms >= 1) then
+               if (mask(ms) /= 0) tmpflag = .true.
+            endif
+         endif
+
+         if (tmpflag) then
+            scnt = scnt + 1
+            if (scnt == 1) then
+               numMsgSend = numMsgSend + 1
+               halo%sendTask(numMsgSend) = basehalo%sendTask(nmsg)
+               halo%tripSend(numMsgSend) = basehalo%tripSend(nmsg)
+            endif
+            halo%sendAddr(1,scnt,numMsgSend) = icel
+            halo%sendAddr(2,scnt,numMsgSend) = jcel
+            halo%sendAddr(3,scnt,numMsgSend) = nblock
+            halo%sizeSend(numMsgSend) = scnt
+         endif
+      enddo
+   enddo
+   halo%numMsgSend = numMsgSend
+
+   numMsgRecv = 0
+   do nmsg=1,basehalo%numMsgRecv
+      scnt = 0
+      do n=1,basehalo%sizeRecv(nmsg)
+         icel     = basehalo%recvAddr(1,n,nmsg)
+         jcel     = basehalo%recvAddr(2,n,nmsg)
+         nblock   = basehalo%recvAddr(3,n,nmsg)
+! the tripole test stays FIRST, as above
+         tmpflag = .false.
+         if (basehalo%tripRecv(nmsg) /= 0) then
+            tmpflag = .true.
+         else
+            ms = map((jcel-1)*nx_block + icel, abs(nblock))
+            if (ms >= 1) then
+               if (mask(ms) /= 0) tmpflag = .true.
+            endif
+         endif
+
+         if (tmpflag) then
+            scnt = scnt + 1
+            if (scnt == 1) then
+               numMsgRecv = numMsgRecv + 1
+               halo%recvTask(numMsgRecv) = basehalo%recvTask(nmsg)
+               halo%tripRecv(numMsgRecv) = basehalo%tripRecv(nmsg)
+            endif
+            halo%recvAddr(1,scnt,numMsgRecv) = icel
+            halo%recvAddr(2,scnt,numMsgRecv) = jcel
+            halo%recvAddr(3,scnt,numMsgRecv) = nblock
+            halo%sizeRecv(numMsgRecv) = scnt
+         endif
+      enddo
+   enddo
+   halo%numMsgRecv = numMsgRecv
+#endif
+
+!-----------------------------------------------------------------------
+
+ end subroutine ice_HaloMask_compressed
 
 !***********************************************************************
 ! autogenerate start
