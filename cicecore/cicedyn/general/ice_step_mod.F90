@@ -1179,7 +1179,7 @@
       use ice_flux, only: init_history_dyn
       use ice_grid, only: grid_average_X2Y, grid_ice
       use ice_dyn_shared, only: aiE_slot, aiN_slot
-      use ice_state, only: aiU
+      use ice_dyn_shared, only: aiU_slot
       use ice_transport_driver, only: advection, transport_upwind, transport_remap
 
       real (kind=dbl_kind), intent(in) :: &
@@ -1272,6 +1272,11 @@
          call grid_average_X2Y('F', work1, 'E', strocnxT_iavg, 'T')    ! shift
          call grid_average_X2Y('F', work2, 'N', strocnyT_iavg, 'T')
       else
+         ! ⚠ kdyn <= 0 allocates nothing in ice_dyn_shared, so aiU_slot does
+         ! not exist.  The block form this replaced lives in ice_state and is
+         ! always allocated, holding c0 there -- so the test below was false and
+         ! nothing was written.  Skipping the loop reproduces that exactly.
+         if (allocated(aiU_slot)) then
          !$OMP PARALLEL DO PRIVATE(iblk,i,j,ij,is,ms,ilo,ihi,jlo,jhi,this_block)
          do iblk = 1, nblocks
             this_block = get_block(blocks_ice(iblk), iblk)
@@ -1285,13 +1290,14 @@
                ij = dynIJ(ms)
                j  = (ij-1)/nx_block + 1
                i  = ij - (j-1)*nx_block
-               if (aiU(ij,iblk) /= c0) then
-                  work1(i,j,iblk) = strocnxU(ms)/aiU(ij,iblk)
-                  work2(i,j,iblk) = strocnyU(ms)/aiU(ij,iblk)
+               if (aiU_slot(ms) /= c0) then
+                  work1(i,j,iblk) = strocnxU(ms)/aiU_slot(ms)
+                  work2(i,j,iblk) = strocnyU(ms)/aiU_slot(ms)
                endif
             enddo   ! is
          enddo
          !$OMP END PARALLEL DO
+         endif
          call ice_HaloUpdate (work1,              halo_info, &
                               field_loc_NEcorner, field_type_vector)
          call ice_HaloUpdate (work2,              halo_info, &
