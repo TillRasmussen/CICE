@@ -231,6 +231,29 @@
       !$OMP END PARALLEL DO
 
       call ice_timer_start(timer_bound)
+      ! NOTE: this fills the ghost ring but does not re-apply the Tmask test
+      ! dyn_prep1 ends on, so the invariant "iceTmask implies Tmask" holds
+      ! only over the physical domain.
+      !
+      ! Where the ghost is EXCHANGED -- cyclic, or another block -- it is a
+      ! copy of a real interior cell whose Tmask is also true, so the
+      ! invariant survives.  Where it is SYNTHESISED from the local edge --
+      ! zero_gradient, linear_extrap -- there is no source cell, and
+      ! iceTmask can end up true where the static Tmask is false.
+      !
+      ! That is not inert.  dyn_prep2 builds icellT over ilo:ihi+1,
+      ! jlo:jhi+1, deliberately one cell into the ghost, and leaves the
+      ! stresses of a cell alone when iceTmask is true.  stress then writes
+      ! str there, and stepu sums it into the adjacent INTERIOR U cell:
+      !
+      !     strintx(i,j) = ... * (str(i,j,1) + str(i+1,j,2) +
+      !                           str(i,j+1,3) + str(i+1,j+1,4))
+      !
+      ! so internal ice stress is computed and used at a cell the model's own
+      ! land mask excludes.  Re-applying Tmask over the whole block after
+      ! this call would restore the invariant for one logical AND, but it
+      ! CHANGES ANSWERS at extrapolating boundaries, so it is left alone
+      ! here and flagged instead.
       call ice_HaloUpdate (iceTmask,          halo_info, &
                            field_loc_center,  field_type_scalar)
       call ice_timer_stop(timer_bound)

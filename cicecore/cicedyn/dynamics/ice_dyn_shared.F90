@@ -572,6 +572,10 @@
             iceTmask(i,j) = .true.
          endif
 
+         ! This establishes "iceTmask implies Tmask", but only over the
+         ! PHYSICAL domain: the loop runs ilo:ihi, jlo:jhi.  The ghost ring
+         ! is filled afterwards by ice_HaloUpdate(iceTmask,...) in the
+         ! caller, which re-applies nothing -- see the note there.
          if (.not.Tmask(i,j)) iceTmask(i,j) = .false.
 
       enddo
