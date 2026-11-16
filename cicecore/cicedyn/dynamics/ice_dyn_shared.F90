@@ -1669,20 +1669,28 @@
       ! from nflat to nslot, which makes the conversion self-checking.
       !
       ! ⚠ Two compressed lengths are in use and they are not interchangeable:
-      ! the stress and force slices carry the trailing dead slot (dynCnt+1),
-      ! the skip flags and the initial velocities do not (dynCnt).
+      ! the stress and force slices reach the task's dead slot for the one
+      ! block adjacent to it (dynCntA+1); every other block, and the skip
+      ! flags and initial velocities everywhere, stop at dynCntA.
       !
       ! ⚠ Not a proof: a block-flattened actual passed where a compressed one
-      ! is expected escapes this if dynCnt+1 happens to equal nx_block*ny_block,
-      ! i.e. a block with no land at all.  Rare on a real grid, possible on a
-      ! box configuration.
+      ! is expected escapes this if the length happens to equal
+      ! nx_block*ny_block, i.e. a block with no land at all.  Rare on a real
+      ! grid, possible on a box configuration.
       !-----------------------------------------------------------------
 
       nflat = nx_block*ny_block
       ! ⚠ From the block, not size(TbU).  The compressed dummies are whole
       ! arrays now, so their size is dynTot and says nothing about how many
       ! slots THIS block owns.
-      nslot = ncnt + 1
+      ! ⚠ The TASK owns ONE dead slot, at nActive_TU+1 -- not one per block.
+      ! dynOff is a prefix sum of dynCntA, so block iblk+1 starts at
+      ! dynOff(iblk)+dynCntA(iblk)+1: a blanket ncnt+1 here would clear the
+      ! NEXT block's first active slot, and this routine is called from an
+      ! OMP block loop, so that races with that block's own fill.  Only the
+      ! block whose active range ends at the dead slot may include it.
+      nslot = ncnt
+      if (Xoff + ncnt + 1 == deadSlot) nslot = ncnt + 1
       nact  = ncnt
 
       ! cross-check the reference itself before trusting it
