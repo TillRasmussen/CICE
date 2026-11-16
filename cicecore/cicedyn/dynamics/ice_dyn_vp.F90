@@ -275,7 +275,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
           strtltxU, strtltyU, strocnxU, strocnyU, strintxU, strintyU, taubxU, taubyU, &
           strax, stray,                                                               &
           hwater, hwater_slot
-      use ice_grid, only: tmask, umask, dxT, dyT, dxU, dyU, &
+      use ice_grid, only: umask, dxT, dyT, dxU, dyU, &
           tarear, grid_average_X2Y,                         &
           grid_atm_dynu, grid_atm_dynv, grid_ocn_dynu, grid_ocn_dynv
       use ice_state, only: aice_slot, aice0_slot, vice_slot, vsno_slot, aice, aiU, vice, vsno, uvel, vvel, divu, shear, vort, &
@@ -384,7 +384,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
                          ilo, ihi,           jlo, jhi,           &
                            aice_slot,          vice_slot,          &
                            vsno_slot,                              &
-                           dynMap  (:,iblk),   tmask   (:,  iblk), &
+                           dynMap  (:,iblk),                       &
                          dynOff(iblk),       dynCntA(iblk),       &
                          tmass   (:,iblk))
 

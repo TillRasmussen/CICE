@@ -323,7 +323,7 @@
           dpnd_dlid, dpnd_flushn, dpnd_exponn, dpnd_freebdn, dpnd_initialn, dpnd_dlidn
       use ice_flux_bgc, only: dsnown, faero_atm, faero_ocn, fiso_atm, fiso_ocn, &
           Qa_iso, Qref_iso, fiso_evap, HDO_ocn, H2_16O_ocn, H2_18O_ocn
-      use ice_grid, only: lmask_n, lmask_s, tmask, opmask
+      use ice_grid, only: lmask_n, lmask_s, tmask_slot, opmask_slot
       use ice_state, only: aice, aicen, aicen_init, vicen_init, &
           vice, vicen, vsno, vsnon, trcrn, vsnon_init
 #ifdef CICE_IN_NEMO
@@ -506,7 +506,7 @@
             enddo
          endif ! tr_aero
 
-         if (tmask((j-1)*nx_block+i,iblk) .or. opmask((j-1)*nx_block+i,iblk)) then
+         if (tmask_slot(ms) .or. opmask_slot(ms)) then
 
          call icepack_step_therm1(dt=dt,                       &
                       aicen_init   = aicen_init  (i,j,:,iblk), &
@@ -776,7 +776,7 @@
           meltl, frazil_diag, dpnd_melt
       use ice_flux_bgc, only: flux_bio, faero_ocn, &
           fiso_ocn, HDO_ocn, H2_16O_ocn, H2_18O_ocn
-      use ice_grid, only: tmask, opmask
+      use ice_grid, only: tmask_slot, opmask_slot
       use ice_state, only: aice, aicen, aice0, trcr_depend, &
           aicen_init, vicen_init, trcrn, vicen, vsnon, &
           trcr_base, n_trcr_strata, nt_strata
@@ -851,7 +851,7 @@
          i  = ij - (j-1)*nx_block
          ms = dynOff(iblk) + is
 
-         if (tmask((j-1)*nx_block+i,iblk) .or. opmask((j-1)*nx_block+i,iblk)) then
+         if (tmask_slot(ms) .or. opmask_slot(ms)) then
 
          ! significant wave height
          if (tr_fsd .and. trim(wave_height_type) == 'internal') then
@@ -1350,7 +1350,7 @@
           aparticn, krdgn, aredistn, vredistn, dardg1ndt, dardg2ndt, &
           dvirdgndt, araftn, vraftn, fsalt, Tf
       use ice_flux_bgc, only: flux_bio, faero_ocn, fiso_ocn
-      use ice_grid, only: tmask
+      use ice_grid, only: tmask_slot
       use ice_state, only: trcrn, vsnon, aicen, vicen, &
           aice, aice0, trcr_depend, n_trcr_strata, &
           trcr_base, nt_strata
@@ -1426,7 +1426,7 @@
 !      call aggregate_area (ncat, aicen_slot(ms, :), atmp, atmp0)
 !      if (atmp > c0) then
 
-         if (tmask((j-1)*nx_block+i,iblk)) then
+         if (tmask_slot(ms)) then
 
             call icepack_step_ridge (dt=dt, ndtd=ndtd,      &
                          hin_max   = hin_max(:),            &
@@ -1657,7 +1657,7 @@
       use ice_domain_size, only: ncat, n_aero, nilyr, nslyr, n_zaero, n_algae, nblyr
       use ice_flux, only: swvdr, swvdf, swidr, swidf, coszen, fsnow, &
           swuvrdr, swuvrdf, swpardr, swpardf
-      use ice_grid, only: TLAT, TLON, tmask, opmask
+      use ice_grid, only: TLAT, TLON, tmask_slot, opmask_slot
       use ice_state, only: aicen, vicen, vsnon, trcrn
       use ice_timers, only: ice_timer_start, ice_timer_stop, timer_sw
       use ice_communicate, only: my_task
@@ -1767,7 +1767,7 @@
             endif
          enddo
 
-         if (tmask((j-1)*nx_block+i,iblk) .or. opmask((j-1)*nx_block+i,iblk)) then
+         if (tmask_slot(ms) .or. opmask_slot(ms)) then
 
             call icepack_step_radiation (dt=dt,                               &
                          fbri=fbri(:),                                        &
@@ -1869,6 +1869,9 @@
            frzmlt, fhocn, fswthru, flw, flwout_ocn, fsens_ocn, flat_ocn, evap_ocn, &
            alvdr_ocn, alidr_ocn, alvdf_ocn, alidf_ocn, swidf, swvdf, swidr, swvdr, &
            qdp, hmix, strairx_ocn, strairy_ocn, Tref_ocn, Qref_ocn
+      ! ⚠ Block form on purpose: this loop zeroes fluxes at cells that are
+      ! NOT ocean, and a cell with no slot is exactly such a cell -- a slot
+      ! loop would never reach them.
       use ice_grid, only: tmask
       use ice_state, only: aice
 

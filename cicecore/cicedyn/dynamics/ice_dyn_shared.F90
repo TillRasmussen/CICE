@@ -509,7 +509,7 @@
 !
       subroutine alloc_dyn_shared
 
-      use ice_grid, only: tmask, umask, umaskCD, nmask, emask
+      use ice_grid, only: umask, umaskCD, nmask, emask
 
       integer (int_kind) :: ierr
 
@@ -1454,9 +1454,11 @@
       subroutine dyn_prep1 (nx_block,  ny_block, &
                             ilo, ihi,  jlo, jhi, &
                             aice,      vice,     &
-                            vsno,      map,      Tmask,    &
+                            vsno,      map,      &
                             Xoff,      ncnt,     &
                             Tmass)
+
+      use ice_grid, only: tmask_slot
 
       integer (kind=int_kind), intent(in) :: &
          nx_block, ny_block, & ! block dimensions
@@ -1477,7 +1479,7 @@
       ! A cell with no slot reads c0 below, which is what the block form
       ! held: dynMap comes from tmask .or. umask, so an unmapped cell is
       ! land, and both Tmass and tmphm are forced false/zero there by the
-      ! Tmask test regardless of what aice, vice and vsno contain.
+      ! tmask_slot test regardless of what aice, vice and vsno contain.
       real (kind=dbl_kind), dimension (:), intent(in), contiguous :: &
          aice    , & ! concentration of ice, this block's slots
          vice    , & ! volume per unit area of ice          (m)
@@ -1486,9 +1488,6 @@
       integer (kind=int_kind), dimension (:), intent(in), contiguous :: &
          map         ! this block's dynMap column
 
-      logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
-         Tmask       ! land/boundary mask, thickness (T-cell)
-
       real (kind=dbl_kind), dimension (:), intent(out), contiguous :: &
          Tmass       ! total mass of ice and snow (kg/m^2)
 
@@ -1496,9 +1495,7 @@
       ! local variables
 
       integer (kind=int_kind) :: &
-         i, j, ij       , & ! i, j and the matching 1D index into the block
-         ijsub          , & ! 1D index over the physical domain only
-         nisub, njsub     , & ! i and j extent of the physical domain
+         ij             , & ! 1D index into the block
          ms                 ! slot of this cell
 
       real (kind=dbl_kind) :: &
@@ -1515,16 +1512,13 @@
       ! whole block, ghost cells included
       do ij = 1, nx_block*ny_block
 
-         j = (ij-1)/nx_block + 1
-         i = ij - (j-1)*nx_block
-
          ! Slot of this cell, or the dead slot at the end of the slice.
          !
          ! ⚠ The fallback is for INDEX VALIDITY, not for its value.  An
-         ! unmapped cell is land -- dynMap is tmask .or. umask -- so Tmask(ij)
+         ! unmapped cell is land -- dynMap is tmask .or. umask -- so tmask_slot(ms)
          ! is false there and both results below are forced regardless.  But
          ! Fortran does not guarantee short-circuit evaluation, so aice(ms)
-         ! may be read even when Tmask(ij) is false, and ms must be in range.
+         ! may be read even when tmask_slot(ms) is false, and ms must be in range.
          ! ⚠ map is task-global, and so is the fallback: THE dead slot,
          ! one for the task.  It holds zero, which is what the block form
          ! carried at the land cell this names.
@@ -1536,7 +1530,7 @@
          ! NOTE: vice and vsno must be up to date in all grid cells,
          !       including ghost cells
          !-----------------------------------------------------------------
-         if (Tmask(ij)) then
+         if (tmask_slot(ms)) then
             Tmass(ij) = (rhoi*vice(ms) + rhos*vsno(ms)) ! kg/m^2
          else
             Tmass(ij) = c0
@@ -1545,7 +1539,7 @@
          !-----------------------------------------------------------------
          ! ice extent mask (T-cells)
          !-----------------------------------------------------------------
-           tmphm_slot(ms) = Tmask(ij) .and. (aice (ms) > dyn_area_min) &
+           tmphm_slot(ms) = tmask_slot(ms) .and. (aice (ms) > dyn_area_min) &
                                 .and. (Tmass(ij)  > dyn_mass_min)
 
          !-----------------------------------------------------------------
@@ -1576,11 +1570,11 @@
 
       subroutine dyn_prep1_dilate
 
-      use ice_grid, only: dynIJ, dynBlk, skipPhys, tmask, nActive_TU, &
+      use ice_grid, only: dynBlk, skipPhys, tmask_slot, nActive_TU, &
                           NbrW_Task, NbrE_Task, NbrN_Task, NbrS_Task,  &
                           NbrNW_Task, NbrNE_Task, NbrSW_Task, NbrSE_Task
 
-      integer (kind=int_kind) :: ms, ij, iblk
+      integer (kind=int_kind) :: ms
 
       character(len=*), parameter :: subname = '(dyn_prep1_dilate)'
 
@@ -1589,13 +1583,11 @@
       ! sets .true., so without this the mask grows monotonically.
       iceTmask_slot(:) = .false.
 
-      !$OMP PARALLEL DO PRIVATE(ms,ij,iblk) SCHEDULE(runtime)
+      !$OMP PARALLEL DO PRIVATE(ms) SCHEDULE(runtime)
       do ms = 1, nActive_TU
          ! physical domain only, as the block form's ilo:ihi x jlo:jhi was
          if (skipPhys(ms)) cycle
-         iblk = dynBlk(ms)
-         if (iblk == 0) cycle
-         ij = dynIJ(ms)
+         if (dynBlk(ms) == 0) cycle
 
          ! extend ice extent mask (T-cells) to points around pack
          if (tmphm_slot(ms)              .or. &
@@ -1612,7 +1604,7 @@
          ! keeps such a ghost in icellT and writes str there.  That is a
          ! decision to diverge from base, not a technical one.  See the
          ! upstream branch icetmask-tmask-invariant.
-         if (.not.tmask(ij,iblk)) iceTmask_slot(ms) = .false.
+         if (.not.tmask_slot(ms)) iceTmask_slot(ms) = .false.
 
       enddo
       !$OMP END PARALLEL DO

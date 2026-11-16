@@ -440,7 +440,7 @@
       use ice_blocks, only: nx_block, ny_block
       use ice_domain, only: nblocks
       use ice_domain_size, only: max_blocks, ncat
-      use ice_grid, only: dynMap
+      use ice_grid, only: dynMap, tmask_slot, opmask_slot
 
       real (kind=dbl_kind), dimension(:,:,:), intent(in), allocatable :: &
          comp              ! the compressed field, whole, (slot,ntrcr,ncat)
@@ -471,10 +471,13 @@
          do n = 1, ncat
          do j = 1, ny_block
          do i = 1, nx_block
-            if (.not.tmask((j-1)*nx_block+i,iblk) .and. &
-                .not.opmask((j-1)*nx_block+i,iblk)) cycle
             m = dynMap((j-1)*nx_block+i,iblk)
-            if (m > 0) work(i,j,n,iblk) = comp(m,it,n)
+            if (m < 1) cycle
+            ! ⚠ Reordered: the slot is taken first so the land test can read
+            ! the compressed masks.  Same set written -- a cell with no slot
+            ! was never written under the old order either.
+            if (.not.tmask_slot(m) .and. .not.opmask_slot(m)) cycle
+            work(i,j,n,iblk) = comp(m,it,n)
          enddo
          enddo
          enddo

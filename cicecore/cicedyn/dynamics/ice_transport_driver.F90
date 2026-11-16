@@ -838,7 +838,7 @@
           n_trcr_strata, nt_strata, uvelE, vvelN
       use ice_bound_state, only: bound_state
       use ice_flux, only: Tf
-      use ice_grid, only: tmask, grid_ice, &
+      use ice_grid, only: tmask_slot, grid_ice, &
           dynMap, dynOff, dynCntA, nStored_TU, dynIJ, dynBlk, &
           skipEdgeE, skipEdgeN, skipPhys, &
           HTE_slot, HTN_slot, tarea_slot, pack_to_slots, &
@@ -1062,7 +1062,7 @@
                              ntrcr,               narr,                 &
                              trcr_depend(:),      trcr_base(:,:),       &
                              n_trcr_strata(:),    nt_strata(:,:),       &
-                             tmask(:,      iblk), Tf    (:,:,iblk),     &
+                             Tf    (:,:,iblk),                          &
                              aicen_slot,          trcrn_slot,           &
                              vicen_slot,          vsnon_slot,           &
                              aice0(:,:,    iblk), aice0_slot,           &
@@ -1897,12 +1897,13 @@
                                 trcr_base,               &
                                 n_trcr_strata,           &
                                 nt_strata,               &
-                                tmask,         Tf,       &
+                                Tf,                      &
                                 aicen,         trcrn,    &
                                 vicen,         vsnon,    &
                                 aice0,         aice0_s,  works)
 
       use ice_domain_size, only: ncat
+      use ice_grid, only: tmask_slot
 
       integer (kind=int_kind), intent (in) :: &
          off               , & ! first slot of this block, minus one
@@ -1923,11 +1924,6 @@
 
       integer (kind=int_kind), dimension (ntrcr,2), intent(in) :: &
          nt_strata      ! indices of underlying tracer layers
-
-      ! tmask is assumed shape, 1D over the block in Fortran storage order,
-      ! i.e. element (i,j) is stored at (j-1)*nx_block+i
-      logical (kind=log_kind), dimension (:), intent (in) :: &
-         tmask
 
       real (kind=dbl_kind), intent (in) :: &
          Tf    (nx_block,ny_block)
@@ -2010,7 +2006,7 @@
                                          Tf            = Tf(i,j))
 
             ! tcraig, don't let land points get non-zero Tsfc
-            if (.not.tmask((j-1)*nx_block+i)) then
+            if (.not.tmask_slot(ms)) then
                trcrn(ms,nt_Tsfc,n) = c0
             endif
 

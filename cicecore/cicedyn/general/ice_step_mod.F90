@@ -101,14 +101,16 @@
          vicen_init_slot = vicen_slot
          vsnon_init_slot = vsnon_slot
 
+         ! ⚠ aicen_init KEEPS its block unpack: ice_history multiplies five
+         ! fields by aicen_init(:,:,1:ncat_hist,iblk), and the cmeps and geos
+         ! drivers read it too.  vicen_init and vsnon_init have no reader
+         ! outside this module, so their unpacks are gone -- two of the
+         ! per-step unpacks the conversion set out to remove.  Prove there is
+         ! no block reader before removing any more.
          !$OMP PARALLEL DO PRIVATE(iblk) SCHEDULE(runtime)
          do iblk = 1, nblocks
             call unpack_cat_from_slots(aicen_init_slot, &
                  dynMap(:,iblk), aicen_init(:,:,:,iblk))
-            call unpack_cat_from_slots(vicen_init_slot, &
-                 dynMap(:,iblk), vicen_init(:,:,:,iblk))
-            call unpack_cat_from_slots(vsnon_init_slot, &
-                 dynMap(:,iblk), vsnon_init(:,:,:,iblk))
          enddo
          !$OMP END PARALLEL DO
 
@@ -322,7 +324,8 @@
           dpnd_dlid, dpnd_flushn, dpnd_exponn, dpnd_freebdn, dpnd_initialn, dpnd_dlidn
       use ice_flux_bgc, only: dsnown, faero_atm, faero_ocn, fiso_atm, fiso_ocn, &
           Qa_iso, Qref_iso, fiso_evap, HDO_ocn, H2_16O_ocn, H2_18O_ocn
-      use ice_grid, only: lmask_n, lmask_s, tmask, opmask
+      use ice_grid, only: lmask_n, lmask_s, tmask_slot, opmask_slot
+      use ice_state, only: aicen_init_slot, vicen_init_slot, vsnon_init_slot
       use ice_state, only: aice, aicen, aicen_init, vicen_init, &
           vice, vicen, vsno, vsnon, trcrn, vsnon_init
 #ifdef CICE_IN_NEMO
@@ -486,8 +489,8 @@
          if (tr_iso) then ! trcrn(nt_iso*) has units kg/m^3
             do n=1,ncat
                do k=1,n_iso
-                  isosno(k,n) = trcrn_slot(ms, nt_isosno+k-1,n) * vsnon_init(i,j,n,iblk)
-                  isoice(k,n) = trcrn_slot(ms, nt_isoice+k-1,n) * vicen_init(i,j,n,iblk)
+                  isosno(k,n) = trcrn_slot(ms, nt_isosno+k-1,n) * vsnon_init_slot(ms,n)
+                  isoice(k,n) = trcrn_slot(ms, nt_isoice+k-1,n) * vicen_init_slot(ms,n)
                enddo
             enddo
          endif ! tr_iso
@@ -497,20 +500,20 @@
                do k=1,n_aero
                   aerosno (k,:,n) = &
                      trcrn_slot(ms, nt_aero+(k-1)*4  :nt_aero+(k-1)*4+1,n) &
-                                  * vsnon_init(i,j,n,iblk)
+                                  * vsnon_init_slot(ms,n)
                   aeroice (k,:,n) = &
                      trcrn_slot(ms, nt_aero+(k-1)*4+2:nt_aero+(k-1)*4+3,n) &
-                                  * vicen_init(i,j,n,iblk)
+                                  * vicen_init_slot(ms,n)
                enddo
             enddo
          endif ! tr_aero
 
-         if (tmask((j-1)*nx_block+i,iblk) .or. opmask((j-1)*nx_block+i,iblk)) then
+         if (tmask_slot(ms) .or. opmask_slot(ms)) then
 
          call icepack_step_therm1(dt=dt,                       &
-                      aicen_init   = aicen_init  (i,j,:,iblk), &
-                      vicen_init   = vicen_init  (i,j,:,iblk), &
-                      vsnon_init   = vsnon_init  (i,j,:,iblk), &
+                      aicen_init   = aicen_init_slot(ms,:), &
+                      vicen_init   = vicen_init_slot(ms,:), &
+                      vsnon_init   = vsnon_init_slot(ms,:), &
                       aice         = aice        (i,j,  iblk), &
                       aicen        = aicen_slot       (ms, :), &
                       vice         = vice        (i,j,  iblk), &
@@ -685,7 +688,7 @@
                ! TODO (mvertens, 2018-12-22): do we need to add the band separated quantities
                ! for MOM6 here also?
 
-               fswthrun_ai(i,j,n,iblk) = fswthrun(i,j,n,iblk)*aicen_init(i,j,n,iblk)
+               fswthrun_ai(i,j,n,iblk) = fswthrun(i,j,n,iblk)*aicen_init_slot(ms,n)
             enddo                  ! ncat
          endif
 
@@ -768,7 +771,8 @@
           meltl, frazil_diag, dpnd_melt
       use ice_flux_bgc, only: flux_bio, faero_ocn, &
           fiso_ocn, HDO_ocn, H2_16O_ocn, H2_18O_ocn
-      use ice_grid, only: tmask, opmask
+      use ice_grid, only: tmask_slot, opmask_slot
+      use ice_state, only: aicen_init_slot, vicen_init_slot, vsnon_init_slot
       use ice_state, only: aice, aicen, aice0, trcr_depend, &
           aicen_init, vicen_init, trcrn, vicen, vsnon, &
           trcr_base, n_trcr_strata, nt_strata
@@ -843,7 +847,7 @@
          i  = ij - (j-1)*nx_block
          ms = dynOff(iblk) + is
 
-         if (tmask((j-1)*nx_block+i,iblk) .or. opmask((j-1)*nx_block+i,iblk)) then
+         if (tmask_slot(ms) .or. opmask_slot(ms)) then
 
          ! significant wave height
          if (tr_fsd .and. trim(wave_height_type) == 'internal') then
@@ -856,8 +860,8 @@
                       aicen       = aicen_slot      (ms, :), &
                       vicen       = vicen_slot      (ms, :), &
                       vsnon       = vsnon_slot      (ms, :), &
-                      aicen_init  = aicen_init (i,j,:,iblk), &
-                      vicen_init  = vicen_init (i,j,:,iblk), &
+                      aicen_init  = aicen_init_slot(ms,:), &
+                      vicen_init  = vicen_init_slot(ms,:), &
                       trcrn       = trcrn_slot      (ms, :,:), &
                       aice0       = aice0_slot      (ms), &
                       aice        = aice       (i,j,  iblk), &
@@ -1340,7 +1344,7 @@
           aparticn, krdgn, aredistn, vredistn, dardg1ndt, dardg2ndt, &
           dvirdgndt, araftn, vraftn, fsalt, Tf
       use ice_flux_bgc, only: flux_bio, faero_ocn, fiso_ocn
-      use ice_grid, only: tmask
+      use ice_grid, only: tmask_slot
       use ice_state, only: trcrn, vsnon, aicen, vicen, &
           aice, aice0, trcr_depend, n_trcr_strata, &
           trcr_base, nt_strata
@@ -1416,7 +1420,7 @@
 !      call aggregate_area (ncat, aicen_slot(ms, :), atmp, atmp0)
 !      if (atmp > c0) then
 
-         if (tmask((j-1)*nx_block+i,iblk)) then
+         if (tmask_slot(ms)) then
 
             call icepack_step_ridge (dt=dt, ndtd=ndtd,      &
                          hin_max   = hin_max(:),            &
@@ -1640,7 +1644,7 @@
       use ice_domain_size, only: ncat, n_aero, nslyr, n_zaero, n_algae, nblyr
       use ice_flux, only: swvdr, swvdf, swidr, swidf, coszen, fsnow, &
           swuvrdr, swuvrdf, swpardr, swpardf
-      use ice_grid, only: TLAT, TLON, tmask, opmask
+      use ice_grid, only: TLAT, TLON, tmask_slot, opmask_slot
       use ice_state, only: aicen, vicen, vsnon, trcrn
       use ice_timers, only: ice_timer_start, ice_timer_stop, timer_sw
       use ice_communicate, only: my_task
@@ -1750,7 +1754,7 @@
             endif
          enddo
 
-         if (tmask((j-1)*nx_block+i,iblk) .or. opmask((j-1)*nx_block+i,iblk)) then
+         if (tmask_slot(ms) .or. opmask_slot(ms)) then
 
             call icepack_step_radiation (dt=dt,                               &
                          fbri=fbri(:),                                        &
@@ -1846,6 +1850,9 @@
            frzmlt, fhocn, fswthru, flw, flwout_ocn, fsens_ocn, flat_ocn, evap_ocn, &
            alvdr_ocn, alidr_ocn, alvdf_ocn, alidf_ocn, swidf, swvdf, swidr, swvdr, &
            qdp, hmix, strairx_ocn, strairy_ocn, Tref_ocn, Qref_ocn
+      ! ⚠ Block form on purpose: this loop zeroes fluxes at cells that are
+      ! NOT ocean, and a cell with no slot is exactly such a cell -- a slot
+      ! loop would never reach them.
       use ice_grid, only: tmask
       use ice_state, only: aice
 
@@ -2014,6 +2021,7 @@
                           sst, sss, Tf, fsnow, meltsn
       use ice_flux_bgc, only: hin_old, flux_bio, flux_bio_atm, faero_atm, &
           nit, amm, sil, dmsp, dms, algalN, doc, don, dic, fed, fep, zaeros, hum
+      use ice_state, only: aicen_init_slot, vicen_init_slot, vsnon_init_slot
       use ice_state, only: aicen_init, vicen_init, aicen, vicen, vsnon, &
           trcrn, vsnon_init, aice0
       use ice_timers, only: timer_bgc, ice_timer_start, ice_timer_stop
@@ -2145,14 +2153,14 @@
                               hin_old      = hin_old     (i,j,:,        iblk), &
                               flux_bio     = flux_bio    (i,j,1:nbtrcr, iblk), &
                               flux_bio_atm = flux_bio_atm(i,j,1:nbtrcr, iblk), &
-                              aicen_init   = aicen_init  (i,j,:,        iblk), &
-                              vicen_init   = vicen_init  (i,j,:,        iblk), &
+                              aicen_init   = aicen_init_slot(ms,:), &
+                              vicen_init   = vicen_init_slot(ms,:), &
                               aicen        = aicen_slot       (ms, :), &
                               vicen        = vicen_slot       (ms, :), &
                               vsnon        = vsnon_slot       (ms, :), &
                               aice0        = aice0_slot       (ms), &
                               trcrn        = trcrn_slot       (ms, :,:), &
-                              vsnon_init   = vsnon_init  (i,j,:,        iblk))
+                              vsnon_init   = vsnon_init_slot(ms,:))
 
          ! uncomment to print the location and ice state of the failing grid cell
          ! if (icepack_warnings_aborted()) then

@@ -228,7 +228,7 @@
           strtltxN, strtltyN, strocnxN, strocnyN, strintxN, strintyN, &
           strairxE, strairyE, fmE, &
           strtltxE, strtltyE, strocnxE, strocnyE, strintxE, strintyE
-      use ice_grid, only: tmask, umask, umaskCD, nmask, emask, uvm, epm, npm, &
+      use ice_grid, only: umask, umaskCD, nmask, emask, uvm, epm, npm,        &
           dxE, dxN, dxT, dxU, dyE, dyN, dyT, dyU, &
           tarear, uarear, earear, narear, grid_average_X2Y, uarea, &
           grid_ice, grid_atm_dynu, grid_atm_dynv, grid_ocn_dynu, grid_ocn_dynv
@@ -399,7 +399,7 @@
                          ilo, ihi,           jlo, jhi,           &
                            aice_slot,          vice_slot,          &
                            vsno_slot,                              &
-                           dynMap  (:,iblk),   tmask   (:,  iblk), &
+                           dynMap  (:,iblk),                       &
                          dynOff(iblk),       dynCntA(iblk),       &
                          tmass   (:,iblk))
 

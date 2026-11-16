@@ -2204,7 +2204,7 @@
       use ice_blocks, only: block, get_block, nx_block, ny_block
       use ice_domain, only: blocks_ice, nblocks
       use ice_domain_size, only: nfsd
-      use ice_grid, only: tmask, lmask_n, lmask_s, dxU, dyU, grid_ice, &
+      use ice_grid, only: tmask, tmask_slot, lmask_n, lmask_s, dxU, dyU, grid_ice, &
                           dynMap, dynOff, dynCnt, dynCntA, dynIJ, pack_to_slots, &
                           unpack_from_slots, &
                           NbrE_Task, NbrN_Task, NbrS_Task, NbrW_Task,      &
@@ -4068,7 +4068,7 @@
                     ! those with spval_dbl on expansion, which is what this loop
                     ! would have written here.
                     if (ms < 1) cycle
-                    if (.not. tmask((j-1)*nx_block+i,iblk)) then
+                    if (.not. tmask_slot(ms)) then
                        a2D(ms,n) = spval_dbl
                     else                            ! convert units
                        a2D(ms,n) = avail_hist_fields(n)%cona*a2D(ms,n) &
@@ -4084,7 +4084,7 @@
                     ! those with spval_dbl on expansion, which is what this loop
                     ! would have written here.
                     if (ms < 1) cycle
-                    if (.not. tmask((j-1)*nx_block+i,iblk)) then
+                    if (.not. tmask_slot(ms)) then
                        a2D(ms,n) = spval_dbl
                     else                            ! convert units
                        a2D(ms,n) = avail_hist_fields(n)%cona*a2D(ms,n) &
@@ -4100,7 +4100,7 @@
                     ! those with spval_dbl on expansion, which is what this loop
                     ! would have written here.
                     if (ms < 1) cycle
-                    if (.not. tmask((j-1)*nx_block+i,iblk)) then
+                    if (.not. tmask_slot(ms)) then
                        a2D(ms,n) = spval_dbl
                     else                            ! convert units
                        a2D(ms,n) = avail_hist_fields(n)%cona*a2D(ms,n) &
@@ -4116,7 +4116,7 @@
                     ! those with spval_dbl on expansion, which is what this loop
                     ! would have written here.
                     if (ms < 1) cycle
-                    if (.not. tmask((j-1)*nx_block+i,iblk)) then
+                    if (.not. tmask_slot(ms)) then
                        a2D(ms,n) = spval_dbl
                     else                            ! convert units
                        a2D(ms,n) = avail_hist_fields(n)%cona*a2D(ms,n) &
@@ -4132,7 +4132,7 @@
                     ! those with spval_dbl on expansion, which is what this loop
                     ! would have written here.
                     if (ms < 1) cycle
-                    if (.not. tmask((j-1)*nx_block+i,iblk)) then ! mask out land points
+                    if (.not. tmask_slot(ms)) then ! mask out land points
                        a2D(ms,n) = spval_dbl
                     else                            ! convert units
                        a2D(ms,n) = avail_hist_fields(n)%cona*a2D(ms,n) &
@@ -4274,7 +4274,7 @@
                     do i = ilo, ihi
                        ms = dynMap((j-1)*nx_block+i,iblk)
                        if (ms < 1) cycle   ! no slot: expand_a3Dc fills spval
-                       if (.not. tmask((j-1)*nx_block+i,iblk)) then ! mask out land points
+                       if (.not. tmask_slot(ms)) then ! mask out land points
                           a3Dc(ms,k,n) = spval_dbl
                        else                            ! convert units
                           a3Dc(ms,k,n) = avail_hist_fields(nn)%cona*a3Dc(ms,k,n) &
@@ -4289,7 +4289,7 @@
                     do i = ilo, ihi
                        ms = dynMap((j-1)*nx_block+i,iblk)
                        if (ms < 1) cycle   ! no slot: expand_a3Dc fills spval
-                       if (.not. tmask((j-1)*nx_block+i,iblk)) then ! mask out land points
+                       if (.not. tmask_slot(ms)) then ! mask out land points
                           a3Dc(ms,k,n) = spval_dbl
                        else                            ! convert units
                           a3Dc(ms,k,n) = avail_hist_fields(nn)%cona*a3Dc(ms,k,n) &
@@ -4367,7 +4367,7 @@
               do i = ilo, ihi
                  ms = dynMap((j-1)*nx_block+i,iblk)
                  if (ms < 1) cycle   ! no slot: the expansion fills spval
-                 if (.not. tmask((j-1)*nx_block+i,iblk)) then ! mask out land points
+                 if (.not. tmask_slot(ms)) then ! mask out land points
                     a3Df(ms,k,n) = spval_dbl
                  else                            ! convert units
                     a3Df(ms,k,n) = avail_hist_fields(nn)%cona*a3Df(ms,k,n) &
@@ -4388,7 +4388,7 @@
               do i = ilo, ihi
                  ms = dynMap((j-1)*nx_block+i,iblk)
                  if (ms < 1) cycle   ! no slot: the expansion fills spval
-                 if (.not. tmask((j-1)*nx_block+i,iblk)) then ! mask out land points
+                 if (.not. tmask_slot(ms)) then ! mask out land points
                     a4Di(ms,k,ic,n) = spval_dbl
                  else                            ! convert units
                     a4Di(ms,k,ic,n) = avail_hist_fields(nn)%cona*a4Di(ms,k,ic,n) &
@@ -4410,7 +4410,7 @@
               do i = ilo, ihi
                  ms = dynMap((j-1)*nx_block+i,iblk)
                  if (ms < 1) cycle   ! no slot: the expansion fills spval
-                 if (.not. tmask((j-1)*nx_block+i,iblk)) then ! mask out land points
+                 if (.not. tmask_slot(ms)) then ! mask out land points
                     a4Ds(ms,k,ic,n) = spval_dbl
                  else                            ! convert units
                     a4Ds(ms,k,ic,n) = avail_hist_fields(nn)%cona*a4Ds(ms,k,ic,n) &
@@ -4432,7 +4432,7 @@
               do i = ilo, ihi
                  ms = dynMap((j-1)*nx_block+i,iblk)
                  if (ms < 1) cycle   ! no slot: the expansion fills spval
-                 if (.not. tmask((j-1)*nx_block+i,iblk)) then ! mask out land points
+                 if (.not. tmask_slot(ms)) then ! mask out land points
                     a4Df(ms,k,ic,n) = spval_dbl
                  else                            ! convert units
                     a4Df(ms,k,ic,n) = avail_hist_fields(nn)%cona*a4Df(ms,k,ic,n) &

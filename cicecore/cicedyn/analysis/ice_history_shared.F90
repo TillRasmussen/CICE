@@ -1438,7 +1438,7 @@
 
       use ice_blocks, only: nx_block
       use ice_calendar, only: nstreams
-      use ice_grid, only: tmask, dynCntA, dynOff, dynIJ, skipPhys
+      use ice_grid, only: tmask_slot, dynCntA, dynOff, dynIJ, skipPhys
 
       integer (int_kind), dimension(:), intent(in) :: &
          id                ! location in avail_fields array
@@ -1472,7 +1472,7 @@
                m = dynOff(iblk) + is
                if (skipPhys(m)) cycle
                ij = dynIJ(m)
-               if (.not. tmask(ij,iblk)) cycle
+               if (.not. tmask_slot(m)) cycle
                j = (ij-1)/nx_block + 1
                i = ij - (j-1)*nx_block
                field(m,idns) = field(m,idns) + fluxb(i,j)*agg(is)

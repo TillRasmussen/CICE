@@ -189,10 +189,14 @@
          lmask_n_slot, & ! northern hemisphere mask, compressed
          lmask_s_slot    ! southern hemisphere mask, compressed
 
-      ! tmask, compressed: one value per slot.  Static block geometry, so it
-      ! is built once here beside the hemisphere masks.
+      ! tmask and opmask, compressed: one value per slot.  Static block
+      ! geometry, so they are built once here beside the hemisphere masks.
+      ! ⚠ opmask is DISJOINT from tmask by construction (makemask sets it only
+      ! where .not.tmask), and dynMap is tmask .or. umask -- so an orphan cell
+      ! owns a slot only if umask or the forced frame happens to cover it.
       logical (kind=log_kind), dimension (:), allocatable, public :: &
-         tmask_slot      ! T-cell mask, compressed
+         tmask_slot , &  ! T-cell mask, compressed
+         opmask_slot     ! orphan mask, compressed
 
       ! the i and j dimensions are flattened: element (i,j,iblk) of the block
       ! layout lives at ((j-1)*nx_block + i, iblk)
@@ -7802,16 +7806,18 @@
       ! block one.  Dead slots own no cell and stay .false.
       ! ------------------------------------------------------------------
       allocate(lmask_n_slot(nStored_TU), lmask_s_slot(nStored_TU), &
-               tmask_slot(nStored_TU), stat=ierr)
+               tmask_slot(nStored_TU), opmask_slot(nStored_TU), stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
       lmask_n_slot(:) = .false.
       lmask_s_slot(:) = .false.
       tmask_slot  (:) = .false.
+      opmask_slot (:) = .false.
       do m = 1, nStored_TU
          if (dynIJ(m) == 0) cycle
          lmask_n_slot(m) = lmask_n(dynIJ(m), dynBlk(m))
          lmask_s_slot(m) = lmask_s(dynIJ(m), dynBlk(m))
          tmask_slot  (m) = tmask  (dynIJ(m), dynBlk(m))
+         opmask_slot (m) = opmask (dynIJ(m), dynBlk(m))
       enddo
 
       ! ------------------------------------------------------------------
