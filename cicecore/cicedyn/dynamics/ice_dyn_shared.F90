@@ -925,6 +925,7 @@
 
       end subroutine grid_average_X2YA_compressed
 
+
 !=======================================================================
 ! Masked counterpart, for the T2US shift.  Only NE is needed.
 
@@ -1434,6 +1435,11 @@
 
       character(len=*), parameter :: subname = '(dyn_prep1_dilate)'
 
+      ! ⚠ Reset first.  dyn_prep1 clears the BLOCK copy per cell every step;
+      ! the slot form needs the same cadence, and the loop below only ever
+      ! sets .true., so without this the mask grows monotonically.
+      iceTmask_slot(:) = .false.
+
       !$OMP PARALLEL DO PRIVATE(ms,ij,iblk) SCHEDULE(runtime)
       do ms = 1, nActive_TU
          ! physical domain only, as the block form's ilo:ihi x jlo:jhi was
@@ -1448,7 +1454,7 @@
              tmphm_slot(NbrN_Task (ms))  .or. tmphm_slot(NbrS_Task (ms)) .or. &
              tmphm_slot(NbrNW_Task(ms))  .or. tmphm_slot(NbrNE_Task(ms)) .or. &
              tmphm_slot(NbrSW_Task(ms))  .or. tmphm_slot(NbrSE_Task(ms))) then
-            iceTmask(ij,iblk) = .true.
+            iceTmask_slot(ms) = .true.
          endif
 
          ! ⚠ The Tmask test stays HERE, before the halo.  Moving it after the
@@ -1457,7 +1463,10 @@
          ! keeps such a ghost in icellT and writes str there.  That is a
          ! decision to diverge from base, not a technical one.  See the
          ! upstream branch icetmask-tmask-invariant.
-         if (.not.tmask(ij,iblk)) iceTmask(ij,iblk) = .false.
+         if (.not.tmask(ij,iblk)) iceTmask_slot(ms) = .false.
+
+         ! the block copy stays current for the consumers still on it
+         iceTmask(ij,iblk) = iceTmask_slot(ms)
 
       enddo
       !$OMP END PARALLEL DO
@@ -1538,18 +1547,8 @@
       ! jlo..jhi+1 x ilo..ihi+1, which can land on a RING slot.  One loop
       ! over the active range would drop those.
       !$OMP PARALLEL DO PRIVATE(ms) SCHEDULE(runtime)
-      do ms = 1, nActive_TU
-         iceTmask_slot(ms) = .false.
-      enddo
-      !$OMP END PARALLEL DO
-
-      !$OMP PARALLEL DO PRIVATE(ms,ij,iblk) SCHEDULE(runtime)
       do ms = 1, nStored_TU
-         if (skipTstr(ms)) cycle
-         iblk = dynBlk(ms)
-         if (iblk == 0) cycle                   ! the dead slot
-         ij = dynIJ(ms)
-         if (iceTmask(ij,iblk)) iceTmask_slot(ms) = .true.
+         if (skipTstr(ms)) iceTmask_slot(ms) = .false.
       enddo
       !$OMP END PARALLEL DO
 

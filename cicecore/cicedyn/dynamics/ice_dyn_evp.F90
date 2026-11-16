@@ -211,12 +211,12 @@
 
       subroutine evp (dt)
 
-      use ice_arrays_column, only: Cdn_ocn
       use ice_boundary, only: ice_halo, ice_HaloMask, ice_HaloUpdate, &
           ice_HaloUpdate2DR8_compressed, ice_HaloUpdate3DR8_compressed, &
           ice_HaloDestroy, ice_HaloUpdate_stress, &
           ice_HaloUpdate_stress_compressed
       use ice_blocks, only: block, get_block, nx_block, ny_block, ns_boundary_type
+      use ice_arrays_column, only: Cdn_ocn
       use ice_domain, only: nblocks, blocks_ice, halo_info, maskhalo_dyn
       use ice_domain_size, only: max_blocks
       use ice_flux, only: rdg_conv, rdg_shear, strairxT, strairyT, &
@@ -411,8 +411,22 @@
       call dyn_prep1_dilate
 
       call ice_timer_start(timer_bound)
-      call ice_HaloUpdate (iceTmask,          halo_info, &
-                           field_loc_center,  field_type_scalar)
+      call ice_HaloUpdate2DL1_compressed(iceTmask_slot, halo_info, &
+                           field_loc_center,  field_type_scalar,     &
+                           dynMap, dynOff)
+
+      ! ⚠ The block copy still has consumers -- dyn_prep2 takes it at every
+      ! call site, and evp1d's set_skipMe reads it -- so its GHOSTS must be
+      ! refreshed from the slots.  Dropping the block halo without this
+      ! leaves them stale and diverges on every grid.
+      !$OMP PARALLEL DO PRIVATE(iblk,ij,ms) SCHEDULE(runtime)
+      do iblk = 1, nblocks
+         do ij = 1, nx_block*ny_block
+            ms = dynMap(ij,iblk)
+            if (ms > 0) iceTmask(ij,iblk) = iceTmask_slot(ms)
+         enddo
+      enddo
+      !$OMP END PARALLEL DO
       call ice_timer_stop(timer_bound)
 
       !-----------------------------------------------------------------
