@@ -49,6 +49,7 @@
       implicit none
       private
       public :: init_grid1, init_grid2, init_grid_layout, &
+                deadFill, &
                 grid_average_X2Y, makemask, &
                 alloc_grid, dealloc_grid, &
                 grid_neighbor_min, grid_neighbor_max
@@ -7064,6 +7065,43 @@
 ! neighbour index arrays to be precomputed later, the way ice_dyn_evp1d
 ! precomputes ee/ne/se/nw/sw/sse against its own static list.
 
+!=======================================================================
+! The value the single dead slot carries.
+!
+! Normally the caller's own convention: c0 where a missing neighbour must
+! contribute nothing to a sum, c1 for dxN_slot/dyE_slot because they are
+! DIVIDED by.  Both are chosen to be invisible, which is the point -- and
+! the problem.  In block form a stray index is nx_block+1 and -fcheck=bounds
+! catches it; in slot form it resolves to a LEGAL index holding a plausible
+! number, so the same mistake computes a wrong answer in silence.
+!
+! ⚠ Built with -DDEAD_SLOT_POISON the dead slot instead carries a value that
+! cannot pass unnoticed, so any kernel that reads it announces itself.  This
+! is a DIAGNOSTIC build and is NOT bit-for-bit: some reads are legitimate --
+! transport_upwind computes uee at ring cells and relies on the second-layer
+! land cell reading zero.  Each abort is then either "guard this explicitly"
+! or "document why the convention is right here".
+!
+! huge, not NaN, deliberately: a NaN propagates silently through + and *
+! until something tests it, surfacing far from the cause, while huge
+! overflows loudly and close to the site.
+!=======================================================================
+
+      pure function deadFill(normal) result(v)
+
+      real (kind=dbl_kind), intent(in) :: normal
+      real (kind=dbl_kind) :: v
+
+#ifdef DEAD_SLOT_POISON
+      v = huge(normal)
+#else
+      v = normal
+#endif
+
+      end function deadFill
+
+!=======================================================================
+
       subroutine set_ragged_layout(mask, act, off, cnt, cntA, total, map, &
                                    nActive, deadIdx)
 
@@ -7367,7 +7405,7 @@
       enddo
       enddo
 
-      comp(deadSlot) = c0           ! THE dead slot
+      comp(deadSlot) = deadFill(c0) ! THE dead slot
 
       end subroutine pack_to_slots
 !=======================================================================
@@ -7905,8 +7943,8 @@
       ! ONLY these two.  uarea, tarea, earea, narea and hm are SUMMED or used
       ! as weights, never divided by, and a nonzero dead slot would corrupt
       ! those sums.
-      dyE_slot(deadSlot) = c1
-      dxN_slot(deadSlot) = c1
+      dyE_slot(deadSlot) = deadFill(c1)
+      dxN_slot(deadSlot) = deadFill(c1)
 
       ! The weight sums, in block space.  Term order matches each kernel
       ! exactly: these are floating-point sums and reordering them costs
