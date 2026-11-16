@@ -46,7 +46,7 @@
           calc_seabed_stress_slot, calc_strint_slot,                                 &
           str1_slot, str2_slot, str3_slot, str4_slot,                                &
           str5_slot, str6_slot, str7_slot, str8_slot,                                &
-          dyn_prep1, dyn_prep1_dilate, dyn_prep2, dyn_finish,                        &
+          dyn_prep1, dyn_prep1_dilate, dyn_prep2_slots, dyn_prep2, dyn_finish,                        &
           ndte, yield_curve, ecci, denom1, arlx1i,                                   &
           uvel_init, vvel_init, uvelE_init, vvelE_init, uvelN_init, vvelN_init,      &
           dynOff, dynCnt, dynCntA, dynMap,                                           &
@@ -295,6 +295,7 @@
       use ice_boundary, only: ice_HaloUpdate2DR8_compressed, &
           ice_HaloUpdate3DR8_compressed,                     &
           ice_HaloUpdate2DI4_compressed,                     &
+          ice_HaloUpdate2DL1_compressed,                     &
           ice_HaloMask_compressed
       use ice_domain, only: maskhalo_dyn
       use ice_dyn_evp1d, only: dyn_evp1d_run
@@ -502,6 +503,11 @@
             call grid_average_X2Y('F', strairyT, 'T'          , strairyE, 'E')
          endif
       endif
+
+      ! The task-level half of dyn_prep2.  ⚠ BEFORE the branch, not after:
+      ! the C/CD arm reads iceTmask_slot inside its own block loop, before
+      ! its dyn_prep2 call, so the mask has to be current on entry.
+      call dyn_prep2_slots
 
       if (trim(grid_ice) == 'B') then
          ! One statement for the task: the per-block ranges partition the

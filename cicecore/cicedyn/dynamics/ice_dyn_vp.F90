@@ -45,7 +45,7 @@
           p222, p25, p333, p5, c1
       use ice_domain, only: nblocks, distrb_info
       use ice_domain_size, only: max_blocks
-      use ice_dyn_shared, only: dyn_prep1, dyn_prep1_dilate, dyn_prep2, dyn_finish,  &
+      use ice_dyn_shared, only: dyn_prep1, dyn_prep1_dilate, dyn_prep2_slots, dyn_prep2, dyn_finish,  &
           cosw, sinw, uvel_init, vvel_init, dynOff, dynCnt, dynCntA,                 &
           dynMap, dynIJ, dynMaxCnt, iceTmask_slot, iceUmask_slot,                    &
           nStored_TU, pack_to_slots, unpack_from_slots, calc_seabed_stress_slot,         &
@@ -256,6 +256,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
       use ice_arrays_column, only: Cdn_ocn
       use ice_boundary, only: ice_HaloMask_compressed, ice_HaloUpdate, &
           ice_HaloUpdate2DI4_compressed,                               &
+          ice_HaloUpdate2DL1_compressed,                               &
           ice_HaloUpdate2DR8_compressed,                               &
           ice_HaloUpdate_stress_compressed,                            &
           ice_HaloDestroy, ice_HaloUpdate_stress
@@ -451,6 +452,10 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
       ! whole array, and the pack this replaces cleared the inactive
       ! cells and the dead slot as a side effect of copying the block.
       strength_slot(:) = c0
+      ! The task-level half of dyn_prep2.  ⚠ BEFORE the loop: the body reads
+      ! iceTmask_slot, so the mask has to be current on entry.
+      call dyn_prep2_slots
+
       !$OMP PARALLEL DO PRIVATE(iblk,ilo,ihi,jlo,jhi,this_block,ij,i,j,is,ms)
       do iblk = 1, nblocks
 
@@ -521,7 +526,6 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
          enddo  ! is
 
       enddo  ! iblk
-      !$OMP END PARALLEL DO
 
       call icepack_warnings_flush(nu_diag)
       if (icepack_warnings_aborted()) call abort_ice(error_message=subname, &

@@ -344,6 +344,7 @@
          skipRmp     , & ! .true. outside the remap loop range
          skipEdgeN   , & ! .true. outside the NORTH-edge loop range
          skipEdgeE   , & ! .true. outside the EAST-edge loop range
+         skipTstr    , & ! .true. outside the T-stress range (N/E ghost included)
          skipPhys        ! .true. outside the PHYSICAL domain
 
       real (kind=dbl_kind), dimension(:), allocatable, public :: &
@@ -7798,7 +7799,7 @@
                wsumE_slot(nStored_TU), wsumNW_slot(nStored_TU),                &
                wsumSE_slot(nStored_TU), wsumNE_slot(nStored_TU),               &
                skipRmp(nStored_TU), skipEdgeN(nStored_TU), skipEdgeE(nStored_TU),   &
-               skipPhys(nStored_TU),                                        &
+               skipTstr(nStored_TU), skipPhys(nStored_TU),                  &
                stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
       ! default is SKIP: only slots inside the range below are cleared, so a
@@ -7806,6 +7807,7 @@
       skipRmp       = .true.
       skipEdgeN     = .true.
       skipEdgeE     = .true.
+      skipTstr      = .true.
       skipPhys      = .true.
       uarear_slot   = c0
       tarear_slot   = c0
@@ -7979,6 +7981,10 @@
       !   skipEdgeN  jlo-1..jhi  x  ilo..ihi     the NORTH edges this block
       !                                          computes a flux across
       !   skipEdgeE  jlo..jhi    x  ilo-1..ihi   likewise for EAST edges
+      !   skipTstr   jlo..jhi+1 x  ilo..ihi+1   where a T stress is needed:
+      !                                          the physical domain plus the
+      !                                          NORTH and EAST ghost, which
+      !                                          dyn_prep2 writes
       !   skipPhys   jlo..jhi    x  ilo..ihi     the physical domain proper,
       !                                          which is what update_fields
       !                                          steps forward in time
@@ -8016,6 +8022,18 @@
          do i = this_block_x%ilo, this_block_x%ihi
             m = dynMap((j-1)*nx_block + i, iblk)
             if (m >= 1) skipPhys(m) = .false.
+         enddo
+         enddo
+
+         ! ⚠ This one extends on the HIGH side, unlike skipEdgeN/skipEdgeE
+         ! which extend low.  dyn_prep2 needs a T stress in the north and east
+         ! ghost, so the range is jlo..jhi+1 x ilo..ihi+1 and none of the masks
+         ! above can stand in for it.  The ghost rim is force-mapped into
+         ! mask_any, so every cell in this range owns a slot.
+         do j = this_block_x%jlo, this_block_x%jhi+1
+         do i = this_block_x%ilo, this_block_x%ihi+1
+            m = dynMap((j-1)*nx_block + i, iblk)
+            if (m >= 1) skipTstr(m) = .false.
          enddo
          enddo
       enddo

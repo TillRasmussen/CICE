@@ -114,6 +114,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
       use ice_arrays_column, only: Cdn_ocn
       use ice_boundary, only: ice_halo, ice_HaloMask_compressed, ice_HaloUpdate, &
           ice_HaloUpdate2DI4_compressed,                                         &
+          ice_HaloUpdate2DL1_compressed,                                         &
           ice_HaloUpdate2DR8_compressed, ice_HaloUpdate3DR8_compressed,          &
           ice_HaloDestroy
       use ice_blocks, only: block, get_block
@@ -155,7 +156,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
           dxhy_slot, dyhx_slot, cxp_slot, cyp_slot, cxm_slot, cym_slot,          &
           strength_slot,                                                         &
           pack_to_slots, unpack_from_slots,                                      &
-          dyn_prep1, dyn_prep1_dilate, dyn_prep2, stepu, dyn_finish,             &
+          dyn_prep1, dyn_prep1_dilate, dyn_prep2_slots, dyn_prep2, stepu, dyn_finish,             &
           seabed_stress_factor_LKD, seabed_stress_factor_prob,                   &
           seabed_stress_method, seabed_stress,                                   &
           stack_fields, unstack_fields, iceTmask, iceUmask,                      &
@@ -329,6 +330,10 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
       ! whole array, and the pack this replaces cleared the inactive
       ! cells and the dead slot as a side effect of copying the block.
       strength_slot(:) = c0
+      ! The task-level half of dyn_prep2.  ⚠ BEFORE the loop: the body reads
+      ! iceTmask_slot, so the mask has to be current on entry.
+      call dyn_prep2_slots
+
       !$OMP PARALLEL DO PRIVATE(iblk,ilo,ihi,jlo,jhi,this_block,ij,i,j,is,ms) SCHEDULE(runtime)
       do iblk = 1, nblocks
 
@@ -396,8 +401,6 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
                                       strength = strength_slot(ms))
          enddo  ! is
       enddo  ! iblk
-
-      !$OMP END PARALLEL DO
 
       ! Reset the structure tensor where the ice has gone, in SLOTS.
       ! It used to write the block arrays and the pack below carried the

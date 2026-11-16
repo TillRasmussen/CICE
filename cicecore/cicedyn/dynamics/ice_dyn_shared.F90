@@ -66,7 +66,7 @@
       public :: grid_average_X2YA_compressed, grid_average_X2YS_compressed
       public :: set_evp_parameters, stepu, stepuv_CD, stepu_C, stepv_C, &
                 calc_seabed_stress_slot, calc_strint_slot, &
-                principal_stress, init_dyn_shared, dyn_prep1, dyn_prep1_dilate, dyn_prep2, dyn_finish, &
+                principal_stress, init_dyn_shared, dyn_prep1, dyn_prep1_dilate, dyn_prep2, dyn_prep2_slots, dyn_finish, &
                 seabed_stress_factor_LKD, seabed_stress_factor_prob, &
                 deformations, deformationsC_T, deformationsCD_T, &
                 strain_rates, strain_rates_U, &
@@ -1439,12 +1439,109 @@
             iceTmask(ij,iblk) = .true.
          endif
 
+         ! ⚠ The Tmask test stays HERE, before the halo.  Moving it after the
+         ! halo, over the whole block, would restore the invariant the code
+         ! states -- iceTmask implies Tmask -- but it is NOT bit-for-bit: base
+         ! keeps such a ghost in icellT and writes str there.  That is a
+         ! decision to diverge from base, not a technical one.  See the
+         ! upstream branch icetmask-tmask-invariant.
          if (.not.tmask(ij,iblk)) iceTmask(ij,iblk) = .false.
 
       enddo
       !$OMP END PARALLEL DO
 
       end subroutine dyn_prep1_dilate
+
+!=======================================================================
+! The task-level half of dyn_prep2.
+!
+! Two things dyn_prep2 did per block, inside a walk over 1..ny_block x
+! 1..nx_block that translated every cell through Xmap:
+!
+!   - restrict iceTmask_slot to the range a T stress is needed over.
+!     dyn_prep1_dilate now writes iceTmask_slot directly and the halo
+!     fills its ghosts, so only the range test is left, and skipTstr is
+!     exactly jlo..jhi+1 x ilo..ihi+1 -- the north and east ghost the
+!     block loop deliberately included.
+!
+!   - zero the twelve stress slots wherever there is no ice.  ⚠ That walk
+!     reached RING slots as well, and a block's ring is no longer adjacent
+!     to its active cells, so NO per-block slot range can express the same
+!     set.  Task level over 1..nStored_TU is the only form that still
+!     covers it; anything narrower leaves stale stress on the ring.
+!
+! Called once per step after the per-block loop, as dyn_prep1_dilate is.
+!=======================================================================
+
+      subroutine dyn_prep2_slots
+
+      use ice_grid, only: skipTstr, dynIJ, dynBlk, nActive_TU, nStored_TU
+
+      integer (kind=int_kind) :: ms, ij, iblk
+
+      character(len=*), parameter :: subname = '(dyn_prep2_slots)'
+
+      ! ⚠ ORDER MATTERS and matches the block form: the stress reset used the
+      ! UNRESTRICTED mask, and only afterwards was the slot mask narrowed to
+      ! the T-stress range.  Doing it the other way round would zero stress at
+      ! cells the block loop left alone.
+
+      ! ⚠ Over every stored slot, RING INCLUDED.  The block walk ran
+      ! 1..ny_block x 1..nx_block and acted wherever the cell owned a slot,
+      ! which reaches the ring; a block's ring is no longer adjacent to its
+      ! active cells, so no per-block range can express that set.
+      !
+      ! This reset is PHYSICS, not bookkeeping: once a cell carries no ice its
+      ! stress must be zero.  It is upstream's rule.
+      !$OMP PARALLEL DO PRIVATE(ms,ij,iblk) SCHEDULE(runtime)
+      do ms = 1, nStored_TU
+         iblk = dynBlk(ms)
+         if (iblk == 0) cycle                   ! the dead slot
+         ij = dynIJ(ms)
+         if (.not. iceTmask(ij,iblk)) then
+            stressp_1_slot (ms) = c0
+            stressp_2_slot (ms) = c0
+            stressp_3_slot (ms) = c0
+            stressp_4_slot (ms) = c0
+            stressm_1_slot (ms) = c0
+            stressm_2_slot (ms) = c0
+            stressm_3_slot (ms) = c0
+            stressm_4_slot (ms) = c0
+            stress12_1_slot(ms) = c0
+            stress12_2_slot(ms) = c0
+            stress12_3_slot(ms) = c0
+            stress12_4_slot(ms) = c0
+         endif
+      enddo
+      !$OMP END PARALLEL DO
+
+      ! The slot mask, over the range a T stress is needed: skipTstr is
+      ! jlo..jhi+1 x ilo..ihi+1, the north and east ghost the block loop
+      ! deliberately included.  Still read from the block array, which the
+      ! halo above has filled -- producing it natively instead is a separate
+      ! step and needs the compressed logical halo to agree with the block one
+      ! at SYNTHESISED boundaries, which it does not yet.
+      ! ⚠ Clear and set have DIFFERENT extents, as the block form did: it
+      ! cleared the block's ACTIVE slots but set through Xmap over
+      ! jlo..jhi+1 x ilo..ihi+1, which can land on a RING slot.  One loop
+      ! over the active range would drop those.
+      !$OMP PARALLEL DO PRIVATE(ms) SCHEDULE(runtime)
+      do ms = 1, nActive_TU
+         iceTmask_slot(ms) = .false.
+      enddo
+      !$OMP END PARALLEL DO
+
+      !$OMP PARALLEL DO PRIVATE(ms,ij,iblk) SCHEDULE(runtime)
+      do ms = 1, nStored_TU
+         if (skipTstr(ms)) cycle
+         iblk = dynBlk(ms)
+         if (iblk == 0) cycle                   ! the dead slot
+         ij = dynIJ(ms)
+         if (iceTmask(ij,iblk)) iceTmask_slot(ms) = .true.
+      enddo
+      !$OMP END PARALLEL DO
+
+      end subroutine dyn_prep2_slots
 
 
 !=======================================================================
@@ -1749,39 +1846,6 @@
 
       TbU(Xoff+1:Xoff+nslot) = c0   ! this block's slots, as the block loop did
 
-      do j = 1, ny_block
-      do i = 1, nx_block
-         ijb = (j-1)*nx_block + i
-
-         if (.not.iceTmask(ijb)) then
-            ! ⚠ This reset is PHYSICS, not bookkeeping: once a cell carries no
-            ! ice -- or less than the threshold iceTmask/iceUmask encode -- its
-            ! stress must be zero.  It is upstream's rule and has to stay.
-            !
-            ! Both layouts are reset because the solvers no longer agree on which
-            ! one is live.  evp and eap run on the SLOT copies and never pack the
-            ! block arrays in, so for them the slot reset is the load-bearing one.
-            ! vp writes the block arrays directly and packs to slots at the end of
-            ! its solve, so for vp it is the block reset that matters and the slot
-            ! one is overwritten.  Neither is redundant across all three.
-            mslotz = Xmap(ijb)
-            if (mslotz > 0) then
-               stressp_1_slot(mslotz) = c0
-               stressp_2_slot(mslotz) = c0
-               stressp_3_slot(mslotz) = c0
-               stressp_4_slot(mslotz) = c0
-               stressm_1_slot(mslotz) = c0
-               stressm_2_slot(mslotz) = c0
-               stressm_3_slot(mslotz) = c0
-               stressm_4_slot(mslotz) = c0
-               stress12_1_slot(mslotz) = c0
-               stress12_2_slot(mslotz) = c0
-               stress12_3_slot(mslotz) = c0
-               stress12_4_slot(mslotz) = c0
-            endif
-         endif
-      enddo                     ! i
-      enddo                     ! j
 
       !-----------------------------------------------------------------
       ! Identify cells where iceTmask = .true.
@@ -1792,13 +1856,6 @@
       ! The icellT/indxTi/indxTj list is gone: nothing consumes it any more,
       ! so only the membership it encoded is still needed, and iceTmask_s carries
       ! that directly.
-      iceTmask_s(Xoff+1:Xoff+nact) = .false.
-      do j = jlo, jhi+1
-      do i = ilo, ihi+1
-         ijb = (j-1)*nx_block + i
-         if (iceTmask(ijb)) iceTmask_s(Xmap(ijb)) = .true.
-      enddo
-      enddo
 
       !-----------------------------------------------------------------
       ! Define iceXmask
