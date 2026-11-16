@@ -342,7 +342,7 @@
                                    uvelE,          vvelN)
 
       use ice_boundary, only: ice_halo, ice_HaloMask_compressed, ice_HaloUpdate, &
-          ice_HaloUpdate2DI4_compressed, &
+          ice_HaloUpdate2DI4_compressed,                                         &
           ice_HaloDestroy
       use ice_domain, only: nblocks, blocks_ice, halo_info, maskhalo_remap
       use ice_blocks, only: block, get_block, nghost
@@ -720,8 +720,8 @@
                enddo
             enddo
             !$OMP END PARALLEL DO
-            call ice_HaloUpdate2DI4_compressed(halomask_slot,  halo_info, &
-                                 field_loc_center, field_type_scalar,      &
+            call ice_HaloUpdate2DI4_compressed(halomask_slot, halo_info, &
+                                 field_loc_center, field_type_scalar,    &
                                  dynMap, dynOff)
             call ice_HaloMask_compressed(halo_info_tracer, halo_info, &
                                  halomask_slot, dynMap)

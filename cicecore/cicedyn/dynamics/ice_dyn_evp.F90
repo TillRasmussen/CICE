@@ -42,30 +42,30 @@
           field_type_scalar, field_type_vector
       use ice_constants, only: c0, p027, p055, p111, p166, &
           p222, p25, p333, p5, c1
-      use ice_dyn_shared, only: stepu, stepuv_CD, stepu_C, stepv_C, &
-          calc_seabed_stress_slot, calc_strint_slot, &
-          str1_slot, str2_slot, str3_slot, str4_slot, &
-          str5_slot, str6_slot, str7_slot, str8_slot, &
-          dyn_prep1, dyn_prep1_dilate, dyn_prep2, dyn_finish, &
-          ndte, yield_curve, ecci, denom1, arlx1i, &
-          uvel_init, vvel_init, uvelE_init, vvelE_init, uvelN_init, vvelN_init, &
-          dynOff, dynCnt, dynCntA, dynMap, &
-        NbrW_Task , NbrSW_Task, NbrS_Task , NbrE_Task , &
-        NbrE_Task, NbrNE_Task, NbrN_Task, &
-        NbrNE_Task, NbrN_Task , NbrNW_Task, NbrSE_Task, &
-          uvel_slot, vvel_slot, aiU_slot, fmU_slot, TbU_slot, &
-          rheofactU_slot, &
-          umassdti_slot, waterxU_slot, wateryU_slot, &
-          forcexU_slot, forceyU_slot, &
-          uocnU_slot, vocnU_slot, cdn_ocnU_slot, uarear_slot, tarear_slot, dynIJ, &
-          pack_to_slots, unpack_from_slots, &
-          nbr_W, nbr_S, nbr_SW, nbr_E, nbr_N, nbr_NE, &
-          iceTmask_slot, iceUmask_slot, iceNmask_slot, iceEmask_slot, &
-          stressp_1_slot , stressp_2_slot , stressp_3_slot , stressp_4_slot , &
-          stressm_1_slot , stressm_2_slot , stressm_3_slot , stressm_4_slot , &
-          stress12_1_slot, stress12_2_slot, stress12_3_slot, stress12_4_slot, &
-          dxhy_slot, dyhx_slot, cxp_slot, cyp_slot, cxm_slot, cym_slot, &
-          DminTarea_slot, strength_slot, dxT_slot, dyT_slot, &
+      use ice_dyn_shared, only: stepu, stepuv_CD, stepu_C, stepv_C,                  &
+          calc_seabed_stress_slot, calc_strint_slot,                                 &
+          str1_slot, str2_slot, str3_slot, str4_slot,                                &
+          str5_slot, str6_slot, str7_slot, str8_slot,                                &
+          dyn_prep1, dyn_prep1_dilate, dyn_prep2, dyn_finish,                        &
+          ndte, yield_curve, ecci, denom1, arlx1i,                                   &
+          uvel_init, vvel_init, uvelE_init, vvelE_init, uvelN_init, vvelN_init,      &
+          dynOff, dynCnt, dynCntA, dynMap,                                           &
+        NbrW_Task , NbrSW_Task, NbrS_Task , NbrE_Task ,                              &
+        NbrE_Task, NbrNE_Task, NbrN_Task,                                            &
+        NbrNE_Task, NbrN_Task , NbrNW_Task, NbrSE_Task,                              &
+          uvel_slot, vvel_slot, aiU_slot, fmU_slot, TbU_slot,                        &
+          rheofactU_slot,                                                            &
+          umassdti_slot, waterxU_slot, wateryU_slot,                                 &
+          forcexU_slot, forceyU_slot,                                                &
+          uocnU_slot, vocnU_slot, cdn_ocnU_slot, uarear_slot, tarear_slot, dynIJ,    &
+          pack_to_slots, unpack_from_slots,                                          &
+          nbr_W, nbr_S, nbr_SW, nbr_E, nbr_N, nbr_NE,                                &
+          iceTmask_slot, iceUmask_slot, iceNmask_slot, iceEmask_slot,                &
+          stressp_1_slot , stressp_2_slot , stressp_3_slot , stressp_4_slot ,        &
+          stressm_1_slot , stressm_2_slot , stressm_3_slot , stressm_4_slot ,        &
+          stress12_1_slot, stress12_2_slot, stress12_3_slot, stress12_4_slot,        &
+          dxhy_slot, dyhx_slot, cxp_slot, cyp_slot, cxm_slot, cym_slot,              &
+          DminTarea_slot, strength_slot, dxT_slot, dyT_slot,                         &
           seabed_stress_factor_LKD, seabed_stress_factor_prob, seabed_stress_method, &
           seabed_stress, Ktens, revp
       use ice_fileunits, only: nu_diag
@@ -293,8 +293,8 @@
           grid_average_X2YA_compressed, fld3c, fld4c
       use ice_grid, only: pack_to_slots, unpack_from_slots
       use ice_boundary, only: ice_HaloUpdate2DR8_compressed, &
-          ice_HaloUpdate3DR8_compressed, &
-          ice_HaloUpdate2DI4_compressed, &
+          ice_HaloUpdate3DR8_compressed,                     &
+          ice_HaloUpdate2DI4_compressed,                     &
           ice_HaloMask_compressed
       use ice_domain, only: maskhalo_dyn
       use ice_dyn_evp1d, only: dyn_evp1d_run
@@ -807,8 +807,8 @@
             !$OMP END PARALLEL DO
          endif
          call ice_timer_start(timer_bound)
-         call ice_HaloUpdate2DI4_compressed(halomask_slot,    halo_info, &
-                              field_loc_center, field_type_scalar,       &
+         call ice_HaloUpdate2DI4_compressed(halomask_slot, halo_info, &
+                              field_loc_center, field_type_scalar,    &
                               dynMap, dynOff)
          call ice_timer_stop(timer_bound)
          call ice_HaloMask_compressed(halo_info_mask, halo_info, &

@@ -45,23 +45,24 @@
           p222, p25, p333, p5, c1
       use ice_domain, only: nblocks, distrb_info
       use ice_domain_size, only: max_blocks
-      use ice_dyn_shared, only: dyn_prep1, dyn_prep1_dilate, dyn_prep2, dyn_finish, &
-          cosw, sinw, uvel_init, vvel_init, dynOff, dynCnt, dynCntA, dynMap, dynIJ, dynMaxCnt, iceTmask_slot, iceUmask_slot, &
-          dynTot, pack_to_slots, unpack_from_slots, calc_seabed_stress_slot, &
-          nbr_W, nbr_S, nbr_SW, nbr_E, nbr_N, nbr_NE, uarear_slot, &
-          NbrW_Task, NbrSW_Task, NbrS_Task, &
-          NbrE_Task, NbrN_Task, NbrNE_Task, &
-          dxT_slot, dyT_slot, dxhy_slot, dyhx_slot, cxp_slot, cyp_slot, &
-          uvel_slot, vvel_slot, tarear_slot, dxU_slot, dyU_slot, &
-          cxm_slot, cym_slot, DminTarea_slot, strength_slot, &
-          aiU_slot, uocnU_slot, vocnU_slot, &
-          ss_tltxU_slot, ss_tltyU_slot, &
-          umass_slot, &
-          fcor_slot, &
-          cdn_ocnU_slot, fmU_slot, &
-          taubxU_slot, taubyU_slot, &
-          umassdti_slot, waterxU_slot, wateryU_slot, &
-          forcexU_slot, forceyU_slot, &
+      use ice_dyn_shared, only: dyn_prep1, dyn_prep1_dilate, dyn_prep2, dyn_finish,  &
+          cosw, sinw, uvel_init, vvel_init, dynOff, dynCnt, dynCntA,                 &
+          dynMap, dynIJ, dynMaxCnt, iceTmask_slot, iceUmask_slot,                    &
+          dynTot, pack_to_slots, unpack_from_slots, calc_seabed_stress_slot,         &
+          nbr_W, nbr_S, nbr_SW, nbr_E, nbr_N, nbr_NE, uarear_slot,                   &
+          NbrW_Task, NbrSW_Task, NbrS_Task,                                          &
+          NbrE_Task, NbrN_Task, NbrNE_Task,                                          &
+          dxT_slot, dyT_slot, dxhy_slot, dyhx_slot, cxp_slot, cyp_slot,              &
+          uvel_slot, vvel_slot, tarear_slot, dxU_slot, dyU_slot,                     &
+          cxm_slot, cym_slot, DminTarea_slot, strength_slot,                         &
+          aiU_slot, uocnU_slot, vocnU_slot,                                          &
+          ss_tltxU_slot, ss_tltyU_slot,                                              &
+          umass_slot,                                                                &
+          fcor_slot,                                                                 &
+          cdn_ocnU_slot, fmU_slot,                                                   &
+          taubxU_slot, taubyU_slot,                                                  &
+          umassdti_slot, waterxU_slot, wateryU_slot,                                 &
+          forcexU_slot, forceyU_slot,                                                &
           seabed_stress_factor_LKD, seabed_stress_factor_prob, seabed_stress_method, &
           seabed_stress, Ktens, stack_fields,  unstack_fields, fld2, fld3, fld4, fld2c
       use ice_fileunits, only: nu_diag
@@ -254,9 +255,9 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
 
       use ice_arrays_column, only: Cdn_ocn
       use ice_boundary, only: ice_HaloMask_compressed, ice_HaloUpdate, &
-          ice_HaloUpdate2DI4_compressed, &
-          ice_HaloUpdate2DR8_compressed, &
-          ice_HaloUpdate_stress_compressed, &
+          ice_HaloUpdate2DI4_compressed,                               &
+          ice_HaloUpdate2DR8_compressed,                               &
+          ice_HaloUpdate_stress_compressed,                            &
           ice_HaloDestroy, ice_HaloUpdate_stress
       use ice_blocks, only: block, get_block, nx_block, ny_block, &
           ns_boundary_type
@@ -552,8 +553,8 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
                halomask_slot(ms) = 1
             enddo
          enddo
-         call ice_HaloUpdate2DI4_compressed(halomask_slot,    halo_info, &
-                              field_loc_center, field_type_scalar,       &
+         call ice_HaloUpdate2DI4_compressed(halomask_slot, halo_info, &
+                              field_loc_center, field_type_scalar,    &
                               dynMap, dynOff)
          call ice_timer_stop(timer_bound)
          call ice_HaloMask_compressed(halo_info_mask, halo_info, &
