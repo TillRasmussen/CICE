@@ -60,7 +60,7 @@
           uocnU_slot, vocnU_slot, cdn_ocnU_slot, uarear_slot, tarear_slot, dynIJ,    &
           pack_to_slots, unpack_from_slots,                                          &
           nbr_W, nbr_S, nbr_SW, nbr_E, nbr_N, nbr_NE,                                &
-          iceTmask_slot, iceUmask_slot, iceNmask_slot, iceEmask_slot,                &
+          iceTmask_slot, iceUmask_slot, iceNmask_slot, iceEmask_slot, nActive_TU,    &
           stressp_1_slot , stressp_2_slot , stressp_3_slot , stressp_4_slot ,        &
           stressm_1_slot , stressm_2_slot , stressm_3_slot , stressm_4_slot ,        &
           stress12_1_slot, stress12_2_slot, stress12_3_slot, stress12_4_slot,        &
@@ -1202,7 +1202,10 @@
                     tarea_slot, hm_slot, wsumNE_slot, etax2U_slot)
             endif
 
-            call stressC_U (1             , nStored_TU        , &
+            ! hi is nActive_TU, not nStored_TU: every loop below is gated on
+            ! iceXmask_slot, which dyn_prep2 writes only over the active range,
+            ! so the ring and the dead slot are .false. from allocation onwards.
+            call stressC_U (1             , nActive_TU        , &
                             iceUmask_slot         ,                 &
                             uarea_slot    , etax2U_slot   , &
                             deltaU        , strengthU_slot, &
@@ -1220,7 +1223,7 @@
             call ice_timer_stop(timer_bound)
 
 
-               call div_stress_Ex (1, nStored_TU, iceEmask_slot, &
+               call div_stress_Ex (1, nActive_TU, iceEmask_slot, &
                                    NbrS_Task, NbrE_Task, &
                                    dxE_slot, dyE_slot, &
                                    dxU_slot  , &
@@ -1231,7 +1234,7 @@
                                    stress12U_slot, &
                                    strintxE_slot )
 
-               call div_stress_Ny (1, nStored_TU, iceNmask_slot, &
+               call div_stress_Ny (1, nActive_TU, iceNmask_slot, &
                                    NbrW_Task, NbrN_Task, &
                                    dxN_slot, dyN_slot, &
                                    dxT_slot  , &
@@ -1463,7 +1466,10 @@
                                  divergU       , tensionU      , &
                                  shearU_slot   , DeltaU          )
 
-            call stressCD_U     (1             , nStored_TU        , &
+            ! hi is nActive_TU, not nStored_TU: every loop below is gated on
+            ! iceXmask_slot, which dyn_prep2 writes only over the active range,
+            ! so the ring and the dead slot are .false. from allocation onwards.
+            call stressCD_U     (1             , nActive_TU        , &
                                  iceUmask_slot         ,                 &
                                  uarea_slot    ,                 &
                                  zetax2U_slot  , etax2U_slot   , &
@@ -1503,7 +1509,7 @@
             call ice_timer_stop(timer_bound)
 
 
-               call div_stress_Ex (1, nStored_TU, iceEmask_slot, &
+               call div_stress_Ex (1, nActive_TU, iceEmask_slot, &
                                    NbrS_Task, NbrE_Task, &
                                    dxE_slot, dyE_slot, &
                                    dxU_slot  , &
@@ -1514,7 +1520,7 @@
                                    stress12U_slot, &
                                    strintxE_slot )
 
-               call div_stress_Ey (1, nStored_TU, iceEmask_slot, &
+               call div_stress_Ey (1, nActive_TU, iceEmask_slot, &
                                    NbrS_Task, NbrE_Task, &
                                    dxE_slot, dyE_slot, &
                                    dxU_slot  , &
@@ -1525,7 +1531,7 @@
                                    stress12T_slot, &
                                    strintyE_slot )
 
-               call div_stress_Nx (1, nStored_TU, iceNmask_slot, &
+               call div_stress_Nx (1, nActive_TU, iceNmask_slot, &
                                    NbrW_Task, NbrN_Task, &
                                    dxN_slot, dyN_slot, &
                                    dxT_slot  , &
@@ -1536,7 +1542,7 @@
                                    stress12T_slot, &
                                    strintxN_slot )
 
-               call div_stress_Ny (1, nStored_TU, iceNmask_slot, &
+               call div_stress_Ny (1, nActive_TU, iceNmask_slot, &
                                    NbrW_Task, NbrN_Task, &
                                    dxN_slot, dyN_slot, &
                                    dxT_slot  , &
