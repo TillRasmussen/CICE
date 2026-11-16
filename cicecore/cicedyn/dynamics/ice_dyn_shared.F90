@@ -863,6 +863,12 @@
             ijb = (j-1)*nx_block + i
             m   = dynMap(ijb,iblk)
             if (m == 0) cycle
+            ! ⚠ RING cells are stored but must not be VISITED: a ring cell is
+            ! land adjacent to ocean, and reading one step out from it is two
+            ! steps from an active cell -- past what nghost=1 and the one-cell
+            ! dilation can represent, so the neighbour falls on the dead slot.
+            ! Active slots are numbered first, so m > nActive_TU is the test.
+            if (m > nActive_TU) cycle
             is  = m
 
             select case (trim(dir))
@@ -970,6 +976,12 @@
             ijb = (j-1)*nx_block + i
             m   = dynMap(ijb,iblk)
             if (m == 0) cycle
+            ! ⚠ RING cells are stored but must not be VISITED: a ring cell is
+            ! land adjacent to ocean, and reading one step out from it is two
+            ! steps from an active cell -- past what nghost=1 and the one-cell
+            ! dilation can represent, so the neighbour falls on the dead slot.
+            ! Active slots are numbered first, so m > nActive_TU is the test.
+            if (m > nActive_TU) cycle
             is   = m
             isE  = NbrE_Task(is)
             isN  = NbrN_Task(is)
