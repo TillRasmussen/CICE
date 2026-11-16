@@ -1108,17 +1108,45 @@
             ! Active slots are numbered first, so m > nActive_TU is the test.
             if (m > nActive_TU) cycle
             is   = m
-            isE  = NbrE_Task(is)
-            isN  = NbrN_Task(is)
-            isNE = NbrNE_Task(is)
 
-            wtmp = wsum(is)
-            if (wtmp /= c0) &
-            work2(is) = (mask1(is  )*work1(is  )*wght1(is  )  &
-                       + mask1(isE )*work1(isE )*wght1(isE )  &
-                       + mask1(isN )*work1(isN )*wght1(isN )  &
-                       + mask1(isNE)*work1(isNE)*wght1(isNE)) &
-                       / wtmp
+            ! ⚠ wsum is the caller's PRECOMPUTED masked denominator and must
+            ! match dir: wsumNE_slot for NE, wsumTE_slot for E, wsumTN_slot
+            ! for N.  wsumE_slot/wsumN_slot are the X2YA (unmasked) sums and
+            ! are the wrong arrays here.
+            select case (trim(dir))
+
+            case('NE')
+               isE  = NbrE_Task(is)
+               isN  = NbrN_Task(is)
+               isNE = NbrNE_Task(is)
+               wtmp = wsum(is)
+               if (wtmp /= c0) &
+               work2(is) = (mask1(is  )*work1(is  )*wght1(is  )  &
+                          + mask1(isE )*work1(isE )*wght1(isE )  &
+                          + mask1(isN )*work1(isN )*wght1(isN )  &
+                          + mask1(isNE)*work1(isNE)*wght1(isNE)) &
+                          / wtmp
+
+            case('E')
+               isE  = NbrE_Task(is)
+               wtmp = wsum(is)
+               if (wtmp /= c0) &
+               work2(is) = (mask1(is )*work1(is )*wght1(is )  &
+                          + mask1(isE)*work1(isE)*wght1(isE)) &
+                          / wtmp
+
+            case('N')
+               isN  = NbrN_Task(is)
+               wtmp = wsum(is)
+               if (wtmp /= c0) &
+               work2(is) = (mask1(is )*work1(is )*wght1(is )  &
+                          + mask1(isN)*work1(isN)*wght1(isN)) &
+                          / wtmp
+
+            case default
+               call abort_ice(subname//' ERROR: unsupported direction '//trim(dir))
+
+            end select
          enddo
          enddo
       enddo

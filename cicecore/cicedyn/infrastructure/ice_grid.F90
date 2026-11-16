@@ -398,7 +398,9 @@
          wsumE_slot  , & ! N2UA  : narea(is) + narea(isE)
          wsumNW_slot , & ! E2NA  : earea over W, self, NW, N
          wsumSE_slot , & ! N2EA  : narea over S, SE, self, E
-         wsumNE_slot     ! T2US  : hm*tarea over self, E, N, NE
+         wsumNE_slot , & ! T2US  : hm*tarea over self, E, N, NE
+         wsumTE_slot , & ! T2ES  : hm*tarea over self, E
+         wsumTN_slot     ! T2NS  : hm*tarea over self, N
 
 
       contains
@@ -7836,6 +7838,7 @@
                uareaavg_slot(nStored_TU), wsumN_slot(nStored_TU),              &
                wsumE_slot(nStored_TU), wsumNW_slot(nStored_TU),                &
                wsumSE_slot(nStored_TU), wsumNE_slot(nStored_TU),               &
+               wsumTE_slot(nStored_TU), wsumTN_slot(nStored_TU),               &
                skipRmp(nStored_TU), skipEdgeN(nStored_TU), skipEdgeE(nStored_TU),   &
                skipTstr(nStored_TU), skipPhys(nStored_TU),                  &
                stat=ierr)
@@ -7877,6 +7880,8 @@
       wsumNW_slot   = c0
       wsumSE_slot   = c0
       wsumNE_slot   = c0
+      wsumTE_slot   = c0
+      wsumTN_slot   = c0
 
       do iblk = 1, nblocks
          if (dynCntA(iblk) == 0) cycle
@@ -8006,6 +8011,16 @@
                            + hm(ijb+1         ,iblk)*tarea(ijb+1         ,iblk) &
                            + hm(ijb+nx_block  ,iblk)*tarea(ijb+nx_block  ,iblk) &
                            + hm(ijb+nx_block+1,iblk)*tarea(ijb+nx_block+1,iblk)
+
+            ! ⚠ MASKED sums, for the X2YS shifts T2E and T2N.  NOT the same as
+            ! wsumE_slot/wsumN_slot above, which are bare earea/narea for the X2YA
+            ! shifts -- using those here divides by the wrong denominator.  Built
+            ! in BLOCK space on purpose: summing hm*tarea over neighbour SLOTS
+            ! would read the dead slot where the block form reads a real land cell.
+            wsumTE_slot(m) = hm(ijb           ,iblk)*tarea(ijb           ,iblk) &
+                           + hm(ijb+1         ,iblk)*tarea(ijb+1         ,iblk)
+            wsumTN_slot(m) = hm(ijb           ,iblk)*tarea(ijb           ,iblk) &
+                           + hm(ijb+nx_block  ,iblk)*tarea(ijb+nx_block  ,iblk)
          enddo
          enddo
       enddo
