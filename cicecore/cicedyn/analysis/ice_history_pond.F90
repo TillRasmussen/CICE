@@ -466,7 +466,7 @@
           accum_hist_field, accum_hist_field_2D_slotin
       use ice_state, only: aice, aice_init3d, aice_init, trcr, trcrn, &
           trcrn_slot, trcr_slot, aice_slot
-      use ice_grid, only: dynOff, dynCnt, dynCntA, dynIJ, skipPhys
+      use ice_grid, only: dynOff, dynCntA, dynIJ, skipPhys
 
       integer (kind=int_kind), intent(in) :: &
            iblk                 ! block index

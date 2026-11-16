@@ -131,7 +131,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
           calc_seabed_stress_slot, calc_strint_slot,                             &
           str1_slot, str2_slot, str3_slot, str4_slot,                            &
           str5_slot, str6_slot, str7_slot, str8_slot,                            &
-          denom1, uvel_init, vvel_init, dynOff, dynCnt, dynCntA, dynTot, dynMap, &
+          denom1, uvel_init, vvel_init, dynOff, dynCntA, dynTot, dynMap, &
           NbrW_Task , NbrSW_Task, NbrS_Task , NbrE_Task ,                        &
           NbrE_Task, NbrNE_Task, NbrN_Task,                                      &
         NbrNE_Task, NbrN_Task , NbrNW_Task, NbrSE_Task,                          &
@@ -2400,7 +2400,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
       use ice_domain, only: nblocks
       use ice_domain_size, only: max_blocks
       use ice_grid, only: dynMap, unpack_from_slots
-      use ice_dyn_shared, only: dynOff, dynCnt, dynCntA
+      use ice_dyn_shared, only: dynOff, dynCntA
       use ice_restart, only: write_restart_field
 
       real (kind=dbl_kind), dimension(:), intent(in) :: fld_s
@@ -2433,7 +2433,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
           field_loc_center, field_type_scalar
       use ice_domain, only: nblocks, halo_info
       use ice_grid, only: dynMap, pack_to_slots
-      use ice_dyn_shared, only: dynOff, dynCnt, dynCntA
+      use ice_dyn_shared, only: dynOff, dynCntA
       use ice_restart, only: read_restart_field
 
       ! local variables

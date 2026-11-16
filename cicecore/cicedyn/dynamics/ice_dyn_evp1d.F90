@@ -213,7 +213,7 @@ module ice_dyn_evp1d
            stressp_1_slot, stressp_2_slot, stressp_3_slot, stressp_4_slot, &
            stressm_1_slot, stressm_2_slot, stressm_3_slot, stressm_4_slot, &
            stress12_1_slot, stress12_2_slot, stress12_3_slot, stress12_4_slot
-    use ice_grid      , only : dynMap, dynOff, dynCnt, unpack_from_slots, &
+    use ice_grid      , only : dynMap, dynOff, unpack_from_slots, &
            pack_to_slots
     use ice_domain    , only : nblocks
     ! renamed: this module's own strintxU is the 1-D GATHERED array
@@ -952,7 +952,7 @@ module ice_dyn_evp1d
      use ice_communicate, only : my_task, master_task
      use ice_gather_scatter, only : scatter_globalR8_compressed
      use ice_domain, only : distrb_info, nblocks
-     use ice_grid, only : dynMap, dynOff, dynCnt, deadSlot
+     use ice_grid, only : dynMap, dynOff, deadSlot
      implicit none
 
      ! the compressed destination, dimension(dynTot)
@@ -1126,7 +1126,7 @@ module ice_dyn_evp1d
 
      use ice_communicate, only : master_task
      use ice_gather_scatter, only : scatter_global, scatter_globalR8_compressed
-     use ice_grid, only : dynMap, dynOff, dynCnt, pack_to_slots
+     use ice_grid, only : dynMap, dynOff, pack_to_slots
      use ice_dyn_shared, only : strintxU_slot, strintyU_slot, &
           taubxU_slot, taubyU_slot, uvel_slot, vvel_slot
      use ice_domain, only : distrb_info, nblocks

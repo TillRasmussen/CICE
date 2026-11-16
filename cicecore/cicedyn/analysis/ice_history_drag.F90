@@ -265,7 +265,7 @@
           dkeel, lfloe, dfloe, Cdn_atm, Cdn_atm_skin, Cdn_atm_floe, &
           Cdn_atm_pond, Cdn_atm_rdg, Cdn_atm_ratio, Cdn_ocn_skin, &
           Cdn_ocn_keel, Cdn_ocn_floe, Cdn_ocn
-      use ice_grid, only: dynCnt, dynCntA, dynOff, dynIJ, dynMaxCnt, skipPhys
+      use ice_grid, only: dynCntA, dynOff, dynIJ, dynMaxCnt, skipPhys
 
       integer (kind=int_kind), intent(in) :: &
            iblk                 ! block index

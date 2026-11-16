@@ -304,7 +304,7 @@
           accum_hist_field, accum_hist_field_2D_slotin, nzslyr
       use ice_state, only: vsno, vsnon, trcr, trcrn, vsnon_slot, trcrn_slot, &
           vsno_slot, trcr_slot
-      use ice_grid, only: dynOff, dynCnt, dynCntA
+      use ice_grid, only: dynOff, dynCntA
 
       integer (kind=int_kind), intent(in) :: &
            iblk                 ! block index

@@ -116,7 +116,7 @@
       use ice_grid, only: skipPhys
       use ice_calendar, only: dt_dyn
       use ice_dyn_shared, only: init_dyn_shared, evp_algorithm, &
-          dynTot, dynOff, dynCnt, dynCntA, dynMap, dxN_slot, dyE_slot
+          dynTot, dynOff, dynCntA, dynMap, dxN_slot, dyE_slot
       use ice_grid, only: pack_to_slots
       use ice_dyn_evp1d, only: dyn_evp1d_init
 
@@ -246,7 +246,7 @@
           iceTmask, iceUmask, iceEmask, iceNmask, &
           dyn_haloUpdate, fld2, fld3, fld4, fld2c
       ! the compressed layout, and the C/CD slot arrays the subcycle runs on
-      use ice_dyn_shared, only: dynMap, dynOff, dynCnt, dynCntA, dynTot, &
+      use ice_dyn_shared, only: dynMap, dynOff, dynCntA, dynTot, &
                                NbrW_Task , NbrSW_Task, NbrS_Task , NbrE_Task , &
                                NbrNE_Task, NbrN_Task , NbrNW_Task, NbrSE_Task
       ! strint* and taub* are diagnostics: history is their only consumer,

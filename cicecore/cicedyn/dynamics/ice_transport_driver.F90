@@ -262,7 +262,7 @@
           uvel, vvel, uvelE, vvelN
       use ice_bound_state, only: bound_state
       use ice_grid, only: tarea, grid_ice, &
-          dynMap, dynOff, dynCnt, dynCntA, dynTot, unpack_from_slots, &
+          dynMap, dynOff, dynCntA, dynTot, unpack_from_slots, &
           unpack_cat_from_slots, unpack_trc_from_slots
       use ice_calendar, only: istep1
       use ice_timers, only: ice_timer_start, ice_timer_stop, &
@@ -798,7 +798,7 @@
       subroutine expand_slot_field (comp, work)
 
       use ice_domain, only: nblocks
-      use ice_grid, only: dynMap, dynOff, dynCnt, dynCntA, unpack_from_slots, &
+      use ice_grid, only: dynMap, dynOff, dynCntA, unpack_from_slots, &
            unpack_cat_from_slots, unpack_trc_from_slots
 
       real (kind=dbl_kind), dimension (:), intent(in) :: &
@@ -839,7 +839,7 @@
       use ice_bound_state, only: bound_state
       use ice_flux, only: Tf
       use ice_grid, only: tmask, grid_ice, &
-          dynMap, dynOff, dynCnt, dynCntA, dynTot, dynIJ, dynBlk, &
+          dynMap, dynOff, dynCntA, dynTot, dynIJ, dynBlk, &
           skipEdgeE, skipEdgeN, skipPhys, &
           HTE_slot, HTN_slot, tarea_slot, pack_to_slots, &
               unpack_cat_from_slots, unpack_trc_from_slots

@@ -312,7 +312,7 @@
       use ice_constants, only: c0, c1, c2, c4
       use ice_history_shared, only: a2D, a3Df, a4Df, nfsd_hist, &
          ncat_hist, accum_hist_field, n3Dacum, n4Dscum
-      use ice_grid, only: dynCnt, dynCntA, dynOff, dynIJ, skipPhys
+      use ice_grid, only: dynCntA, dynOff, dynIJ, skipPhys
       use ice_state, only: aicen_slot, vicen_slot, trcrn_slot, aice_slot, &
           trcrn, aicen, vicen, aice
       use ice_arrays_column, only: wave_sig_ht, floe_rad_c, floe_binwidth, &

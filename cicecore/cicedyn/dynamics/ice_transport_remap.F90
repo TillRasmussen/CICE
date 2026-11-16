@@ -350,7 +350,7 @@
                               ice_HaloUpdate3DR8_compressed
       use ice_grid, only: HTE, HTN, dxu, dyu,       &
                           earea, narea,       &
-                          dynMap, dynOff, dynCnt, dynCntA, dynIJ, dynTot, skipRmp, &
+                          dynMap, dynOff, dynCntA, dynIJ, dynTot, skipRmp, &
                           skipPhys, tarear_slot,                          &
                           dxU_slot, dyU_slot, HTN_slot, HTE_slot,         &
                           HTNe_slot, HTEn_slot, pack_to_slots
@@ -1158,7 +1158,7 @@
                                    tx,             ty,         &
                                    trcmask)
 
-      use ice_grid, only: dynMap, dynOff, dynCnt, dynCntA, skipRmp, &
+      use ice_grid, only: dynMap, dynOff, dynCntA, skipRmp, &
                           pack_to_slots, hm_slot
 
       integer (kind=int_kind), intent(in) ::   &

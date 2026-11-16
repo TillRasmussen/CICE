@@ -363,7 +363,7 @@
       use ice_state, only: aice, vice, trcr, aicen, vicen, trcrn, &
           aicen_slot, vicen_slot, trcrn_slot, &
           aice_slot, vice_slot, trcr_slot
-      use ice_grid, only: dynOff, dynCnt, dynCntA
+      use ice_grid, only: dynOff, dynCntA
       use ice_flux, only: dardg1dt, dardg2dt, dvirdgdt, dardg1ndt,&
           dardg2ndt, dvirdgndt, krdgn, aparticn, aredistn, vredistn, &
           araftn, vraftn, opening

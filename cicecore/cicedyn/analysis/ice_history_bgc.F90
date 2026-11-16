@@ -1861,7 +1861,7 @@
           nzblyr, nzalyr
       use ice_state, only: trcrn, trcr, aicen, aice, vicen, &
           aicen_slot, aice_slot, vicen_slot, trcrn_slot, trcr_slot
-      use ice_grid, only: dynCnt, dynCntA, dynOff, dynIJ, skipPhys
+      use ice_grid, only: dynCntA, dynOff, dynIJ, skipPhys
 
       integer (kind=int_kind), intent(in) :: &
            iblk                 ! block index

@@ -948,7 +948,7 @@
       use ice_flux_bgc, only: flux_bio_atm, flux_bio, faero_atm, fiso_atm, &
            fnit, famm, fsil, fdmsp, fdms, fhum, fdust, falgalN, &
            fdoc, fdon, fdic, ffed, ffep
-      use ice_grid, only: bathymetry, dynMap, dynOff, dynCnt, pack_to_slots
+      use ice_grid, only: bathymetry, dynMap, dynOff, pack_to_slots
       use ice_domain, only: nblocks
 
       integer (kind=int_kind) :: n

@@ -2209,7 +2209,7 @@
                           unpack_from_slots, &
                           NbrE_Task, NbrN_Task, NbrS_Task, NbrW_Task,      &
                           dynMaxCnt,                                     &
-          dynCnt, dynOff, dynIJ, skipPhys
+          dynOff, dynIJ, skipPhys
       use ice_calendar, only: new_year, write_history, write_restart, &
                               write_ic, timesecs, histfreq, nstreams, mmonth, &
                               new_month, write_histrest
@@ -2229,7 +2229,7 @@
           stressm_1_slot, stress12_1_slot, &
           stresspT_slot, stressmT_slot, stress12T_slot, &
           strength_slot, &
-          dynMap, dynOff, dynCnt, dynCntA
+          dynMap, dynOff, dynCntA
       use ice_dyn_shared, only: fmU_slot, fmN_slot, fmE_slot, &
           uvel_slot, vvel_slot, &
           taubxN_slot, taubyN_slot, taubxE_slot, taubyE_slot
@@ -2324,7 +2324,7 @@
          this_block           ! block information for current block
       character(len=*), parameter :: subname = '(accum_hist)'
 
-      allocate(worksl(maxval(dynCnt),nblocks))
+      allocate(worksl(maxval(dynCntA),nblocks))
 
       call icepack_query_parameters(awtvdr_out=awtvdr, awtidr_out=awtidr, &
            awtvdf_out=awtvdf, awtidf_out=awtidf, puny_out=puny, secday_out=secday, &

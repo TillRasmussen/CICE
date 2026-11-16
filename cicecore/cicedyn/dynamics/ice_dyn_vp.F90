@@ -251,7 +251,7 @@
 ! author: JF Lemieux, A. Qaddouri and F. Dupont ECCC
 
       subroutine implicit_solver (dt)
-use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
+use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
 
       use ice_arrays_column, only: Cdn_ocn
       use ice_boundary, only: ice_HaloMask_compressed, ice_HaloUpdate, &

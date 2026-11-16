@@ -64,7 +64,7 @@
          vicen, vicen_init, vsnon, vsnon_init, trcrn, Tsfcn_init, &
          aicen_slot, vicen_slot, vsnon_slot, &
          aicen_init_slot, vicen_init_slot, vsnon_init_slot
-      use ice_grid, only: dynMap, dynOff, dynCnt, dynCntA, unpack_cat_from_slots
+      use ice_grid, only: dynMap, dynOff, dynCntA, unpack_cat_from_slots
       use ice_domain, only: nblocks
 
       integer (kind=int_kind) :: &
@@ -185,7 +185,7 @@
            fswthrun, fswthrun_vdr, fswthrun_vdf, fswthrun_idr, fswthrun_idf, &
            fswpenln, Sswabsn, Iswabsn
       use ice_state, only: aice, aicen
-        use ice_grid,  only: dynCnt, dynCntA, dynOff, dynIJ, skipPhys, dynMap, &
+        use ice_grid,  only: dynCntA, dynOff, dynIJ, skipPhys, dynMap, &
            pack_cat_to_slots, unpack_cat_from_slots, &
            pack_trc_to_slots, unpack_trc_from_slots, &
            pack_to_slots, unpack_from_slots
@@ -294,7 +294,7 @@
       subroutine step_therm1 (dt, iblk)
          use ice_state, only: aicen_slot, vicen_slot, vsnon_slot, trcrn_slot
 
-        use ice_grid,  only: dynCnt, dynCntA, dynOff, dynIJ, skipPhys, dynMap, &
+        use ice_grid,  only: dynCntA, dynOff, dynIJ, skipPhys, dynMap, &
            pack_cat_to_slots, unpack_cat_from_slots, &
            pack_trc_to_slots, unpack_trc_from_slots, &
            pack_to_slots, unpack_from_slots
@@ -761,7 +761,7 @@
       subroutine step_therm2 (dt, iblk)
          use ice_state, only: aicen_slot, vicen_slot, vsnon_slot, trcrn_slot, aice0_slot
 
-        use ice_grid,  only: dynCnt, dynCntA, dynOff, dynIJ, skipPhys, dynMap, &
+        use ice_grid,  only: dynCntA, dynOff, dynIJ, skipPhys, dynMap, &
            pack_cat_to_slots, unpack_cat_from_slots, &
            pack_trc_to_slots, unpack_trc_from_slots, &
            pack_to_slots, unpack_from_slots
@@ -1092,7 +1092,7 @@
       subroutine step_dyn_wave (dt, iblk)
 
       use ice_state, only: aicen_slot, trcrn_slot
-      use ice_grid,  only: dynCnt, dynCntA, dynOff, dynIJ, skipPhys, dynMap, &
+      use ice_grid,  only: dynCntA, dynOff, dynIJ, skipPhys, dynMap, &
           unpack_cat_from_slots, unpack_trc_from_slots
       use ice_arrays_column, only: wave_spectrum, wave_sig_ht, &
           d_afsd_wave, wavefreq, dwavefreq
@@ -1176,7 +1176,7 @@
       subroutine step_dyn_horiz (dt)
 
         use ice_flux, only: strocnxE, strocnyN
-      use ice_grid,  only: dynCnt, dynCntA, dynOff, dynIJ, skipPhys, dynMap, &
+      use ice_grid,  only: dynCntA, dynOff, dynIJ, skipPhys, dynMap, &
            pack_cat_to_slots, unpack_cat_from_slots, &
            pack_trc_to_slots, unpack_trc_from_slots, &
            pack_to_slots, unpack_from_slots
@@ -1332,7 +1332,7 @@
       subroutine step_dyn_ridge (dt, ndtd, iblk)
          use ice_state, only: aicen_slot, vicen_slot, vsnon_slot, trcrn_slot, aice0_slot
 
-        use ice_grid,  only: dynCnt, dynCntA, dynOff, dynIJ, skipPhys, dynMap, &
+        use ice_grid,  only: dynCntA, dynOff, dynIJ, skipPhys, dynMap, &
            pack_cat_to_slots, unpack_cat_from_slots, &
            pack_trc_to_slots, unpack_trc_from_slots, &
            pack_to_slots, unpack_from_slots
@@ -1496,7 +1496,7 @@
       subroutine step_snow (dt, iblk)
          use ice_state, only: aicen_slot, vicen_slot, vsnon_slot, trcrn_slot
 
-        use ice_grid,  only: dynCnt, dynCntA, dynOff, dynIJ, skipPhys, dynMap, &
+        use ice_grid,  only: dynCntA, dynOff, dynIJ, skipPhys, dynMap, &
            pack_cat_to_slots, unpack_cat_from_slots, &
            pack_trc_to_slots, unpack_trc_from_slots, &
            pack_to_slots, unpack_from_slots
@@ -1636,7 +1636,7 @@
       subroutine step_radiation (dt, iblk)
          use ice_state, only: aicen_slot, vicen_slot, vsnon_slot, trcrn_slot
 
-        use ice_grid,  only: dynCnt, dynCntA, dynOff, dynIJ, skipPhys, dynMap, &
+        use ice_grid,  only: dynCntA, dynOff, dynIJ, skipPhys, dynMap, &
            pack_cat_to_slots, unpack_cat_from_slots, &
            pack_trc_to_slots, unpack_trc_from_slots, &
            pack_to_slots, unpack_from_slots
@@ -2018,7 +2018,7 @@
       subroutine biogeochemistry (dt, iblk)
          use ice_state, only: aicen_slot, vicen_slot, vsnon_slot, trcrn_slot, aice0_slot
 
-        use ice_grid,  only: dynCnt, dynCntA, dynOff, dynIJ, skipPhys, dynMap, &
+        use ice_grid,  only: dynCntA, dynOff, dynIJ, skipPhys, dynMap, &
            pack_cat_to_slots, unpack_cat_from_slots, &
            pack_trc_to_slots, unpack_trc_from_slots, &
            pack_to_slots, unpack_from_slots
