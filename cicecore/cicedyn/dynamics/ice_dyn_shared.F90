@@ -63,7 +63,7 @@
       ! NB the *_slot arrays already carry the public attribute on their own
       ! declarations; repeating them here is an ACCESS conflict (and the ifort
       ! #6251 class that bit f1aab62).  Only the procedures need listing.
-      public :: grid_average_X2YA_compressed, grid_average_X2YS_compressed
+      public :: grid_average_X2YA_compressed, grid_average_X2YF_compressed, grid_average_X2YS_compressed
       public :: set_evp_parameters, stepu, stepuv_CD, stepu_C, stepv_C, &
                 calc_seabed_stress_slot, calc_strint_slot, &
                 principal_stress, init_dyn_shared, dyn_prep1, dyn_prep1_dilate, dyn_prep2, dyn_prep2_slots, dyn_finish, &
@@ -925,6 +925,137 @@
 
       end subroutine grid_average_X2YA_compressed
 
+!=======================================================================
+! Slot-to-slot X2YF, mirroring grid_average_X2YF_core.
+!
+! ⚠ NOT the same as grid_average_X2YF_toslot, which already exists: that
+! one takes a BLOCK source and produces a slot result -- a boundary
+! crossing.  This one is slot in, slot out, for callers whose source has
+! already converted.
+!
+! X2YF differs from X2YA in the denominator: A divides by a precomputed
+! weight sum, F divides by the DESTINATION weight wght2 at the own cell,
+! and carries the p25 factor.  ⚠ X2YF is the one variant of the family
+! NOT exposed to the land-nonzero-sum class -- it never sums areas across
+! neighbours, so an unmapped neighbour cannot corrupt a denominator.
+!
+! SUMMATION ORDER IS PRESERVED EXACTLY, as in X2YA_compressed: it differs
+! per direction and reordering costs bit-for-bit agreement.
+!=======================================================================
+
+      subroutine grid_average_X2YF_compressed(dir, work1, wght1, work2, wght2)
+
+      use ice_blocks, only: block, get_block
+      use ice_domain, only: nblocks, blocks_ice
+
+      character(len=*), intent(in) :: &
+         dir            ! shift direction
+
+      real (kind=dbl_kind), dimension(:), intent(in), contiguous :: &
+         work1    , &   ! field to shift, compressed
+         wght1    , &   ! source weight, compressed
+         wght2          ! DESTINATION weight, compressed
+
+      real (kind=dbl_kind), dimension(:), intent(out), contiguous :: &
+         work2          ! shifted field, compressed
+
+      integer (kind=int_kind) :: i, j, ijb, m, is, iblk
+      integer (kind=int_kind) :: isN, isE, isW, isS, isNE, isSW
+      integer (kind=int_kind) :: ilo, ihi, jlo, jhi
+      real (kind=dbl_kind) :: wtmp
+      type (block) :: this_block
+
+      character(len=*), parameter :: subname = '(grid_average_X2YF_compressed)'
+
+      work2(:) = c0
+
+      !$OMP PARALLEL DO PRIVATE(iblk,i,j,ijb,m,is,isN,isE,isW,isS,isNE,isSW, &
+      !$OMP                     ilo,ihi,jlo,jhi,this_block,wtmp) SCHEDULE(runtime)
+      do iblk = 1, nblocks
+         if (dynCntA(iblk) == 0) cycle
+         this_block = get_block(blocks_ice(iblk),iblk)
+         ilo = this_block%ilo
+         ihi = this_block%ihi
+         jlo = this_block%jlo
+         jhi = this_block%jhi
+
+         do j = jlo, jhi
+         do i = ilo, ihi
+            ijb = (j-1)*nx_block + i
+            m   = dynMap(ijb,iblk)
+            if (m == 0) cycle
+            ! ⚠ ring cells must not be visited -- see X2YA_compressed above
+            if (m > nActive_TU) cycle
+            is  = m
+
+            select case (trim(dir))
+
+            case('NE')
+               isE  = NbrE_Task(is)
+               isN  = NbrN_Task(is)
+               isNE = NbrNE_Task(is)
+               wtmp = wght2(is)
+               if (wtmp /= c0) &
+               work2(is) = p25 * (work1(is  )*wght1(is  )  &
+                                + work1(isE )*wght1(isE )  &
+                                + work1(isN )*wght1(isN )  &
+                                + work1(isNE)*wght1(isNE)) &
+                                / wtmp
+
+            case('SW')
+               isW  = NbrW_Task(is)
+               isS  = NbrS_Task(is)
+               isSW = NbrSW_Task(is)
+               wtmp = wght2(is)
+               if (wtmp /= c0) &
+               work2(is) = p25 * (work1(isSW)*wght1(isSW)  &
+                                + work1(isS )*wght1(isS )  &
+                                + work1(isW )*wght1(isW )  &
+                                + work1(is  )*wght1(is  )) &
+                                / wtmp
+
+            case('E')
+               isE  = NbrE_Task(is)
+               wtmp = wght2(is)
+               if (wtmp /= c0) &
+               work2(is) = p5 * (work1(is )*wght1(is )  &
+                               + work1(isE)*wght1(isE)) &
+                               / wtmp
+
+            case('W')
+               isW  = NbrW_Task(is)
+               wtmp = wght2(is)
+               if (wtmp /= c0) &
+               work2(is) = p5 * (work1(isW)*wght1(isW)  &
+                               + work1(is )*wght1(is )) &
+                               / wtmp
+
+            case('N')
+               isN  = NbrN_Task(is)
+               wtmp = wght2(is)
+               if (wtmp /= c0) &
+               work2(is) = p5 * (work1(is )*wght1(is )  &
+                               + work1(isN)*wght1(isN)) &
+                               / wtmp
+
+            case('S')
+               isS  = NbrS_Task(is)
+               wtmp = wght2(is)
+               if (wtmp /= c0) &
+               work2(is) = p5 * (work1(isS)*wght1(isS)  &
+                               + work1(is )*wght1(is )) &
+                               / wtmp
+
+            case default
+               call abort_ice(subname//' ERROR: unsupported direction '//trim(dir))
+
+            end select
+         enddo
+         enddo
+      enddo
+      !$OMP END PARALLEL DO
+
+      end subroutine grid_average_X2YF_compressed
 
 !=======================================================================
 ! Masked counterpart, for the T2US shift.  Only NE is needed.
