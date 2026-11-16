@@ -247,32 +247,37 @@
 !   dynTot          total slots over all local blocks
 !   dynMap(ij,iblk) block-local slot of a cell, 0 if not stored
 !   dynCntA(iblk) of dynCnt, how many are potentially active; those are
-!                   numbered FIRST, so a block reads [ active | ring | dead ]
-!                   and an active-only loop runs off+1 .. off+cntA
-!
-! ⚠ The dyn* names are all PER BLOCK, and that is what the conversion exists
-! to remove.  The per-TASK names nActive_TU and nStored_TU are reserved for
-! the end state, where the ring becomes one trailing segment rather than one
-! per block:
-!
-!     [ active blk1 | active blk2 | ... | ring | dead ]
-!
-! and a kernel runs 1..nActive_TU across the whole task with no block loop.
-! They are deliberately NOT used for the per-block counts above -- a reader
-! who meets nActive_TU should be able to assume task scope.  Until the ring
-! moves, a task-level active count would not name a contiguous range.
+!                   numbered FIRST, so an active-only loop for one block runs
+!                   off+1 .. off+cntA
 !   dynIJ(slot)     reverse of dynMap, 0 at a dead slot
 !   dynBlk(slot)    block owning each slot, 0 at a dead slot
 !   Nbr_Local(slot,d)  block-local slot one step in direction d
 !   Nbr_Task(slot,d) the SAME neighbour as a global slot index
+!
+! The arrangement is per TASK, not per block:
+!
+!     1 .. nActive_TU                active, every block's, contiguous
+!     nActive_TU + 1                 deadSlot, ONE for the task
+!     nActive_TU+2 .. nStored_TU     the neighbour ring
+!
+! so a kernel with business only at cells that can carry ice runs
+! 1 .. nActive_TU across the whole task with no block loop, and dynOff is a
+! prefix sum of dynCntA.  nActive_TU and nStored_TU are TASK scope; the dyn*
+! names are per block and are what the conversion is still removing.
+!
+! ⚠ "active" here is STATIC -- the set a kernel can EVER visit, not where
+! there is ice now.  iceTmask_slot/iceUmask_slot are still needed inside that
+! range: dyn_prep2 rebuilds them every step as the ice edge moves.
 !
 ! ⚠ Nbr_Local is indexed GLOBALLY but valued LOCALLY, so its consumers must
 ! add dynOff(iblk).  Nbr_Task needs no composition and is what the
 ! task-wide kernels take.  Both are filled from one scan; Nbr_Local goes when
 ! its last consumer does.
 !
-! Each block owns a DEAD SLOT at dynOff+dynCnt+1, held at zero, so a missing
-! neighbour reads as zero with no branch.  Slices handed to kernels are
+! The TASK owns ONE DEAD SLOT, at nActive_TU+1, held at zero, so a missing
+! neighbour reads as zero with no branch.  It is SHARED: there is no
+! per-block dead slot, and nothing may write a block-specific value there.
+! Slices handed to kernels are
 ! 1-BASED: ice_dyn_core1d takes assumed-shape dummies, which rebase to 1
 ! whatever the actual bounds, so a 0-based slice would shift every neighbour
 ! index by one.
