@@ -87,7 +87,7 @@
       ! history and one diagnostics print read them.  Nothing in any coupled
       ! driver touches them -- checked across mct, nuopc, mapl and direct.
       !
-      ! ⚠ Allocated by alloc_flux_slots, not alloc_flux: dynTot does not exist
+      ! ⚠ Allocated by alloc_flux_slots, not alloc_flux: nStored_TU does not exist
       ! yet when alloc_flux runs (CICE_InitMod calls it before init_grid2).
       ! Same split as alloc_state_slots.
       real (kind=dbl_kind), dimension(:), allocatable, public :: &
@@ -450,7 +450,7 @@
 ! Allocate the compressed sea-surface-slope stresses.
 !
 ! Separate from alloc_flux for ordering: CICE_InitMod calls alloc_flux
-! before init_grid2, and dynTot is not known until init_ragged_layout runs
+! before init_grid2, and nStored_TU is not known until init_ragged_layout runs
 ! at the end of init_grid2.  init_ragged_layout calls this, which keeps the
 ! call out of all fifteen drivers' CICE_InitMod.
 !
@@ -464,20 +464,20 @@
       ! than on anything legible.  ice_state has no such use, which is why the
       ! state slots could take the tidier hook.
       !
-      ! init_coupler_flux runs after init_grid2, so dynTot exists, and all
+      ! init_coupler_flux runs after init_grid2, so nStored_TU exists, and all
       ! twelve drivers' CICE_InitMod call it -- checked.
 
-      use ice_grid, only: dynTot, grid_ice
+      use ice_grid, only: nStored_TU, grid_ice
 
       integer (int_kind) :: ierr
       character(len=*),parameter :: subname='(alloc_flux_slots)'
 
-      allocate(hwater_slot(dynTot), &
-               strtltxU(dynTot), strtltyU(dynTot), &
-               strocnxU(dynTot), strocnyU(dynTot), &
-               sig1(dynTot), sig2(dynTot), sigP(dynTot), &
-               rdg_conv(dynTot), rdg_shear(dynTot), &
-               strairxU(dynTot), strairyU(dynTot), stat=ierr)
+      allocate(hwater_slot(nStored_TU), &
+               strtltxU(nStored_TU), strtltyU(nStored_TU), &
+               strocnxU(nStored_TU), strocnyU(nStored_TU), &
+               sig1(nStored_TU), sig2(nStored_TU), sigP(nStored_TU), &
+               rdg_conv(nStored_TU), rdg_shear(nStored_TU), &
+               strairxU(nStored_TU), strairyU(nStored_TU), stat=ierr)
       if (ierr/=0) call abort_ice(error_message=trim(subname)//' ERROR: Out of memory', &
          file=__FILE__, line=__LINE__)
       rdg_conv  = c0
@@ -494,12 +494,12 @@
 
       ! The N and E forms exist only on a C or CD grid, matching alloc_flux.
       if (grid_ice == "CD" .or. grid_ice == "C") then
-         allocate(strtltxN(dynTot), strtltyN(dynTot), &
-                  strtltxE(dynTot), strtltyE(dynTot), &
-                  strocnxN(dynTot), strocnyN(dynTot), &
-                  strocnxE(dynTot), strocnyE(dynTot), &
-                  strairxN(dynTot), strairyN(dynTot), &
-                  strairxE(dynTot), strairyE(dynTot), stat=ierr)
+         allocate(strtltxN(nStored_TU), strtltyN(nStored_TU), &
+                  strtltxE(nStored_TU), strtltyE(nStored_TU), &
+                  strocnxN(nStored_TU), strocnyN(nStored_TU), &
+                  strocnxE(nStored_TU), strocnyE(nStored_TU), &
+                  strairxN(nStored_TU), strairyN(nStored_TU), &
+                  strairxE(nStored_TU), strairyE(nStored_TU), stat=ierr)
          if (ierr/=0) call abort_ice(error_message=trim(subname)//' ERROR: Out of memory', &
             file=__FILE__, line=__LINE__)
          strtltxN = c0
@@ -962,7 +962,7 @@
 
       character(len=*), parameter :: subname = '(init_coupler_flux)'
 
-      ! The compressed sea-surface-slope stresses.  Here because dynTot does
+      ! The compressed sea-surface-slope stresses.  Here because nStored_TU does
       ! not exist when alloc_flux runs; see the note on alloc_flux_slots.
       call alloc_flux_slots
 

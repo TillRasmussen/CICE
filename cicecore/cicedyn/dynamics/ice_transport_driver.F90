@@ -262,7 +262,7 @@
           uvel, vvel, uvelE, vvelN
       use ice_bound_state, only: bound_state
       use ice_grid, only: tarea, grid_ice, &
-          dynMap, dynOff, dynCntA, dynTot, unpack_from_slots, &
+          dynMap, dynOff, dynCntA, nStored_TU, unpack_from_slots, &
           unpack_cat_from_slots, unpack_trc_from_slots
       use ice_calendar, only: istep1
       use ice_timers, only: ice_timer_start, ice_timer_stop, &
@@ -282,13 +282,13 @@
 
       ! Compressed: (slot, category) and (slot, tracer, category) over all
       ! local blocks.  trm was the largest array in transport --
-      ! nx_block*ny_block*ntrace*ncat*max_blocks -- and is now dynTot deep
+      ! nx_block*ny_block*ntrace*ncat*max_blocks -- and is now nStored_TU deep
       ! instead of the full block rectangle.
-      real (kind=dbl_kind), dimension (dynTot,0:ncat) :: &
+      real (kind=dbl_kind), dimension (nStored_TU,0:ncat) :: &
          aim          , & ! mean ice category areas in each grid cell
          aimask           ! = 1. if ice is present, = 0. otherwise
 
-      real (kind=dbl_kind), dimension (dynTot,ntrace,ncat) :: &
+      real (kind=dbl_kind), dimension (nStored_TU,ntrace,ncat) :: &
          trm          , & ! mean tracer values in each grid cell
          trmask           ! = 1. if tracer is present, = 0. otherwise
 
@@ -839,7 +839,7 @@
       use ice_bound_state, only: bound_state
       use ice_flux, only: Tf
       use ice_grid, only: tmask, grid_ice, &
-          dynMap, dynOff, dynCntA, dynTot, dynIJ, dynBlk, &
+          dynMap, dynOff, dynCntA, nStored_TU, dynIJ, dynBlk, &
           skipEdgeE, skipEdgeN, skipPhys, &
           HTE_slot, HTN_slot, tarea_slot, pack_to_slots, &
               unpack_cat_from_slots, unpack_trc_from_slots
@@ -873,12 +873,12 @@
       ! moved when isW precedes is, which is Gauss-Seidel and neither
       ! bit-for-bit nor conservative.  They are task-global because
       ! upwind_field reads them at a NEIGHBOUR slot, and rank 1, so the
-      ! promotion costs two dynTot vectors and no ntrace or ncat.
+      ! promotion costs two nStored_TU vectors and no ntrace or ncat.
       ! Each block writes a disjoint range, so SHARED, like uvel_s in remap.
-      real (kind=dbl_kind), dimension(dynTot) :: &
+      real (kind=dbl_kind), dimension(nStored_TU) :: &
          worka, workb
 
-      real (kind=dbl_kind), dimension (dynTot) :: &
+      real (kind=dbl_kind), dimension (nStored_TU) :: &
          uee, vnn           ! cell edge velocities
 
       ! Compressed: (slot, array).  narr is 1 + ncat*(3+ntrcr), so the block
@@ -900,7 +900,7 @@
 
       narr = 1 + ncat*(3+ntrcr) ! max number of state variable arrays
 
-      allocate (works(dynTot,narr))
+      allocate (works(nStored_TU,narr))
 
       !-------------------------------------------------------------------
       ! Get ghost cell values of state variables.
@@ -973,7 +973,7 @@
             ! at the land cell out there.
             ! dynBlk is 0 only at a dead slot, so this skip is layout-agnostic.
             !$OMP PARALLEL DO PRIVATE(ms,ij) SCHEDULE(runtime)
-            do ms = 1, dynTot
+            do ms = 1, nStored_TU
                if (dynBlk(ms) == 0) cycle
                ij = dynIJ(ms)
                if (ij > nx_block) then

@@ -72,7 +72,7 @@
       use ice_grid, only: grid_ice, grid_outfile, &
           grid_atm_thrm, grid_atm_dynu, grid_atm_dynv, &
           grid_ocn_thrm, grid_ocn_dynu, grid_ocn_dynv, &
-          dynTot
+          nStored_TU
       use ice_history_shared ! everything
       use ice_history_mechred, only: init_hist_mechred_2D, init_hist_mechred_3Dc
       use ice_history_pond, only: init_hist_pond_2D, init_hist_pond_3Dc
@@ -2135,11 +2135,11 @@
 
       if (allocated(a2D)) deallocate(a2D)
       if (num_avail_hist_fields_2D > 0) &
-      allocate(a2D(dynTot,num_avail_hist_fields_2D))
+      allocate(a2D(nStored_TU,num_avail_hist_fields_2D))
 
       if (allocated(a3Dc)) deallocate(a3Dc)
       if (num_avail_hist_fields_3Dc > 0) &
-      allocate(a3Dc(dynTot,ncat_hist,num_avail_hist_fields_3Dc))
+      allocate(a3Dc(nStored_TU,ncat_hist,num_avail_hist_fields_3Dc))
 
       if (allocated(a3Dz)) deallocate(a3Dz)
       if (num_avail_hist_fields_3Dz > 0) &
@@ -2155,19 +2155,19 @@
 
       if (allocated(a3Df)) deallocate(a3Df)
       if (num_avail_hist_fields_3Df > 0) &
-      allocate(a3Df(dynTot,nfsd_hist,num_avail_hist_fields_3Df))
+      allocate(a3Df(nStored_TU,nfsd_hist,num_avail_hist_fields_3Df))
 
       if (allocated(a4Di)) deallocate(a4Di)
       if (num_avail_hist_fields_4Di > 0) &
-      allocate(a4Di(dynTot,nzilyr,ncat_hist,num_avail_hist_fields_4Di))
+      allocate(a4Di(nStored_TU,nzilyr,ncat_hist,num_avail_hist_fields_4Di))
 
       if (allocated(a4Ds)) deallocate(a4Ds)
       if (num_avail_hist_fields_4Ds > 0) &
-      allocate(a4Ds(dynTot,nzslyr,ncat_hist,num_avail_hist_fields_4Ds))
+      allocate(a4Ds(nStored_TU,nzslyr,ncat_hist,num_avail_hist_fields_4Ds))
 
       if (allocated(a4Df)) deallocate(a4Df)
       if (num_avail_hist_fields_4Df > 0) &
-      allocate(a4Df(dynTot,nfsd_hist,ncat_hist,num_avail_hist_fields_4Df))
+      allocate(a4Df(nStored_TU,nfsd_hist,ncat_hist,num_avail_hist_fields_4Df))
 
       if (allocated(a2D))  a2D (:,:)         = c0
       if (allocated(a3Dc)) a3Dc(:,:,:)       = c0

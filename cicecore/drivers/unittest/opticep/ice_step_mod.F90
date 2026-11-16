@@ -941,7 +941,7 @@
                              aice_slot, vice_slot, vsno_slot, aice0_slot, &
                              aicen_slot, vicen_slot, vsnon_slot, trcrn_slot, &
                              trcr_slot
-        use ice_grid,  only: dynMap, dynIJ, dynBlk, dynTot
+        use ice_grid,  only: dynMap, dynIJ, dynBlk, nStored_TU
       use ice_bound_state, only: bound_state
       use ice_flux,  only: Tf
       use ice_timers, only: ice_timer_start, ice_timer_stop, timer_bound, timer_updstate
@@ -994,7 +994,7 @@
       call ice_timer_stop(timer_bound)
 
       !$OMP PARALLEL DO PRIVATE(iblk,i,j,ij,ms) SCHEDULE(runtime)
-      do ms = 1, dynTot
+      do ms = 1, nStored_TU
          iblk = dynBlk(ms)
          if (iblk == 0) cycle           ! dead slot; layout-agnostic
          ! Slot-driven.  ⚠ This drops the interior LAND cells the block loop

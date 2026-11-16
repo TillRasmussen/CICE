@@ -955,7 +955,7 @@ module ice_dyn_evp1d
      use ice_grid, only : dynMap, dynOff, deadSlot
      implicit none
 
-     ! the compressed destination, dimension(dynTot)
+     ! the compressed destination, dimension(nStored_TU)
      real(kind=dbl_kind), dimension(:), intent(inout) :: A_slot
      ! allocatable for the same reason as in gather_slot_r8
      real(kind=dbl_kind), allocatable, dimension(:), intent(in) :: A_1d

@@ -48,7 +48,7 @@
       use ice_dyn_shared, only: dyn_prep1, dyn_prep1_dilate, dyn_prep2, dyn_finish,  &
           cosw, sinw, uvel_init, vvel_init, dynOff, dynCnt, dynCntA,                 &
           dynMap, dynIJ, dynMaxCnt, iceTmask_slot, iceUmask_slot,                    &
-          dynTot, pack_to_slots, unpack_from_slots, calc_seabed_stress_slot,         &
+          nStored_TU, pack_to_slots, unpack_from_slots, calc_seabed_stress_slot,         &
           nbr_W, nbr_S, nbr_SW, nbr_E, nbr_N, nbr_NE, uarear_slot,                   &
           NbrW_Task, NbrSW_Task, NbrS_Task,                                          &
           NbrE_Task, NbrN_Task, NbrNE_Task,                                          &
@@ -91,7 +91,7 @@
          start_andacc       ! acceleration delay factor (acceleration starts at this iteration)
 
       ! VP's compressed working copies, indexed by slot over the whole run
-      ! (dynTot).  Stage 2 converts the solver kernels to iterate slots the way
+      ! (nStored_TU).  Stage 2 converts the solver kernels to iterate slots the way
       ! EVP's do; until every consumer of a field is converted, the block-layout
       ! copy stays and the pack/unpack pair at the call site keeps the two in
       ! step.  Those pairs are transitional, not the destination.
@@ -181,25 +181,25 @@
 
       ! Initialize module variables
 
-      ! init_dyn_shared above has built the compressed layout, so dynTot is set
-      allocate(Cw_s  (dynTot), TbU_s (dynTot), &
-               vrel_s(dynTot), Cb_s  (dynTot), &
-               taubx_s(dynTot), tauby_s(dynTot))
-      allocate(zetax2_s(dynTot,4), etax2_s(dynTot,4), &
-               repprs_s(dynTot,4), stPr_s (dynTot,8))
+      ! init_dyn_shared above has built the compressed layout, so nStored_TU is set
+      allocate(Cw_s  (nStored_TU), TbU_s (nStored_TU), &
+               vrel_s(nStored_TU), Cb_s  (nStored_TU), &
+               taubx_s(nStored_TU), tauby_s(nStored_TU))
+      allocate(zetax2_s(nStored_TU,4), etax2_s(nStored_TU,4), &
+               repprs_s(nStored_TU,4), stPr_s (nStored_TU,8))
       zetax2_s = c0
       etax2_s = c0
       repprs_s = c0
       stPr_s = c0
-      allocate(bxfix_s(dynTot), &
-               byfix_s (dynTot), bx_s    (dynTot), by_s   (dynTot))
+      allocate(bxfix_s(nStored_TU), &
+               byfix_s (nStored_TU), bx_s    (nStored_TU), by_s   (nStored_TU))
       bxfix_s = c0
       byfix_s  = c0
       bx_s     = c0
       by_s    = c0
-      allocate(mvAu_s(dynTot), mvAv_s(dynTot))
-      allocate(str1(dynTot), str2(dynTot), str3(dynTot), str4(dynTot), &
-               str5(dynTot), str6(dynTot), str7(dynTot), str8(dynTot))
+      allocate(mvAu_s(nStored_TU), mvAv_s(nStored_TU))
+      allocate(str1(nStored_TU), str2(nStored_TU), str3(nStored_TU), str4(nStored_TU), &
+               str5(nStored_TU), str6(nStored_TU), str7(nStored_TU), str8(nStored_TU))
       ! ⚠ Cleared WHOLE, once.  matvec clears only lo:hi and then skips any
       ! cell without ice, so a ring cell is never written -- before the
       ! reorder it sat inside the block's range and was cleared each call.
@@ -217,8 +217,8 @@
       ! Krylov-side vectors.  solx/soly and diagx/diagy are packed per
       ! nonlinear iteration because arrays_to_vec and the history still read
       ! them in the block layout; Fx/Fy never leave the slot world.
-      allocate(Fx_s(dynTot), Fy_s(dynTot), fpx_s(dynTot), fpy_s(dynTot), &
-               diagx_s(dynTot), diagy_s(dynTot), solx_s(dynTot), soly_s(dynTot))
+      allocate(Fx_s(nStored_TU), Fy_s(nStored_TU), fpx_s(nStored_TU), fpy_s(nStored_TU), &
+               diagx_s(nStored_TU), diagy_s(nStored_TU), solx_s(nStored_TU), soly_s(nStored_TU))
       Fx_s = c0
       Fy_s = c0
       fpx_s = c0
@@ -322,7 +322,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
 
       logical (kind=log_kind) :: calc_strair
 
-      integer (kind=int_kind), dimension (dynTot) :: &
+      integer (kind=int_kind), dimension (nStored_TU) :: &
          halomask_slot  ! generic halo mask
 
       type (ice_halo) :: &
@@ -360,7 +360,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
 !                           field_loc_center,  field_type_scalar)
 !      call ice_timer_stop(timer_bound)
 
-      ! Compressed: one pass over dynTot, not nblocks x nx_block x ny_block.
+      ! Compressed: one pass over nStored_TU, not nblocks x nx_block x ny_block.
       rdg_conv  = c0
       rdg_shear = c0
       divu      = c0
@@ -566,7 +566,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
       !-----------------------------------------------------------------
       if (seabed_stress) then
          if ( seabed_stress_method == 'LKD' ) then
-            call seabed_stress_factor_LKD (1               , dynTot, iceUmask_slot        , &
+            call seabed_stress_factor_LKD (1               , nStored_TU, iceUmask_slot        , &
                                            NbrE_Task       , NbrNE_Task    , &
                                            NbrN_Task       ,                 &
                                            vice_slot       , aice_slot     , &
@@ -574,7 +574,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
 
          elseif ( seabed_stress_method == 'probabilistic' ) then
 
-            call seabed_stress_factor_prob (1               , dynTot        , &
+            call seabed_stress_factor_prob (1               , nStored_TU        , &
                                             iceTmask_slot           , iceUmask_slot         , &
                                             NbrE_Task       , NbrNE_Task    , &
                                             NbrN_Task       ,                 &
@@ -591,7 +591,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
 
       ! iceUmask_slot is cleared exactly where dyn_prep2 counts a cell into icellU,
       ! so counting active slots gives the same total the block loop did.
-      ntot = count(iceUmask_slot(1:dynTot))
+      ntot = count(iceUmask_slot(1:nStored_TU))
       ntot = 2 * ntot ! times 2 because of u and v
 
       allocate(sol(ntot))
@@ -617,7 +617,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
       !-----------------------------------------------------------------
       ! uvel_slot/vvel_slot carry the converged velocity already; the pack
       ! from the block form was an identity, dead slots included.
-      call stress_vp (1, dynTot, iceTmask_slot,                 &
+      call stress_vp (1, nStored_TU, iceTmask_slot,                 &
                       uvel_slot , vvel_slot ,           &
                       dxT_slot  , dyT_slot  ,           &
                       cxp_slot  , cyp_slot  ,           &
@@ -640,7 +640,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
       ! the dead slots zero, so packing them back from the block form was an
       ! identity.
       call deformations (                                                                                                              &
-                         1, dynTot, iceTmask_slot,                                                &
+                         1, nStored_TU, iceTmask_slot,                                                &
                          NbrW_Task, NbrSW_Task, NbrS_Task,                 &
                          uvel_slot, vvel_slot, &
                          dxT_slot, dyT_slot,   &
@@ -778,7 +778,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
       ! ice-ocean stress
       !-----------------------------------------------------------------
 
-      call dyn_finish (1             , dynTot        , &
+      call dyn_finish (1             , nStored_TU        , &
                        iceUmask_slot         , cdn_ocnU_slot , &
                        uvel_slot     , vvel_slot     , &
                        uocnU_slot    , vocnU_slot    , &
@@ -869,7 +869,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
       ! uvel_slot/vvel_slot must track block uvel/vvel at every point this
       ! routine reads them: once on entry, and again after each iteration's
       ! halo update.  Both packs are explicit; nothing else refreshes them.
-      real (kind=dbl_kind), dimension (dynTot) :: &
+      real (kind=dbl_kind), dimension (nStored_TU) :: &
          uprev_k  , & ! uvel at previous Picard iteration
          vprev_k  , & ! vvel at previous Picard iteration
          ulin     , & ! uvel to linearize vrel
@@ -887,18 +887,18 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
       ! Scratch for the progress-residual norm only: uvel - uprev_k is formed
       ! here for global_norm.  Local, because nothing outside this routine
       ! ever reads it -- and compressed, like the operands it is formed from.
-      real (kind=dbl_kind), dimension (dynTot) :: &
+      real (kind=dbl_kind), dimension (nStored_TU) :: &
          fpresx   , & ! fixed point residual, x: fx = uvel - uprev_k
          fpresy       ! fixed point residual, y: fy = vvel - vprev_k
 
       ! OMP-private scratch that never leaves the formDiag pair, so it is
-      ! sized for the largest block rather than dynTot: step1 fills it one
+      ! sized for the largest block rather than nStored_TU: step1 fills it one
       ! block at a time.  The +1 is the block's dead slot.
-      ! dynTot-sized and SHARED, not block-sized and OMP-private: each block
+      ! nStored_TU-sized and SHARED, not block-sized and OMP-private: each block
       ! writes only its own slot range, so threads never overlap.  Costs
-      ! 8*dynTot doubles once rather than per thread, which is what lets the
+      ! 8*nStored_TU doubles once rather than per thread, which is what lets the
       ! block loop below collapse.
-      real (kind=dbl_kind), dimension (dynTot):: &
+      real (kind=dbl_kind), dimension (nStored_TU):: &
          diag_rheo1, diag_rheo2, diag_rheo3, diag_rheo4, &
          diag_rheo5, diag_rheo6, diag_rheo7, diag_rheo8
                         ! contributions of the rheology term to the diagonal,
@@ -1072,7 +1072,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
          ! anderson).  The guess is uprev_k, so it is packed once here and
          ! then stays compressed through fgmres and arrays_to_vec alike.
          !$omp parallel do schedule(static) private(is)
-         do is = 1, dynTot
+         do is = 1, nStored_TU
             solx_s(is) = uprev_k(is)
             soly_s(is) = vprev_k(is)
          enddo
@@ -1086,7 +1086,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
             ! Prepare diagonal for preconditioner
             if (precond == 'diag' .or. precond == 'pgmres') then
                ! first compute diagonal contributions due to rheology term
-               call formDiag_step1 (1             , dynTot, iceUmask_slot, &
+               call formDiag_step1 (1             , nStored_TU, iceUmask_slot, &
                                     dxT_slot , dyT_slot , &
                                     dxhy_slot, dyhx_slot, &
                                     cxp_slot , cyp_slot , &
@@ -1096,7 +1096,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
                                     diag_rheo1, diag_rheo2, diag_rheo3, diag_rheo4, &
                   diag_rheo5, diag_rheo6, diag_rheo7, diag_rheo8)
                ! second compute the full diagonal
-               call formDiag_step2 (1             , dynTot, iceUmask_slot, &
+               call formDiag_step2 (1             , nStored_TU, iceUmask_slot, &
                                     diag_rheo1, diag_rheo2, diag_rheo3, diag_rheo4, &
                   diag_rheo5, diag_rheo6, diag_rheo7, diag_rheo8, &
                   vrel_s, &
@@ -1286,7 +1286,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
 
          ! Compute "progress" residual norm
          !$omp parallel do schedule(static) private(is)
-         do is = 1, dynTot
+         do is = 1, nStored_TU
             fpresx(is) = uvel_slot(is) - uprev_k(is)
             fpresy(is) = vvel_slot(is) - vprev_k(is)
             fpx_s(is)  = fpresx(is)
@@ -1393,7 +1393,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
       ! (for cells where iceTmask is false)
       ! ⚠ THIS BLOCK'S RANGE ONLY.  These used to be per-block slices, so a
       ! whole-array "= c0" zeroed just the slice; they are passed whole now,
-      ! and zeroing all of dynTot here would wipe every other block's
+      ! and zeroing all of nStored_TU here would wipe every other block's
       ! results -- each call leaving only its own.  hi+1 is the dead slot,
       ! which the slice included.
       stPr  (lo:hi,:) = c0
@@ -1809,7 +1809,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
       ! These live at module scope now: the kernel indexes globally, and as
       ! automatic arrays they were allocated and freed on each of the five
       ! calls per nonlinear iteration.  Only this block's range is zeroed --
-      ! zeroing all of dynTot per block would be nblocks times the work.
+      ! zeroing all of nStored_TU per block would be nblocks times the work.
       ! hi+1 is the block's dead slot, which missing neighbours point at.
 
       real (kind=dbl_kind) :: &
@@ -3439,7 +3439,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
                result(norm)
 
       ! compressed: the whole local slot vector, every block
-      real (kind=dbl_kind), dimension (dynTot), intent(in) :: &
+      real (kind=dbl_kind), dimension (nStored_TU), intent(in) :: &
          field_x     , & ! x-component of vector field
          field_y         ! y-component of vector field
 
@@ -3469,7 +3469,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
       use ice_fileunits, only: bfbflag
 
       ! compressed: the whole local slot vector, every block
-      real (kind=dbl_kind), dimension (dynTot), intent(in) :: &
+      real (kind=dbl_kind), dimension (nStored_TU), intent(in) :: &
          vector1_x     , & ! x-component of first vector
          vector1_y     , & ! y-component of first vector
          vector2_x     , & ! x-component of second vector
@@ -3548,7 +3548,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
          ntot                  ! size of problem for Anderson
 
       ! compressed: the whole local slot vector, every block
-      real (kind=dbl_kind), dimension (dynTot), intent(in) :: &
+      real (kind=dbl_kind), dimension (nStored_TU), intent(in) :: &
          tpu     , & ! x-component of vector
          tpv         ! y-component of vector
 
@@ -3571,7 +3571,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
 
       ! Slot order is icellU order, so tot advances in exactly the sequence
       ! the block-layout loop used and outvec comes out byte-identical.
-      do is = 1, dynTot
+      do is = 1, nStored_TU
          if (.not. iceUmask_slot(is)) cycle
          tot = tot + 1
          outvec(tot) = tpu(is)
@@ -3600,7 +3600,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
          invec       ! input 1D vector
 
       ! compressed: the whole local slot vector, every block
-      real (kind=dbl_kind), dimension (dynTot), intent(out) :: &
+      real (kind=dbl_kind), dimension (nStored_TU), intent(out) :: &
          tpu     , & ! x-component of vector
          tpv         ! y-component of vector
 
@@ -3615,7 +3615,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
       tpv(:) = c0
 
       tot = 0
-      do is = 1, dynTot
+      do is = 1, nStored_TU
          if (.not. iceUmask_slot(is)) cycle
          tot = tot + 1
          tpu(is) = invec(tot)
@@ -3702,14 +3702,14 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
       real (kind=dbl_kind), dimension(:), intent(in), contiguous :: &
          umassdti  ! mass of U-cell/dte (kg/m^2 s)
 
-      real (kind=dbl_kind), dimension(dynTot), intent(in) :: &
+      real (kind=dbl_kind), dimension(nStored_TU), intent(in) :: &
          vrel  , & ! coefficient for tauw
          Cb        ! seabed stress coefficient
 
       type (ice_halo), intent(in) :: &
          halo_info_mask !  ghost cell update info for masked halo
 
-      real (kind=dbl_kind), dimension(dynTot), intent(in) :: &
+      real (kind=dbl_kind), dimension(nStored_TU), intent(in) :: &
          bx       , & ! Right hand side of the linear system (x components)
          by       , & ! Right hand side of the linear system (y components)
          diagx    , & ! Diagonal of the system matrix (x components)
@@ -3725,7 +3725,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
                      ! Iteration will stop after maxinner*maxouter Arnoldi steps
                      ! even if the specified tolerance has not been achieved
 
-      real (kind=dbl_kind), dimension(dynTot), intent(inout) :: &
+      real (kind=dbl_kind), dimension(nStored_TU), intent(inout) :: &
          solx     , & ! Initial guess on input, approximate solution on output (x components)
          soly         ! Initial guess on input, approximate solution on output (y components)
 
@@ -3739,7 +3739,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
          is      , & ! slot index
          j           ! Givens-rotation / Hessenberg loop index
 
-      real (kind=dbl_kind), dimension(dynTot) :: &
+      real (kind=dbl_kind), dimension(nStored_TU) :: &
          workspace_x , & ! work vector (x components)
          workspace_y     ! work vector (y components)
 
@@ -3799,10 +3799,10 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
       norm_squared = c0
       precond_type = precond
 
-      allocate(arnoldi_basis_x(dynTot, maxinner+1), &
-               arnoldi_basis_y(dynTot, maxinner+1), &
-               orig_basis_x   (dynTot, maxinner  ), &
-               orig_basis_y   (dynTot, maxinner  ), &
+      allocate(arnoldi_basis_x(nStored_TU, maxinner+1), &
+               arnoldi_basis_y(nStored_TU, maxinner+1), &
+               orig_basis_x   (nStored_TU, maxinner  ), &
+               orig_basis_y   (nStored_TU, maxinner  ), &
                stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
 
@@ -3860,7 +3860,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
          ! Normalize the first Arnoldi vector
          inverse_norm = c1 / norm_residual
          !$omp parallel do schedule(static) private(is)
-         do is = 1, dynTot
+         do is = 1, nStored_TU
                if (.not. iceUmask_slot(is)) cycle
 
             arnoldi_basis_x(is,1) = arnoldi_basis_x(is,1) * inverse_norm
@@ -3939,7 +3939,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
                ! Normalize next Arnoldi vector
                inverse_norm = c1 / hessenberg(nextit,initer)
                !$omp parallel do schedule(static) private(is)
-               do is = 1, dynTot
+               do is = 1, nStored_TU
                if (.not. iceUmask_slot(is)) cycle
 
                   arnoldi_basis_x(is,nextit) = arnoldi_basis_x(is,nextit)*inverse_norm
@@ -4002,7 +4002,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
          do it = 1, initer
             t = rhs_hess(it)
             !$omp parallel do schedule(static) private(is)
-            do is = 1, dynTot
+            do is = 1, nStored_TU
                if (.not. iceUmask_slot(is)) cycle
 
                solx(is) = solx(is) + t * orig_basis_x(is,it)
@@ -4043,7 +4043,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
          workspace_y = c0
          do it = 1, nextit
             !$omp parallel do schedule(static) private(is)
-            do is = 1, dynTot
+            do is = 1, nStored_TU
                if (.not. iceUmask_slot(is)) cycle
 
                workspace_x(is) = workspace_x(is) + rhs_hess(it) * arnoldi_basis_x(is,it)
@@ -4082,18 +4082,18 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
       real (kind=dbl_kind), dimension(:), intent(in), contiguous :: &
          umassdti  ! mass of U-cell/dte (kg/m^2 s)
 
-      real (kind=dbl_kind), dimension(dynTot), intent(in) :: &
+      real (kind=dbl_kind), dimension(nStored_TU), intent(in) :: &
          vrel  , & ! coefficient for tauw
          Cb        ! seabed stress coefficient
 
       type (ice_halo), intent(in) :: &
          halo_info_mask !  ghost cell update info for masked halo
 
-      real (kind=dbl_kind), dimension(dynTot), intent(in) :: &
+      real (kind=dbl_kind), dimension(nStored_TU), intent(in) :: &
          bx       , & ! Right hand side of the linear system (x components)
          by           ! Right hand side of the linear system (y components)
 
-      real (kind=dbl_kind), dimension(dynTot), intent(in) :: &
+      real (kind=dbl_kind), dimension(nStored_TU), intent(in) :: &
          diagx    , & ! Diagonal of the system matrix (x components)
          diagy        ! Diagonal of the system matrix (y components)
 
@@ -4107,7 +4107,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
                      ! Iteration will stop after maxinner*maxouter Arnoldi steps
                      ! even if the specified tolerance has not been achieved
 
-      real (kind=dbl_kind), dimension(dynTot), intent(inout) :: &
+      real (kind=dbl_kind), dimension(nStored_TU), intent(inout) :: &
          solx     , & ! Initial guess on input, approximate solution on output (x components)
          soly         ! Initial guess on input, approximate solution on output (y components)
 
@@ -4121,7 +4121,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
          is      , & ! slot index
          j           ! Givens-rotation / Hessenberg loop index
 
-      real (kind=dbl_kind), dimension(dynTot) :: &
+      real (kind=dbl_kind), dimension(nStored_TU) :: &
          workspace_x , & ! work vector (x components)
          workspace_y     ! work vector (y components)
 
@@ -4176,8 +4176,8 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
       precond_type = 'diag' ! Jacobi preconditioner
       ortho_type = 'cgs' ! classical gram-schmidt TODO: try with MGS
 
-      allocate(arnoldi_basis_x(dynTot, maxinner+1), &
-               arnoldi_basis_y(dynTot, maxinner+1), &
+      allocate(arnoldi_basis_x(nStored_TU, maxinner+1), &
+               arnoldi_basis_y(nStored_TU, maxinner+1), &
                stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
 
@@ -4227,7 +4227,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
          ! Normalize the first Arnoldi vector
          inverse_norm = c1 / norm_residual
          !$omp parallel do schedule(static) private(is)
-         do is = 1, dynTot
+         do is = 1, nStored_TU
                if (.not. iceUmask_slot(is)) cycle
 
             arnoldi_basis_x(is,1) = arnoldi_basis_x(is,1) * inverse_norm
@@ -4305,7 +4305,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
                ! Normalize next Arnoldi vector
                inverse_norm = c1 / hessenberg(nextit,initer)
                !$omp parallel do schedule(static) private(is)
-               do is = 1, dynTot
+               do is = 1, nStored_TU
                if (.not. iceUmask_slot(is)) cycle
 
                   arnoldi_basis_x(is,nextit) = arnoldi_basis_x(is,nextit)*inverse_norm
@@ -4370,7 +4370,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
          do it = 1, initer
             t = rhs_hess(it)
             !$omp parallel do schedule(static) private(is)
-            do is = 1, dynTot
+            do is = 1, nStored_TU
                if (.not. iceUmask_slot(is)) cycle
 
                workspace_x(is) = workspace_x(is) + t * arnoldi_basis_x(is,it)
@@ -4423,7 +4423,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
          workspace_y = c0
          do it = 1, nextit
             !$omp parallel do schedule(static) private(is)
-            do is = 1, dynTot
+            do is = 1, nStored_TU
                if (.not. iceUmask_slot(is)) cycle
 
                workspace_x(is) = workspace_x(is) + rhs_hess(it) * arnoldi_basis_x(is,it)
@@ -4452,28 +4452,28 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
                               wx          , wy)
 
       ! compressed: the whole local slot vector, every block
-      real (kind=dbl_kind), dimension(dynTot), intent(in) :: &
+      real (kind=dbl_kind), dimension(nStored_TU), intent(in) :: &
          umassdti  ! mass of U-cell/dte (kg/m^2 s)
 
-      real (kind=dbl_kind), dimension(dynTot), intent(in) :: &
+      real (kind=dbl_kind), dimension(nStored_TU), intent(in) :: &
          vrel  , & ! coefficient for tauw
          Cb        ! seabed stress coefficient
 
       type (ice_halo), intent(in) :: &
          halo_info_mask !  ghost cell update info for masked halo
 
-      real (kind=dbl_kind), dimension (dynTot), intent(in) :: &
+      real (kind=dbl_kind), dimension (nStored_TU), intent(in) :: &
          vx       , & ! input vector (x components)
          vy           ! input vector (y components)
 
-      real (kind=dbl_kind), dimension (dynTot), intent(in) :: &
+      real (kind=dbl_kind), dimension (nStored_TU), intent(in) :: &
          diagx    , & ! diagonal of the system matrix (x components)
          diagy        ! diagonal of the system matrix (y components)
 
       character (len=char_len), intent(in) :: &
          precond_type ! type of preconditioner
 
-      real (kind=dbl_kind), dimension (dynTot), intent(inout) :: &
+      real (kind=dbl_kind), dimension (nStored_TU), intent(inout) :: &
          wx       , & ! preconditionned vector (x components)
          wy           ! preconditionned vector (y components)
 
@@ -4503,7 +4503,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
          wy = vy
       elseif (precond_type == 'diag') then ! Jacobi preconditioner (diagonal)
          !$omp parallel do schedule(static) private(is)
-         do is = 1, dynTot
+         do is = 1, nStored_TU
             if (.not. iceUmask_slot(is)) cycle
 
             wx(is) = vx(is) / diagx(is)
@@ -4553,7 +4553,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
          maxinner    ! Restart the method every maxinner inner iterations
 
       ! compressed: the whole local slot vector, every block
-      real (kind=dbl_kind), dimension(dynTot, maxinner+1), intent(inout) :: &
+      real (kind=dbl_kind), dimension(nStored_TU, maxinner+1), intent(inout) :: &
          arnoldi_basis_x , & ! arnoldi basis (x components)
          arnoldi_basis_y     ! arnoldi basis (y components)
 
@@ -4581,7 +4581,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
          ! Second loop of Gram-Schmidt (orthonormalize)
          do it = 1, initer
             !$omp parallel do schedule(static) private(is)
-            do is = 1, dynTot
+            do is = 1, nStored_TU
                if (.not. iceUmask_slot(is)) cycle
 
                arnoldi_basis_x(is,nextit) = arnoldi_basis_x(is,nextit) &
@@ -4600,7 +4600,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
                                                         arnoldi_basis_y(:,nextit))
 
             !$omp parallel do schedule(static) private(is)
-            do is = 1, dynTot
+            do is = 1, nStored_TU
                if (.not. iceUmask_slot(is)) cycle
 
                arnoldi_basis_x(is,nextit) = arnoldi_basis_x(is,nextit) &

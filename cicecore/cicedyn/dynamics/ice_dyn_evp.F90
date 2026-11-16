@@ -116,7 +116,7 @@
       use ice_grid, only: skipPhys
       use ice_calendar, only: dt_dyn
       use ice_dyn_shared, only: init_dyn_shared, evp_algorithm, &
-          dynTot, dynOff, dynCntA, dynMap, dxN_slot, dyE_slot
+          nStored_TU, dynOff, dynCntA, dynMap, dxN_slot, dyE_slot
       use ice_grid, only: pack_to_slots
       use ice_dyn_evp1d, only: dyn_evp1d_init
 
@@ -149,16 +149,16 @@
 
       if (grid_ice == 'CD' .or. grid_ice == 'C') then
 
-         allocate( divergU  (dynTot), &
-                   tensionU (dynTot), &
-                   deltaU   (dynTot), &
+         allocate( divergU  (nStored_TU), &
+                   tensionU (nStored_TU), &
+                   deltaU   (nStored_TU), &
                    stat=ierr)
          if (ierr/=0) call abort_ice(subname//' ERROR: Out of memory U evp')
 
 
-         allocate( ratiodxN_slot (dynTot), ratiodyE_slot (dynTot), &
-                   ratiodxNr_slot(dynTot), ratiodyEr_slot(dynTot), &
-                   rheofactE_slot(dynTot), rheofactN_slot(dynTot), &
+         allocate( ratiodxN_slot (nStored_TU), ratiodyE_slot (nStored_TU), &
+                   ratiodxNr_slot(nStored_TU), ratiodyEr_slot(nStored_TU), &
+                   rheofactE_slot(nStored_TU), rheofactN_slot(nStored_TU), &
                    stat=ierr)
          if (ierr/=0) call abort_ice(subname//' ERROR: Out of memory ratio slot')
          ratiodxN_slot  = c0
@@ -186,7 +186,7 @@
          ! skipPhys IS that test: init_ragged_layout clears it exactly over
          ! jlo..jhi x ilo..ihi, and the dead slot is never mapped there, so
          ! it also subsumes the ijb == 0 guard.
-         do is = 1, dynTot
+         do is = 1, nStored_TU
             if (skipPhys(is)) cycle
             ratiodxN_slot (is) = - dxN_slot(NbrE_Task(is)) / dxN_slot(is)
             ratiodyE_slot (is) = - dyE_slot(NbrN_Task(is)) / dyE_slot(is)
@@ -246,7 +246,7 @@
           iceTmask, iceUmask, iceEmask, iceNmask, &
           dyn_haloUpdate, fld2, fld3, fld4, fld2c
       ! the compressed layout, and the C/CD slot arrays the subcycle runs on
-      use ice_dyn_shared, only: dynMap, dynOff, dynCntA, dynTot, &
+      use ice_dyn_shared, only: dynMap, dynOff, dynCntA, nStored_TU, &
                                NbrW_Task , NbrSW_Task, NbrS_Task , NbrE_Task , &
                                NbrNE_Task, NbrN_Task , NbrNW_Task, NbrSE_Task
       ! strint* and taub* are diagnostics: history is their only consumer,
@@ -321,7 +321,7 @@
          lstrint , & ! a history stream wants strintx/strinty this step
          ltaub       ! a history stream wants taubx/tauby this step
 
-      integer (kind=int_kind), dimension (dynTot) :: &
+      integer (kind=int_kind), dimension (nStored_TU) :: &
          halomask_slot     ! generic halo mask
 
       type (ice_halo) :: &
@@ -374,7 +374,7 @@
 !                           field_loc_center,  field_type_scalar)
 !      call ice_timer_stop(timer_bound)
 
-      ! Compressed: one pass over dynTot, not nblocks x nx_block x ny_block.
+      ! Compressed: one pass over nStored_TU, not nblocks x nx_block x ny_block.
       rdg_conv  = c0
       rdg_shear = c0
       divu      = c0
@@ -824,14 +824,14 @@
          if (grid_ice == "B") then
 
             if ( seabed_stress_method == 'LKD' ) then
-               call seabed_stress_factor_LKD (1               , dynTot, iceUmask_slot        , &
+               call seabed_stress_factor_LKD (1               , nStored_TU, iceUmask_slot        , &
                                               NbrE_Task       , NbrNE_Task    , &
                                               NbrN_Task       ,                 &
                                               vice_slot       , aice_slot     , &
                                               hwater_slot     , TbU_slot)
 
             elseif ( seabed_stress_method == 'probabilistic' ) then
-               call seabed_stress_factor_prob (1               , dynTot        , &
+               call seabed_stress_factor_prob (1               , nStored_TU        , &
                                                iceTmask_slot           , iceUmask_slot         , &
                                                NbrE_Task       , NbrNE_Task    , &
                                                NbrN_Task       ,                 &
@@ -842,13 +842,13 @@
          elseif (grid_ice == "C" .or. grid_ice == "CD") then
 
             if ( seabed_stress_method == 'LKD' ) then
-               call seabed_stress_factor_LKD (1               , dynTot, iceEmask_slot        , &
+               call seabed_stress_factor_LKD (1               , nStored_TU, iceEmask_slot        , &
                                               NbrE_Task       , NbrNE_Task    , &
                                               NbrN_Task       ,                 &
                                               vice_slot       , aice_slot     , &
                                               hwater_slot     , TbE_slot, &
                                               'E')
-               call seabed_stress_factor_LKD (1               , dynTot, iceNmask_slot        , &
+               call seabed_stress_factor_LKD (1               , nStored_TU, iceNmask_slot        , &
                                               NbrE_Task       , NbrNE_Task    , &
                                               NbrN_Task       ,                 &
                                               vice_slot       , aice_slot     , &
@@ -856,7 +856,7 @@
                                               'N')
 
             elseif ( seabed_stress_method == 'probabilistic' ) then
-               call seabed_stress_factor_prob (1               , dynTot        , &
+               call seabed_stress_factor_prob (1               , nStored_TU        , &
                                                iceTmask_slot           , iceUmask_slot         , &
                                                NbrE_Task       , NbrNE_Task    , &
                                                NbrN_Task       ,                 &
@@ -970,7 +970,7 @@
                ! the slots the per-block ranges omit are the blocks' dead slots,
                ! and those are permanently iceTmask_slot.  Threading moved inside.
                !-----------------------------------------------------------------
-                  call stress (1, dynTot, iceTmask_slot, &
+                  call stress (1, nStored_TU, iceTmask_slot, &
                                uvel_slot, vvel_slot, &
                                dxT_slot, dyT_slot, &
                                dxhy_slot, dyhx_slot, &
@@ -995,7 +995,7 @@
                ! last kernel in the block loop, so the loop is gone.
                !-----------------------------------------------------------------
                   call stepu (&
-                              1, dynTot,                     &
+                              1, nStored_TU,                     &
                               cdn_ocnU_slot,  &
                               iceUmask_slot, &
                               aiU_slot , &
@@ -1080,7 +1080,7 @@
          !-----------------------------------------------------------------
 
             call deformations (                                                                                                              &
-                               1, dynTot, iceTmask_slot,                                                &
+                               1, nStored_TU, iceTmask_slot,                                                &
                                NbrW_Task, NbrSW_Task, NbrS_Task,                 &
                                uvel_slot, vvel_slot, &
                                dxT_slot, dyT_slot,   &
@@ -1124,7 +1124,7 @@
             ! strain rates at U point
             ! NOTE these are actually strain rates * area  (m^2/s)
             !-----------------------------------------------------------------
-            call strain_rates_U (1             , dynTot        , &
+            call strain_rates_U (1             , nStored_TU        , &
                                  iceUmask_slot         ,                 &
                                  NbrE_Task, NbrN_Task      ,                 &
                                  uvelE_slot    , vvelE_slot    , &
@@ -1148,7 +1148,7 @@
             endif
             call ice_timer_stop(timer_bound)
 
-               call stressC_T (1, dynTot       , iceTmask_slot, &
+               call stressC_T (1, nStored_TU       , iceTmask_slot, &
                                NbrW_Task, NbrSW_Task, NbrS_Task, &
                                uvelE_slot, &
                                vvelN_slot, &
@@ -1195,7 +1195,7 @@
                     tarea_slot, hm_slot, wsumNE_slot, etax2U_slot)
             endif
 
-            call stressC_U (1             , dynTot        , &
+            call stressC_U (1             , nStored_TU        , &
                             iceUmask_slot         ,                 &
                             uarea_slot    , etax2U_slot   , &
                             deltaU        , strengthU_slot, &
@@ -1213,7 +1213,7 @@
             call ice_timer_stop(timer_bound)
 
 
-               call div_stress_Ex (1, dynTot, iceEmask_slot, &
+               call div_stress_Ex (1, nStored_TU, iceEmask_slot, &
                                    NbrS_Task, NbrE_Task, &
                                    dxE_slot, dyE_slot, &
                                    dxU_slot  , &
@@ -1224,7 +1224,7 @@
                                    stress12U_slot, &
                                    strintxE_slot )
 
-               call div_stress_Ny (1, dynTot, iceNmask_slot, &
+               call div_stress_Ny (1, nStored_TU, iceNmask_slot, &
                                    NbrW_Task, NbrN_Task, &
                                    dxN_slot, dyN_slot, &
                                    dxT_slot  , &
@@ -1236,7 +1236,7 @@
                                    strintyN_slot )
 
 
-                call stepu_C (1            , dynTot       , & ! u, E point
+                call stepu_C (1            , nStored_TU       , & ! u, E point
                               iceEmask_slot        , cdn_ocnE_slot, &
                               aiE_slot     , uocnE_slot   , &
                               vocnE_slot   , waterxE_slot , &
@@ -1246,7 +1246,7 @@
                               uvelE_slot   , vvelE_slot   , &
                               TbE_slot)
 
-                call stepv_C (1            , dynTot       , & ! v, N point
+                call stepv_C (1            , nStored_TU       , & ! v, N point
                               iceNmask_slot        , cdn_ocnN_slot, &
                               aiN_slot     , uocnN_slot   , &
                               vocnN_slot   , wateryN_slot , &
@@ -1358,7 +1358,7 @@
          ! save quantities for mechanical redistribution
          !-----------------------------------------------------------------
 
-            call deformationsC_T (1, dynTot, iceTmask_slot,               &
+            call deformationsC_T (1, nStored_TU, iceTmask_slot,               &
                                   NbrW_Task, NbrSW_Task, NbrS_Task,                  &
                                   uvelE_slot, vvelE_slot,  &
                                   uvelN_slot, vvelN_slot,  &
@@ -1395,7 +1395,7 @@
 
          do ksub = 1,ndte        ! subcycling
 
-               call stressCD_T (1, dynTot       , iceTmask_slot, &
+               call stressCD_T (1, nStored_TU       , iceTmask_slot, &
                                 NbrW_Task, NbrS_Task, &
                                 uvelE_slot, &
                                 vvelE_slot, &
@@ -1442,7 +1442,7 @@
             ! strain rates at U point
             ! NOTE these are actually strain rates * area  (m^2/s)
             !-----------------------------------------------------------------
-            call strain_rates_U (1             , dynTot        , &
+            call strain_rates_U (1             , nStored_TU        , &
                                  iceUmask_slot         ,                 &
                                  NbrE_Task, NbrN_Task      ,                 &
                                  uvelE_slot    , vvelE_slot    , &
@@ -1456,7 +1456,7 @@
                                  divergU       , tensionU      , &
                                  shearU_slot   , DeltaU          )
 
-            call stressCD_U     (1             , dynTot        , &
+            call stressCD_U     (1             , nStored_TU        , &
                                  iceUmask_slot         ,                 &
                                  uarea_slot    ,                 &
                                  zetax2U_slot  , etax2U_slot   , &
@@ -1496,7 +1496,7 @@
             call ice_timer_stop(timer_bound)
 
 
-               call div_stress_Ex (1, dynTot, iceEmask_slot, &
+               call div_stress_Ex (1, nStored_TU, iceEmask_slot, &
                                    NbrS_Task, NbrE_Task, &
                                    dxE_slot, dyE_slot, &
                                    dxU_slot  , &
@@ -1507,7 +1507,7 @@
                                    stress12U_slot, &
                                    strintxE_slot )
 
-               call div_stress_Ey (1, dynTot, iceEmask_slot, &
+               call div_stress_Ey (1, nStored_TU, iceEmask_slot, &
                                    NbrS_Task, NbrE_Task, &
                                    dxE_slot, dyE_slot, &
                                    dxU_slot  , &
@@ -1518,7 +1518,7 @@
                                    stress12T_slot, &
                                    strintyE_slot )
 
-               call div_stress_Nx (1, dynTot, iceNmask_slot, &
+               call div_stress_Nx (1, nStored_TU, iceNmask_slot, &
                                    NbrW_Task, NbrN_Task, &
                                    dxN_slot, dyN_slot, &
                                    dxT_slot  , &
@@ -1529,7 +1529,7 @@
                                    stress12T_slot, &
                                    strintxN_slot )
 
-               call div_stress_Ny (1, dynTot, iceNmask_slot, &
+               call div_stress_Ny (1, nStored_TU, iceNmask_slot, &
                                    NbrW_Task, NbrN_Task, &
                                    dxN_slot, dyN_slot, &
                                    dxT_slot  , &
@@ -1541,7 +1541,7 @@
                                    strintyN_slot )
 
 
-               call stepuv_CD (1            , dynTot       , & ! E point
+               call stepuv_CD (1            , nStored_TU       , & ! E point
                                iceEmask_slot        , cdn_ocnE_slot, &
                                aiE_slot     , uocnE_slot   , &
                                vocnE_slot   , waterxE_slot , &
@@ -1553,7 +1553,7 @@
                                uvelE_slot   , vvelE_slot   , &
                                TbE_slot)
 
-               call stepuv_CD (1            , dynTot       , & ! N point
+               call stepuv_CD (1            , nStored_TU       , & ! N point
                                iceNmask_slot        , cdn_ocnN_slot, &
                                aiN_slot     , uocnN_slot   , &
                                vocnN_slot   , waterxN_slot , &
@@ -1654,7 +1654,7 @@
          ! save quantities for mechanical redistribution
          !-----------------------------------------------------------------
 
-            call deformationsCD_T (1, dynTot, iceTmask_slot,              &
+            call deformationsCD_T (1, nStored_TU, iceTmask_slot,              &
                                    NbrW_Task, NbrS_Task,                 &
                                    uvelE_slot, vvelE_slot, &
                                    uvelN_slot, vvelN_slot, &
@@ -1774,7 +1774,7 @@
       ! ice-ocean stress
       !-----------------------------------------------------------------
 
-      call dyn_finish (1             , dynTot        , &
+      call dyn_finish (1             , nStored_TU        , &
                        iceUmask_slot         , cdn_ocnU_slot , &
                        uvel_slot     , vvel_slot     , &
                        uocnU_slot    , vocnU_slot    , &
@@ -1783,14 +1783,14 @@
 
       if (grid_ice == 'CD' .or. grid_ice == 'C') then
 
-         call dyn_finish (1             , dynTot        , &
+         call dyn_finish (1             , nStored_TU        , &
                           iceNmask_slot         , cdn_ocnn_slot , &
                           uvelN_slot    , vvelN_slot    , &
                           uocnN_slot    , vocnN_slot    , &
                           aiN_slot      , fmN_slot      , &
                           strocnxN      , strocnyN)
 
-         call dyn_finish (1             , dynTot        , &
+         call dyn_finish (1             , nStored_TU        , &
                           iceEmask_slot         , cdn_ocne_slot , &
                           uvelE_slot    , vvelE_slot    , &
                           uocnE_slot    , vocnE_slot    , &

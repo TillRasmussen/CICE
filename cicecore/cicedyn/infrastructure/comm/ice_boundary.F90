@@ -11262,7 +11262,7 @@ contains
                                                ns_bndy_type, map, off)
 
 !  As ice_HaloExtrapolate2DR8, for an array in the compressed layout:
-!  dimension(dynTot), with cell (i,j) of block iblk at
+!  dimension(nStored_TU), with cell (i,j) of block iblk at
 !  off(iblk) + map((j-1)*nx_block+i, iblk), and zero meaning no slot.
 !
 !  This is local work, not communication -- it writes a block's own outer

@@ -350,7 +350,7 @@
                               ice_HaloUpdate3DR8_compressed
       use ice_grid, only: HTE, HTN, dxu, dyu,       &
                           earea, narea,       &
-                          dynMap, dynOff, dynCntA, dynIJ, dynTot, skipRmp, &
+                          dynMap, dynOff, dynCntA, dynIJ, nStored_TU, skipRmp, &
                           skipPhys, tarear_slot,                          &
                           dxU_slot, dyU_slot, HTN_slot, HTE_slot,         &
                           HTNe_slot, HTEn_slot, pack_to_slots
@@ -376,10 +376,10 @@
 
       ! Compressed: (slot, category) and (slot, tracer, category), over all
       ! local blocks.  These are the driver's aim/trm.
-      real (kind=dbl_kind), intent(inout), dimension (dynTot,0:ncat) :: &
+      real (kind=dbl_kind), intent(inout), dimension (nStored_TU,0:ncat) :: &
          mm       ! mean mass values in each grid cell
 
-      real (kind=dbl_kind), intent(inout), dimension (dynTot,ntrace,ncat) :: &
+      real (kind=dbl_kind), intent(inout), dimension (nStored_TU,ntrace,ncat) :: &
          tm       ! mean tracer values in each grid cell
 
       integer (kind=int_kind), dimension (ntrace), intent(in) :: &
@@ -437,7 +437,7 @@
 
       ! Compressed, and they stay that way across the halo exchange: the
       ! whole path from departure_points to locate_triangles is slots now.
-      ! (dynTot) rather than (nx_block,ny_block,max_blocks).
+      ! (nStored_TU) rather than (nx_block,ny_block,max_blocks).
       real (kind=dbl_kind), allocatable, dimension (:) ::     &
          dpx            , & ! x coordinates of departure points at cell corners
          dpy            , & ! y coordinates of departure points at cell corners
@@ -507,7 +507,7 @@
       integer (kind=int_kind), dimension(:,:), allocatable ::     &
          indxsng              ! the slot each of those cells owns
 
-      integer (kind=int_kind), dimension(dynTot) :: &
+      integer (kind=int_kind), dimension(nStored_TU) :: &
          halomask_slot      ! temporary mask for fast halo updates
 
       logical (kind=log_kind) ::     &
@@ -527,15 +527,15 @@
 
       character(len=*), parameter :: subname = '(horizontal_remap)'
 
-      ! ⚠ ALLOCATABLE, not automatic.  At dynTot x ntrace x ncat these run to
+      ! ⚠ ALLOCATABLE, not automatic.  At nStored_TU x ntrace x ncat these run to
       ! tens of MB each; as automatics they sit on the stack, so four MPI tasks
       ! segfault before the first step completes against the usual 8 MB limit.
       ! Reproduced locally with MPI=1 -- the heap has no such ceiling.
-      allocate(uvel_s(dynTot), vvel_s(dynTot), dpx(dynTot), dpy(dynTot), dx(dynTot), &
-               dy(dynTot), mc(dynTot,0:ncat), mx(dynTot,0:ncat), my(dynTot,0:ncat), &
-               massmask(dynTot,0:ncat), tc(dynTot,ntrace,ncat), tx(dynTot,ntrace,ncat), &
-               ty(dynTot,ntrace,ncat), trcmask(dynTot,ntrace,ncat), mflxe(dynTot,0:ncat), &
-               mflxn(dynTot,0:ncat), mtflxe(dynTot,ntrace,ncat), mtflxn(dynTot,ntrace,ncat))
+      allocate(uvel_s(nStored_TU), vvel_s(nStored_TU), dpx(nStored_TU), dpy(nStored_TU), dx(nStored_TU), &
+               dy(nStored_TU), mc(nStored_TU,0:ncat), mx(nStored_TU,0:ncat), my(nStored_TU,0:ncat), &
+               massmask(nStored_TU,0:ncat), tc(nStored_TU,ntrace,ncat), tx(nStored_TU,ntrace,ncat), &
+               ty(nStored_TU,ntrace,ncat), trcmask(nStored_TU,ntrace,ncat), mflxe(nStored_TU,0:ncat), &
+               mflxn(nStored_TU,0:ncat), mtflxe(nStored_TU,ntrace,ncat), mtflxn(nStored_TU,ntrace,ncat))
 
       !-------------------------------------------------------------------
       ! Remap the ice area and associated tracers.
@@ -726,24 +726,24 @@
             call ice_HaloMask_compressed(halo_info_tracer, halo_info, &
                                  halomask_slot, dynMap)
 
-            p2(1:dynTot,1:ntrace*ncat) => tc
+            p2(1:nStored_TU,1:ntrace*ncat) => tc
             call ice_HaloUpdate3DR8_compressed(p2, halo_info_tracer, &
                                  field_loc_center, field_type_scalar, dynMap, dynOff)
-            p2(1:dynTot,1:ntrace*ncat) => tx
+            p2(1:nStored_TU,1:ntrace*ncat) => tx
             call ice_HaloUpdate3DR8_compressed(p2, halo_info_tracer, &
                                  field_loc_center, field_type_vector, dynMap, dynOff)
-            p2(1:dynTot,1:ntrace*ncat) => ty
+            p2(1:nStored_TU,1:ntrace*ncat) => ty
             call ice_HaloUpdate3DR8_compressed(p2, halo_info_tracer, &
                                  field_loc_center, field_type_vector, dynMap, dynOff)
             call ice_HaloDestroy(halo_info_tracer)
          else
-            p2(1:dynTot,1:ntrace*ncat) => tc
+            p2(1:nStored_TU,1:ntrace*ncat) => tc
             call ice_HaloUpdate3DR8_compressed(p2, halo_info, &
                                  field_loc_center, field_type_scalar, dynMap, dynOff)
-            p2(1:dynTot,1:ntrace*ncat) => tx
+            p2(1:nStored_TU,1:ntrace*ncat) => tx
             call ice_HaloUpdate3DR8_compressed(p2, halo_info, &
                                  field_loc_center, field_type_vector, dynMap, dynOff)
-            p2(1:dynTot,1:ntrace*ncat) => ty
+            p2(1:nStored_TU,1:ntrace*ncat) => ty
             call ice_HaloUpdate3DR8_compressed(p2, halo_info, &
                                  field_loc_center, field_type_vector, dynMap, dynOff)
          endif
@@ -767,14 +767,14 @@
          ! every one of these is indexed by it.  Allocated once outside the
          ! block loop rather than per block, and SHARED: each block writes
          ! its own range.
-         allocate(edgearea_e(dynTot),                              &
-                  edgearea_n(dynTot),                              &
-                  triarea(dynTot,ngroups),                         &
-                  xp(dynTot,0:nvert,ngroups),                      &
-                  yp(dynTot,0:nvert,ngroups),                      &
-                  iflux(dynTot,ngroups),                           &
-                  jflux(dynTot,ngroups),                           &
-                  isflux(dynTot,ngroups),                          &
+         allocate(edgearea_e(nStored_TU),                              &
+                  edgearea_n(nStored_TU),                              &
+                  triarea(nStored_TU,ngroups),                         &
+                  xp(nStored_TU,0:nvert,ngroups),                      &
+                  yp(nStored_TU,0:nvert,ngroups),                      &
+                  iflux(nStored_TU,ngroups),                           &
+                  jflux(nStored_TU,ngroups),                           &
+                  isflux(nStored_TU,ngroups),                          &
                   indxsng(nx_block*ny_block,ngroups))
 
          l_stop = .false.
@@ -1218,7 +1218,7 @@
       ! reads at a NEIGHBOUR index have to span the task -- phi and phimask.
       ! These reach it as cnx, cny, gx and gy, which it touches at the home
       ! cell only, so they stay the size of one block.  That matters most
-      ! for mtxav and mtyav: ntrace can be large, and a (dynTot,ntrace) pair
+      ! for mtxav and mtyav: ntrace can be large, and a (nStored_TU,ntrace) pair
       ! is the one shape worth not allocating.
       real (kind=dbl_kind), dimension (dynCntA(iblk)) :: &
          zero_s         , & ! identically zero -- the no-centroid case
@@ -1524,7 +1524,7 @@
       ! are read at NEIGHBOUR slots, which Nbr*_Task gives task-global, so
       ! they must span the task.  cnx, cny, gx and gy are touched at the
       ! home cell only, so they stay the size of one block -- which is what
-      ! keeps a (dynTot,ntrace) pair from having to exist.
+      ! keeps a (nStored_TU,ntrace) pair from having to exist.
       gx(:) = c0
       gy(:) = c0
 
@@ -1954,7 +1954,7 @@
       ! ⚠ TASK-GLOBAL, owned by horizontal_remap.  They were block-local
       ! until the map went global: dx is read at dx(mw), a NEIGHBOUR slot,
       ! and Nbr*_Task returns that task-global.  An automatic this size
-      ! would be a dynTot stack array per call per thread, so the caller
+      ! would be a nStored_TU stack array per call per thread, so the caller
       ! owns them and each block writes its own range.
       real (kind=dbl_kind), dimension(:), intent(inout) ::   &
          dx, dy           ! scaled departure points

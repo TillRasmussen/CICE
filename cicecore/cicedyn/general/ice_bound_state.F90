@@ -67,7 +67,7 @@
       use ice_domain_size, only: max_blocks, ncat
       use ice_blocks, only: nx_block, ny_block
       use ice_domain, only: halo_info, maskhalo_bound, nblocks
-      use ice_grid, only: dynMap, dynOff, dynTot, &
+      use ice_grid, only: dynMap, dynOff, nStored_TU, &
           pack_cat_to_slots, pack_trc_to_slots,   &
           unpack_cat_from_slots, unpack_trc_from_slots
       use ice_state, only: aicen_slot, vicen_slot, vsnon_slot, trcrn_slot, &
@@ -99,7 +99,7 @@
 
       integer (kind=int_kind) :: i, j, n, iblk, ms
 
-      integer (kind=int_kind), dimension(dynTot) :: halomask_slot
+      integer (kind=int_kind), dimension(nStored_TU) :: halomask_slot
 
       type (ice_halo) :: halo_info_aicemask  ! halo mask
       type (ice_halo) :: hinfo               ! the handle actually used
@@ -147,7 +147,7 @@
       if (maskhalo_bound) then
          halomask_slot = 0
          !$OMP PARALLEL DO PRIVATE(ms,n) SCHEDULE(runtime)
-         do ms = 1, dynTot
+         do ms = 1, nStored_TU
             do n = 1, ncat
                if (aicen_slot(ms,n) > c0) halomask_slot(ms) = 1
             enddo

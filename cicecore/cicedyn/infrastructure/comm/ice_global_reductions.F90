@@ -1706,7 +1706,7 @@
           result(globalMaxval)
 
 !  As global_maxval_dbl, for a COMPRESSED array: one value per slot,
-!  dimension(dynTot), with no block dimension to walk.
+!  dimension(nStored_TU), with no block dimension to walk.
 !
 !  ⚠ The block form reduces over ib..ie, jb..je -- the physical domain,
 !  never the ghosts.  A slot array has no such bounds: it also holds the
@@ -1723,13 +1723,13 @@
 !  that goes negative, would differ from the block answer.
 
    real (dbl_kind), dimension(:), intent(in) :: &
-      array                ! compressed array, dimension(dynTot)
+      array                ! compressed array, dimension(nStored_TU)
 
    type (distrb), intent(in) :: &
       dist                 ! block distribution the slots belong to
 
    logical (log_kind), dimension(:), intent(in), optional :: &
-      lMask                ! compressed mask, dimension(dynTot)
+      lMask                ! compressed mask, dimension(nStored_TU)
 
    real (dbl_kind) :: &
       globalMaxval         ! resulting maximum value of array

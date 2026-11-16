@@ -94,7 +94,7 @@
       !     halo-updates aicen/vicen/vsnon/trcrn every timestep, so this is
       !     a per-step requirement, not a corner case -- and slot-first lets
       !     all ncat levels go in ONE bundled call.
-      !   - aim(dynTot,0:ncat) and trm(dynTot,ntrace,ncat), the transport
+      !   - aim(nStored_TU,0:ncat) and trm(nStored_TU,ntrace,ncat), the transport
       !     driver's work arrays, are slot-first, so state_to_tracers copies
       !     run contiguous on both sides.
       !   - the aggregate slot arrays above are already slot-indexed.
@@ -102,7 +102,7 @@
       ! ⚠ The cost this pays is icepack's, and it is cache locality rather
       ! than copying.  icepack takes a whole cell's categories as one
       ! assumed-shape dummy, so with slot first those ncat (or ntrcr*ncat)
-      ! values lie dynTot apart -- a separate cache line each.  It is NOT a
+      ! values lie nStored_TU apart -- a separate cache line each.  It is NOT a
       ! copy: icepack's dummies are dimension(:) with no CONTIGUOUS
       ! attribute anywhere in it (282 assumed-shape against 25
       ! explicit-shape, and the one explicit dimension(0:ncat) is hin_max,
@@ -122,7 +122,7 @@
       ! move on its own.  Until a given loop is converted, the block form
       ! above stays authoritative for it.
       !
-      ! ⚠ Allocated by alloc_state_slots, NOT alloc_state: dynTot does not
+      ! ⚠ Allocated by alloc_state_slots, NOT alloc_state: nStored_TU does not
       ! exist yet when alloc_state runs.  init_grid2 builds the ragged layout
       ! as its last act and calls alloc_state_slots there.
       !-----------------------------------------------------------------
@@ -230,14 +230,14 @@
 ! Allocate the compressed copies of the state.
 !
 ! Separate from alloc_state because of ordering: CICE_InitMod calls
-! alloc_state before init_grid2, and dynTot is not known until
+! alloc_state before init_grid2, and nStored_TU is not known until
 ! init_ragged_layout runs at the end of init_grid2.  Rather than add a call
 ! to all fifteen drivers' CICE_InitMod, init_ragged_layout calls this itself
 ! once the layout exists.
 !
       subroutine alloc_state_slots(nslot)
 
-      integer (int_kind), intent(in) :: nslot   ! dynTot
+      integer (int_kind), intent(in) :: nslot   ! nStored_TU
 
       integer (int_kind) :: ierr, ntrcr
       character(len=*),parameter :: subname='(alloc_state_slots)'

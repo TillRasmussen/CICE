@@ -18,7 +18,7 @@
       ! global bounds lo:hi, and tracers_to_state walks the block through
       ! dynMap, whose entries for a ring cell sit in the trailing ring
       ! segment -- far above this block's own range.  So every argument is
-      ! dynTot long and the block under test occupies lo:hi inside it.
+      ! nStored_TU long and the block under test occupies lo:hi inside it.
       ! The hardwired state is still built from (i,j), because that is what
       ! makes the pattern cycle through the cases, but it is built AT each
       ! slot via dynIJ rather than over the whole block.  Cells with no slot
@@ -37,7 +37,7 @@
       use ice_exit, only: abort_ice, end_run
       use ice_fileunits, only: nu_diag
       use ice_global_reductions, only: global_maxval
-      use ice_grid, only: dynMap, dynOff, dynCntA, dynIJ, dynTot, deadSlot
+      use ice_grid, only: dynMap, dynOff, dynCntA, dynIJ, nStored_TU, deadSlot
       use ice_transport_driver, only: state_to_tracers, tracers_to_state
       use icepack_intfc, only: icepack_warnings_flush, icepack_warnings_aborted
       use icepack_intfc, only: icepack_query_parameters
@@ -119,11 +119,11 @@
       if (nc < 1) call abort_ice(error_message=subname//' block 1 has no slots', &
          file=__FILE__, line=__LINE__)
 
-      allocate(aice0 (dynTot), aicen (dynTot,ncat), vicen (dynTot,ncat), &
-               vsnon (dynTot,ncat), trcrn (dynTot,ntrcr,ncat), &
-               aice0r(dynTot), aicenr(dynTot,ncat), vicenr(dynTot,ncat), &
-               vsnonr(dynTot,ncat), trcrnr(dynTot,ntrcr,ncat), &
-               aim(dynTot,0:ncat), trm(dynTot,ntrace,ncat), &
+      allocate(aice0 (nStored_TU), aicen (nStored_TU,ncat), vicen (nStored_TU,ncat), &
+               vsnon (nStored_TU,ncat), trcrn (nStored_TU,ntrcr,ncat), &
+               aice0r(nStored_TU), aicenr(nStored_TU,ncat), vicenr(nStored_TU,ncat), &
+               vsnonr(nStored_TU,ncat), trcrnr(nStored_TU,ntrcr,ncat), &
+               aim(nStored_TU,0:ncat), trm(nStored_TU,ntrace,ncat), &
                aice0b(nx_block,ny_block))
 
       !-----------------------------------------------------------------

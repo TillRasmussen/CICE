@@ -23,7 +23,7 @@
       ! once per run be packed where they are created.  Re-exported here so the
       ! solvers that import it from ice_dyn_shared are unchanged.
       use ice_grid, only: grid_ice,                                                 &
-                          dynOff, dynCnt, dynCntA, dynTot, dynMaxCnt,               &
+                          dynOff, dynCnt, dynCntA, dynMaxCnt,               &
                           nActive_TU, nStored_TU, deadSlot,                         &
                           dynMap, dynIJ,                                            &
                         NbrW_Task , NbrSW_Task, NbrS_Task , NbrE_Task ,             &
@@ -47,7 +47,7 @@
       private
 
       ! re-exported from ice_grid, which owns the ragged layout
-      public :: dynOff, dynCnt, dynCntA, dynTot, dynMaxCnt, dynMap, dynIJ
+      public :: dynOff, dynCnt, dynCntA, dynMaxCnt, dynMap, dynIJ
       public :: nActive_TU, nStored_TU, deadSlot
       public :: NbrW_Task , NbrSW_Task, NbrS_Task , NbrE_Task
       public :: NbrNE_Task, NbrN_Task , NbrNW_Task, NbrSE_Task
@@ -155,7 +155,7 @@
       !   dynCnt(iblk)    slots held by block iblk
       !   dynOff(iblk)    first slot of block iblk, minus one
       !   dynMap(ij,iblk) block-local slot of cell ij, zero if not stored
-      !   dynTot          total slots over all local blocks
+      !   nStored_TU          total slots over all local blocks
       !
       ! so cell (i,j,iblk) lives at dynOff(iblk) + dynMap((j-1)*nx_block+i,iblk),
       ! whether it is being used as a T, U, N or E quantity.
@@ -231,7 +231,7 @@
       ! in Nbr_Local there -- two integers per slot, a few MB on a large grid,
       ! against the complexity of making nbr_num depend on grid_ice.
 
-      ! shape (dynTot, nbr_num), so Nbr_Local(:,d) is contiguous and one
+      ! shape (nStored_TU, nbr_num), so Nbr_Local(:,d) is contiguous and one
       ! direction can be passed as a contiguous rank-1 argument
 
       ! Reverse of dynMap: dynIJ(slot) is the cell (j-1)*nx_block+i that owns
@@ -526,26 +526,26 @@
       ! The ragged layout itself is built by init_ragged_layout in ice_grid,
       ! at the end of init_grid2, because it is derived from the grid masks and
       ! because the grid metrics compressed once per run are packed there too.
-      ! By the time any solver calls this, dynTot and dynMap are set.
-      allocate(iceTmask_slot(dynTot), iceUmask_slot(dynTot), &
-               tmphm_slot(dynTot), stat=ierr)
+      ! By the time any solver calls this, nStored_TU and dynMap are set.
+      allocate(iceTmask_slot(nStored_TU), iceUmask_slot(nStored_TU), &
+               tmphm_slot(nStored_TU), stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
       iceTmask_slot = .false.
       iceUmask_slot = .false.
 
-      allocate(uvel_slot(dynTot), vvel_slot(dynTot), stat=ierr)
+      allocate(uvel_slot(nStored_TU), vvel_slot(nStored_TU), stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
       uvel_slot = c0
       vvel_slot = c0
 
-      allocate(fld2c(dynTot,2), fld3c(dynTot,3), fld4c(dynTot,4), stat=ierr)
+      allocate(fld2c(nStored_TU,2), fld3c(nStored_TU,3), fld4c(nStored_TU,4), stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
       fld2c = c0
       fld3c = c0
       fld4c = c0
 
-      allocate(strintxU_slot(dynTot), strintyU_slot(dynTot), &
-               taubxU_slot(dynTot), taubyU_slot(dynTot), stat=ierr)
+      allocate(strintxU_slot(nStored_TU), strintyU_slot(nStored_TU), &
+               taubxU_slot(nStored_TU), taubyU_slot(nStored_TU), stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
       strintxU_slot = c0
       strintyU_slot = c0
@@ -557,16 +557,16 @@
       ! the first stencil, and nothing else writes it.
       ! strength is read by the B-grid stress as well as by C/CD, so it is
       ! allocated here rather than in the C/CD block it used to live in.
-      allocate(strength_slot(dynTot), stat=ierr)
+      allocate(strength_slot(nStored_TU), stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
       strength_slot = c0
 
-      allocate(stressp_1_slot (dynTot), stressp_2_slot (dynTot), &
-               stressp_3_slot (dynTot), stressp_4_slot (dynTot), &
-               stressm_1_slot (dynTot), stressm_2_slot (dynTot), &
-               stressm_3_slot (dynTot), stressm_4_slot (dynTot), &
-               stress12_1_slot(dynTot), stress12_2_slot(dynTot), &
-               stress12_3_slot(dynTot), stress12_4_slot(dynTot), stat=ierr)
+      allocate(stressp_1_slot (nStored_TU), stressp_2_slot (nStored_TU), &
+               stressp_3_slot (nStored_TU), stressp_4_slot (nStored_TU), &
+               stressm_1_slot (nStored_TU), stressm_2_slot (nStored_TU), &
+               stressm_3_slot (nStored_TU), stressm_4_slot (nStored_TU), &
+               stress12_1_slot(nStored_TU), stress12_2_slot(nStored_TU), &
+               stress12_3_slot(nStored_TU), stress12_4_slot(nStored_TU), stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
       stressp_1_slot  = c0
       stressp_2_slot  = c0
@@ -581,9 +581,9 @@
       stress12_3_slot = c0
       stress12_4_slot = c0
 
-      allocate(dxhy_slot(dynTot), dyhx_slot(dynTot), cxp_slot(dynTot), &
-               cyp_slot(dynTot), cxm_slot(dynTot), cym_slot(dynTot), &
-               DminTarea_slot(dynTot), stat=ierr)
+      allocate(dxhy_slot(nStored_TU), dyhx_slot(nStored_TU), cxp_slot(nStored_TU), &
+               cyp_slot(nStored_TU), cxm_slot(nStored_TU), cym_slot(nStored_TU), &
+               DminTarea_slot(nStored_TU), stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
       dxhy_slot = c0
       dyhx_slot = c0
@@ -593,9 +593,9 @@
       cym_slot  = c0
       DminTarea_slot = c0
 
-      allocate(str1_slot(dynTot), str2_slot(dynTot), str3_slot(dynTot), &
-               str4_slot(dynTot), str5_slot(dynTot), str6_slot(dynTot), &
-               str7_slot(dynTot), str8_slot(dynTot), stat=ierr)
+      allocate(str1_slot(nStored_TU), str2_slot(nStored_TU), str3_slot(nStored_TU), &
+               str4_slot(nStored_TU), str5_slot(nStored_TU), str6_slot(nStored_TU), &
+               str7_slot(nStored_TU), str8_slot(nStored_TU), stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
       str1_slot = c0
       str2_slot = c0
@@ -606,13 +606,13 @@
       str7_slot = c0
       str8_slot = c0
 
-      allocate(fcor_slot(dynTot), umass_slot(dynTot), stat=ierr)
+      allocate(fcor_slot(nStored_TU), umass_slot(nStored_TU), stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
       fcor_slot  = c0
       umass_slot = c0
 
-      allocate(aiU_slot(dynTot), fmU_slot(dynTot), TbU_slot(dynTot), &
-               rheofactU_slot(dynTot), stat=ierr)
+      allocate(aiU_slot(nStored_TU), fmU_slot(nStored_TU), TbU_slot(nStored_TU), &
+               rheofactU_slot(nStored_TU), stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
       aiU_slot = c0
       fmU_slot = c0
@@ -623,9 +623,9 @@
       ! wants 1, as upstream's rheofactU(i,j,iblk) = c1 does there.
       rheofactU_slot = c1
 
-      allocate(umassdti_slot(dynTot), waterxU_slot(dynTot), &
-               wateryU_slot(dynTot), forcexU_slot(dynTot), &
-               forceyU_slot(dynTot), stat=ierr)
+      allocate(umassdti_slot(nStored_TU), waterxU_slot(nStored_TU), &
+               wateryU_slot(nStored_TU), forcexU_slot(nStored_TU), &
+               forceyU_slot(nStored_TU), stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
       umassdti_slot = c0
       waterxU_slot  = c0
@@ -633,9 +633,9 @@
       forcexU_slot  = c0
       forceyU_slot  = c0
 
-      allocate(uocnU_slot(dynTot), vocnU_slot(dynTot), &
-               ss_tltxU_slot(dynTot), ss_tltyU_slot(dynTot), &
-               cdn_ocnU_slot(dynTot), stat=ierr)
+      allocate(uocnU_slot(nStored_TU), vocnU_slot(nStored_TU), &
+               ss_tltxU_slot(nStored_TU), ss_tltyU_slot(nStored_TU), &
+               cdn_ocnU_slot(nStored_TU), stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
       uocnU_slot    = c0
       vocnU_slot    = c0
@@ -644,8 +644,8 @@
       cdn_ocnU_slot = c0
 
       allocate( &
-         uvel_init (dynTot), & ! x-component of velocity (m/s), beginning of timestep
-         vvel_init (dynTot), & ! y-component of velocity (m/s), beginning of timestep
+         uvel_init (nStored_TU), & ! x-component of velocity (m/s), beginning of timestep
+         vvel_init (nStored_TU), & ! y-component of velocity (m/s), beginning of timestep
          iceTmask  (nx_block*ny_block,max_blocks), & ! T mask for dynamics
          iceUmask  (nx_block*ny_block,max_blocks), & ! U mask for dynamics
          stat=ierr)
@@ -670,50 +670,50 @@
 
       if (grid_ice == 'CD' .or. grid_ice == 'C') then
          ! N and E share the one list; only their activity flags differ
-         allocate(iceNmask_slot(dynTot), iceEmask_slot(dynTot), stat=ierr)
+         allocate(iceNmask_slot(nStored_TU), iceEmask_slot(nStored_TU), stat=ierr)
          if (ierr/=0) call abort_ice(subname//': Out of memory')
          iceNmask_slot = .false.
          iceEmask_slot = .false.
 
-         allocate(uvelE_slot(dynTot), vvelE_slot(dynTot), &
-                  uvelN_slot(dynTot), vvelN_slot(dynTot), &
-                  shearU_slot(dynTot),                    &
-                  stresspT_slot(dynTot), stressmT_slot(dynTot),  &
-                  stress12T_slot(dynTot), stress12U_slot(dynTot), &
-                  stresspU_slot(dynTot), stressmU_slot(dynTot), &
-                  zetax2T_slot(dynTot), etax2T_slot(dynTot), &
-                  zetax2U_slot(dynTot), etax2U_slot(dynTot), &
-                  strengthU_slot(dynTot), &
-                  strintxE_slot(dynTot), strintyE_slot(dynTot), &
-                  strintxN_slot(dynTot), strintyN_slot(dynTot), &
-                  taubxE_slot(dynTot), taubyE_slot(dynTot), &
-                  taubxN_slot(dynTot), taubyN_slot(dynTot), &
-                  ss_tltxE_slot(dynTot), ss_tltyE_slot(dynTot), &
-                  aiE_slot(dynTot), &
-                  cdn_ocnE_slot(dynTot), &
-                  uocnE_slot(dynTot), &
-                  vocnE_slot(dynTot), &
-                  waterxE_slot(dynTot), &
-                  wateryE_slot(dynTot), &
-                  forcexE_slot(dynTot), &
-                  forceyE_slot(dynTot), &
-                  emassdti_slot(dynTot), &
-                           fcorE_slot(dynTot), emass_slot(dynTot), &
-         fmE_slot(dynTot), &
-                  TbE_slot(dynTot), &
-                  ss_tltxN_slot(dynTot), ss_tltyN_slot(dynTot), &
-                  aiN_slot(dynTot), &
-                  cdn_ocnN_slot(dynTot), &
-                  uocnN_slot(dynTot), &
-                  vocnN_slot(dynTot), &
-                  waterxN_slot(dynTot), &
-                  wateryN_slot(dynTot), &
-                  forcexN_slot(dynTot), &
-                  forceyN_slot(dynTot), &
-                  nmassdti_slot(dynTot), &
-                           fcorN_slot(dynTot), nmass_slot(dynTot), &
-         fmN_slot(dynTot), &
-                  TbN_slot(dynTot), &
+         allocate(uvelE_slot(nStored_TU), vvelE_slot(nStored_TU), &
+                  uvelN_slot(nStored_TU), vvelN_slot(nStored_TU), &
+                  shearU_slot(nStored_TU),                    &
+                  stresspT_slot(nStored_TU), stressmT_slot(nStored_TU),  &
+                  stress12T_slot(nStored_TU), stress12U_slot(nStored_TU), &
+                  stresspU_slot(nStored_TU), stressmU_slot(nStored_TU), &
+                  zetax2T_slot(nStored_TU), etax2T_slot(nStored_TU), &
+                  zetax2U_slot(nStored_TU), etax2U_slot(nStored_TU), &
+                  strengthU_slot(nStored_TU), &
+                  strintxE_slot(nStored_TU), strintyE_slot(nStored_TU), &
+                  strintxN_slot(nStored_TU), strintyN_slot(nStored_TU), &
+                  taubxE_slot(nStored_TU), taubyE_slot(nStored_TU), &
+                  taubxN_slot(nStored_TU), taubyN_slot(nStored_TU), &
+                  ss_tltxE_slot(nStored_TU), ss_tltyE_slot(nStored_TU), &
+                  aiE_slot(nStored_TU), &
+                  cdn_ocnE_slot(nStored_TU), &
+                  uocnE_slot(nStored_TU), &
+                  vocnE_slot(nStored_TU), &
+                  waterxE_slot(nStored_TU), &
+                  wateryE_slot(nStored_TU), &
+                  forcexE_slot(nStored_TU), &
+                  forceyE_slot(nStored_TU), &
+                  emassdti_slot(nStored_TU), &
+                           fcorE_slot(nStored_TU), emass_slot(nStored_TU), &
+         fmE_slot(nStored_TU), &
+                  TbE_slot(nStored_TU), &
+                  ss_tltxN_slot(nStored_TU), ss_tltyN_slot(nStored_TU), &
+                  aiN_slot(nStored_TU), &
+                  cdn_ocnN_slot(nStored_TU), &
+                  uocnN_slot(nStored_TU), &
+                  vocnN_slot(nStored_TU), &
+                  waterxN_slot(nStored_TU), &
+                  wateryN_slot(nStored_TU), &
+                  forcexN_slot(nStored_TU), &
+                  forceyN_slot(nStored_TU), &
+                  nmassdti_slot(nStored_TU), &
+                           fcorN_slot(nStored_TU), nmass_slot(nStored_TU), &
+         fmN_slot(nStored_TU), &
+                  TbN_slot(nStored_TU), &
                   stat=ierr)
          if (ierr/=0) call abort_ice(subname//': Out of memory')
          uvelE_slot  = c0
@@ -769,10 +769,10 @@
          TbN_slot = c0
 
          allocate( &
-            uvelE_init (dynTot), & ! x-component of velocity (m/s), beginning of timestep
-            vvelE_init (dynTot), & ! y-component of velocity (m/s), beginning of timestep
-            uvelN_init (dynTot), & ! x-component of velocity (m/s), beginning of timestep
-            vvelN_init (dynTot), & ! y-component of velocity (m/s), beginning of timestep
+            uvelE_init (nStored_TU), & ! x-component of velocity (m/s), beginning of timestep
+            vvelE_init (nStored_TU), & ! y-component of velocity (m/s), beginning of timestep
+            uvelN_init (nStored_TU), & ! x-component of velocity (m/s), beginning of timestep
+            vvelN_init (nStored_TU), & ! y-component of velocity (m/s), beginning of timestep
             iceEmask   (nx_block*ny_block,max_blocks), & ! T mask for dynamics
             iceNmask   (nx_block*ny_block,max_blocks), & ! U mask for dynamics
             stat=ierr)
@@ -1681,7 +1681,7 @@
 
       nflat = nx_block*ny_block
       ! ⚠ From the block, not size(TbU).  The compressed dummies are whole
-      ! arrays now, so their size is dynTot and says nothing about how many
+      ! arrays now, so their size is nStored_TU and says nothing about how many
       ! slots THIS block owns.
       ! ⚠ The TASK owns ONE dead slot, at nActive_TU+1 -- not one per block.
       ! dynOff is a prefix sum of dynCntA, so block iblk+1 starts at
@@ -2178,7 +2178,7 @@
                             Tb)
 
       ! Slot range, as ice_dyn_core1d's kernels take lb/ub.  Callers pass
-      ! 1, dynTot; the pair is the shape the 1-D kernels share.
+      ! 1, nStored_TU; the pair is the shape the 1-D kernels share.
       integer (kind=int_kind), intent(in) :: &
          lo, hi                ! slot range to process
 
@@ -2326,7 +2326,7 @@
                                           vel2_s, taub2_s)
 
       ! Slot range, as ice_dyn_core1d's kernels take lb/ub.  Callers pass
-      ! 1, dynTot; the pair is the shape the 1-D kernels share.
+      ! 1, nStored_TU; the pair is the shape the 1-D kernels share.
       integer (kind=int_kind), intent(in) :: &
          lo, hi      ! slot range to process
 
@@ -2395,7 +2395,7 @@
                                    nbrE, nbrNE, nbrN, strintx_s, strinty_s)
 
       ! Slot range, as ice_dyn_core1d's kernels take lb/ub.  Callers pass
-      ! 1, dynTot; the pair is the shape the 1-D kernels share.
+      ! 1, nStored_TU; the pair is the shape the 1-D kernels share.
       ! ⚠ nbrE, nbrNE, nbrN must be Nbr_Task with a task-wide range, never Nbr_Local: the
       ! latter holds BLOCK-LOCAL slots, so every neighbour would resolve into
       ! block 1 -- in bounds, run completes, answer wrong.
@@ -2468,7 +2468,7 @@
                           Tb)
 
       ! Slot range, as ice_dyn_core1d's kernels take lb/ub.  Callers pass
-      ! 1, dynTot; the pair is the shape the 1-D kernels share.
+      ! 1, nStored_TU; the pair is the shape the 1-D kernels share.
       integer (kind=int_kind), intent(in) :: &
          lo, hi                ! slot range to process
 
@@ -2599,7 +2599,7 @@
                           Tb)
 
       ! Slot range, as ice_dyn_core1d's kernels take lb/ub.  Callers pass
-      ! 1, dynTot; the pair is the shape the 1-D kernels share.
+      ! 1, nStored_TU; the pair is the shape the 1-D kernels share.
       integer (kind=int_kind), intent(in) :: &
          lo, hi                ! slot range to process
 
@@ -3263,7 +3263,7 @@
                                rdg_conv,   rdg_shear )
 
       ! Slot range, as ice_dyn_core1d's kernels take lb/ub.  Callers pass
-      ! 1, dynTot; the pair is the shape the 1-D kernels share.
+      ! 1, nStored_TU; the pair is the shape the 1-D kernels share.
       integer (kind=int_kind), intent(in) :: &
          lo, hi                ! slot range to process
 
@@ -3413,7 +3413,7 @@
                                    rdg_conv,   rdg_shear )
 
       ! Slot range, as ice_dyn_core1d's kernels take lb/ub.  Callers pass
-      ! 1, dynTot; the pair is the shape the 1-D kernels share.
+      ! 1, nStored_TU; the pair is the shape the 1-D kernels share.
       integer (kind=int_kind), intent(in) :: &
          lo, hi                ! slot range to process
 
@@ -3545,7 +3545,7 @@
                                 rdg_conv,   rdg_shear )
 
     ! Slot range, as ice_dyn_core1d's kernels take lb/ub.  Callers pass
-    ! 1, dynTot; the pair is the shape the 1-D kernels share.
+    ! 1, nStored_TU; the pair is the shape the 1-D kernels share.
     integer (kind=int_kind), intent(in) :: &
        lo, hi            ! slot range to process
 

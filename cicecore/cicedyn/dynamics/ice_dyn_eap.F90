@@ -131,7 +131,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
           calc_seabed_stress_slot, calc_strint_slot,                             &
           str1_slot, str2_slot, str3_slot, str4_slot,                            &
           str5_slot, str6_slot, str7_slot, str8_slot,                            &
-          denom1, uvel_init, vvel_init, dynOff, dynCntA, dynTot, dynMap, &
+          denom1, uvel_init, vvel_init, dynOff, dynCntA, nStored_TU, dynMap, &
           NbrW_Task , NbrSW_Task, NbrS_Task , NbrE_Task ,                        &
           NbrE_Task, NbrNE_Task, NbrN_Task,                                      &
         NbrNE_Task, NbrN_Task , NbrNW_Task, NbrSE_Task,                          &
@@ -202,7 +202,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
          ldiag   , & ! a stream wants the eap strain/stress diagnostics
          calc_strair
 
-      integer (kind=int_kind), dimension (dynTot) :: &
+      integer (kind=int_kind), dimension (nStored_TU) :: &
          halomask_slot  ! ice mask for halo update
 
       type (ice_halo) :: &
@@ -234,7 +234,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
        ! This call is needed only if dt changes during runtime.
 !      call set_evp_parameters (dt)
 
-      ! Compressed: one pass over dynTot, not nblocks x nx_block x ny_block.
+      ! Compressed: one pass over nStored_TU, not nblocks x nx_block x ny_block.
       rdg_conv  = c0
       rdg_shear = c0   ! always zero
       divu      = c0
@@ -410,7 +410,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
       ! 1572 values in the gx3 eap restart.  It cannot be hoisted ABOVE the
       ! block loop either: dyn_prep2 builds iceTmask inside it.
       ! dynBlk is 0 only at the dead slot, so the skip is layout-agnostic.
-      do is = 1, dynTot
+      do is = 1, nStored_TU
          jblk = dynBlk(is)
          if (jblk == 0) cycle                ! dead slot
          ij = dynIJ(is)
@@ -492,14 +492,14 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
 
       if (seabed_stress) then
          if ( seabed_stress_method == 'LKD' ) then
-            call seabed_stress_factor_LKD (1               , dynTot, iceUmask_slot        , &
+            call seabed_stress_factor_LKD (1               , nStored_TU, iceUmask_slot        , &
                                            NbrE_Task       , NbrNE_Task    , &
                                            NbrN_Task       ,                 &
                                            vice_slot       , aice_slot     , &
                                            hwater_slot     , TbU_slot)
 
          elseif ( seabed_stress_method == 'probabilistic' ) then
-            call seabed_stress_factor_prob (1               , dynTot        , &
+            call seabed_stress_factor_prob (1               , nStored_TU        , &
                                             iceTmask_slot           , iceUmask_slot         , &
                                             NbrE_Task       , NbrNE_Task    , &
                                             NbrN_Task       ,                 &
@@ -554,7 +554,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
 
 
 !            call ice_timer_start(timer_tmp1,iblk)
-            call stress_eap  (1, dynTot,         iceTmask_slot, &
+            call stress_eap  (1, nStored_TU,         iceTmask_slot, &
                               ksub,                 ndte,                 &
                               ldiag,                                      &
                               arlx1i,               denom1,               &
@@ -611,7 +611,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
             !-----------------------------------------------------------------
 
             call stepu (&
-                        1, dynTot,                      &
+                        1, nStored_TU,                      &
                         cdn_ocnU_slot,  &
                         iceUmask_slot, &
                         aiU_slot , &
@@ -640,7 +640,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
             !-----------------------------------------------------------------
 
             if (mod(ksub,10) == 1) then ! only called every 10th timestep
-            call stepa (1, dynTot, iceTmask_slot, &
+            call stepa (1, nStored_TU, iceTmask_slot, &
                         dtei                , a11_slot, a12_slot, &
                         a11_1_slot, &
                         a11_2_slot, &
@@ -729,7 +729,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
       ! ice-ocean stress
       !-----------------------------------------------------------------
 
-      call dyn_finish (1             , dynTot        , &
+      call dyn_finish (1             , nStored_TU        , &
                        iceUmask_slot         , cdn_ocnU_slot , &
                        uvel_slot     , vvel_slot     , &
                        uocnU_slot    , vocnU_slot    , &
@@ -749,7 +749,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
       use ice_blocks, only: nx_block, ny_block
       use ice_domain, only: nblocks
       use ice_calendar, only: dt_dyn
-      use ice_dyn_shared, only: init_dyn_shared, dynTot
+      use ice_dyn_shared, only: init_dyn_shared, nStored_TU
 
       ! local variables
 
@@ -785,22 +785,22 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
 
       call init_dyn_shared(dt_dyn)
 
-      ! init_dyn_shared above has built the compressed layout, so dynTot is set
-      allocate( a11_1_slot(dynTot), a11_2_slot(dynTot),      &
-                a11_3_slot(dynTot), a11_4_slot(dynTot),      &
-                a12_1_slot(dynTot), a12_2_slot(dynTot),      &
-                a12_3_slot(dynTot), a12_4_slot(dynTot),      &
-                e11_slot(dynTot),      &
-                e12_slot(dynTot),      &
-                e22_slot(dynTot),      &
-                s11_slot(dynTot),      &
-                s12_slot(dynTot),      &
-                s22_slot(dynTot),      &
-                yieldstress11_slot(dynTot),      &
-                yieldstress12_slot(dynTot),      &
-                yieldstress22_slot(dynTot),      &
-                a11_slot(dynTot),      &
-                a12_slot(dynTot),      &
+      ! init_dyn_shared above has built the compressed layout, so nStored_TU is set
+      allocate( a11_1_slot(nStored_TU), a11_2_slot(nStored_TU),      &
+                a11_3_slot(nStored_TU), a11_4_slot(nStored_TU),      &
+                a12_1_slot(nStored_TU), a12_2_slot(nStored_TU),      &
+                a12_3_slot(nStored_TU), a12_4_slot(nStored_TU),      &
+                e11_slot(nStored_TU),      &
+                e12_slot(nStored_TU),      &
+                e22_slot(nStored_TU),      &
+                s11_slot(nStored_TU),      &
+                s12_slot(nStored_TU),      &
+                s22_slot(nStored_TU),      &
+                yieldstress11_slot(nStored_TU),      &
+                yieldstress12_slot(nStored_TU),      &
+                yieldstress22_slot(nStored_TU),      &
+                a11_slot(nStored_TU),      &
+                a12_slot(nStored_TU),      &
                 stat=ierr)
       if (ierr/=0) call abort_ice(subname//' ERROR: Out of memory')
       e11_slot = c0
@@ -2162,7 +2162,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
                          stress12_3, stress12_4)
 
       ! Slot range to process, as ice_dyn_core1d's kernels take lb/ub.  Every
-      ! 2-D caller passes 1, dynTot; the pair is kept because it is the shape
+      ! 2-D caller passes 1, nStored_TU; the pair is kept because it is the shape
       ! the 1-D kernels share.
       integer (kind=int_kind), intent(in) :: &
          lo, hi                ! slot range to process

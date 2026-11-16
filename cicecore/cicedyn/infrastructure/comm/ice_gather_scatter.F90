@@ -994,7 +994,7 @@
       grid_ext        ! extended grid flag
 
    real (dbl_kind), dimension(:), intent(inout) :: &
-      ARRAY           ! compressed field, dimension(dynTot)
+      ARRAY           ! compressed field, dimension(nStored_TU)
 
 !-----------------------------------------------------------------------
 !
@@ -2726,7 +2726,7 @@
       src_dist        ! distribution of blocks in the source array
 
    real (dbl_kind), dimension(:), intent(in) :: &
-      ARRAY           ! compressed field, dimension(dynTot)
+      ARRAY           ! compressed field, dimension(nStored_TU)
 
    integer (int_kind), dimension(:,:), intent(in) :: &
       map             ! block-local slot of each cell, 0 if not stored
@@ -2796,7 +2796,7 @@
       src_dist        ! distribution of blocks in the source array
 
    logical (log_kind), dimension(:), intent(in) :: &
-      ARRAY           ! compressed field, dimension(dynTot)
+      ARRAY           ! compressed field, dimension(nStored_TU)
 
    integer (int_kind), dimension(:,:), intent(in) :: &
       map             ! block-local slot of each cell, 0 if not stored
@@ -3087,7 +3087,7 @@
     logical (log_kind), intent(in) :: &
        active_only  ! .false. restores the full slot list
     logical (log_kind), dimension(:), intent(in) :: &
-       maskT, maskU     ! this task's slots, dimension(dynTot)
+       maskT, maskU     ! this task's slots, dimension(nStored_TU)
     logical (log_kind), dimension(:,:), intent(in) :: &
        G_maskT, G_maskU ! extended-global, meaningful on dst_task alone
     integer (int_kind), dimension(:), allocatable, intent(in) :: &
@@ -3165,7 +3165,7 @@
     real (dbl_kind), dimension(:), allocatable, intent(inout) :: &
        A_1d         ! destination, dst_task alone -- hence allocatable
     real (dbl_kind), dimension(:), intent(in) :: &
-       A_slot       ! compressed source field, dimension(dynTot)
+       A_slot       ! compressed source field, dimension(nStored_TU)
     integer (int_kind), intent(in) :: nActive, dst_task
     type (distrb), intent(in) :: src_dist
 

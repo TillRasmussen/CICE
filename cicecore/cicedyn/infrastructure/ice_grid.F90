@@ -244,7 +244,7 @@
 !
 !   dynOff(iblk)    first slot of block iblk, minus one
 !   dynCnt(iblk)    number of slots that block holds
-!   dynTot          total slots over all local blocks
+!   nStored_TU          total slots over all local blocks
 !   dynMap(ij,iblk) block-local slot of a cell, 0 if not stored
 !   dynCntA(iblk) of dynCnt, how many are potentially active; those are
 !                   numbered FIRST, so an active-only loop for one block runs
@@ -302,7 +302,6 @@
       ! TASK and are the end state.  Do not reuse a dyn* name for a task
       ! quantity just because it is free.
       integer (kind=int_kind), public :: &
-         dynTot    , & ! total compressed length over all local blocks
          dynMaxCnt , & ! largest dynCntA over the local blocks
          nActive_TU, & ! this task's active slots: 1 .. nActive_TU, contiguous
          nStored_TU, & ! every slot the task holds, deadSlot and ring included
@@ -1141,7 +1140,7 @@
 ! because on that path the cap supplies tlon, tlat, area and hm itself and
 ! init_grid2 would read a CICE grid file that is not there.  Attaching the
 ! layout to init_grid2 therefore tied it to one of the two grid paths, and on
-! the other one dynMap, dynTot and every _slot metric were never built at all.
+! the other one dynMap, nStored_TU and every _slot metric were never built at all.
 !
 ! Idempotent: mapl/geos calls init_grid2 twice.
 !
@@ -1159,10 +1158,10 @@
       call init_ragged_layout
 
       ! The compressed copies of the state live in ice_state but cannot be
-      ! allocated there: alloc_state runs before this point and dynTot does
+      ! allocated there: alloc_state runs before this point and nStored_TU does
       ! not exist yet.  Doing it here keeps the call out of all fifteen
       ! drivers' CICE_InitMod.
-      call alloc_state_slots(dynTot)
+      call alloc_state_slots(nStored_TU)
 
       end subroutine init_grid_layout
 
@@ -4111,14 +4110,14 @@
 
 !=======================================================================
 ! grid_average_X2Y with a COMPRESSED destination.  Same type/grid arguments
-! as grid_average_X2Y_base; work2 is dynTot instead of a block.  Only the
+! as grid_average_X2Y_base; work2 is nStored_TU instead of a block.  Only the
 ! 'F' form is provided -- it is the one whose destinations have moved.
 
       subroutine grid_average_X2Y_base_toslot(type,work1,grid1,work2,grid2)
 
       character(len=*) , intent(in) :: type, grid1, grid2
       real (kind=dbl_kind), intent(in)  :: work1(:,:,:)
-      real (kind=dbl_kind), intent(out) :: work2(:)      ! dynTot
+      real (kind=dbl_kind), intent(out) :: work2(:)      ! nStored_TU
 
       character(len=16) :: X2Y
       integer (kind=int_kind) :: i, j, iblk, ms
@@ -4249,7 +4248,7 @@
          work1(:,:)
 
       real (kind=dbl_kind), intent(out) :: &
-         work2(:)            ! dynTot
+         work2(:)            ! nStored_TU
 
       ! local variables
 
@@ -4432,7 +4431,7 @@
 
       character(len=*) , intent(in) :: X2Y
       real (kind=dbl_kind), intent(in)  :: work1(:,:,:)
-      real (kind=dbl_kind), intent(out) :: work2(:)      ! dynTot
+      real (kind=dbl_kind), intent(out) :: work2(:)      ! nStored_TU
 
       character(len=*), parameter :: subname = '(grid_average_X2Y_1_toslot)'
 
@@ -5281,8 +5280,8 @@
       real (kind=dbl_kind), intent(in) :: work1(:,:,:)  ! block-shaped source
       real (kind=dbl_kind), intent(in) :: wght1(:,:)    ! weight, i/j flattened
 
-      real (kind=dbl_kind), intent(out) :: work2(:)     ! dynTot
-      real (kind=dbl_kind), intent(in)  :: wght2(:)     ! dynTot
+      real (kind=dbl_kind), intent(out) :: work2(:)     ! nStored_TU
+      real (kind=dbl_kind), intent(in)  :: wght2(:)     ! nStored_TU
 
       integer (kind=int_kind) :: i, j, iblk, ms, ilo, ihi, jlo, jhi
       type (block) :: this_block
@@ -5503,7 +5502,7 @@
       real (kind=dbl_kind), intent(in) :: wght1(:,:)    ! weight, i/j flattened
       real (kind=dbl_kind), intent(in) :: mask1(:,:)    ! mask,   i/j flattened
 
-      real (kind=dbl_kind), intent(out) :: work2(:)     ! dynTot
+      real (kind=dbl_kind), intent(out) :: work2(:)     ! nStored_TU
 
       integer (kind=int_kind) :: i, j, iblk, ms, ij, ilo, ihi, jlo, jhi
       real (kind=dbl_kind) :: wtmp
@@ -7065,7 +7064,7 @@
 ! precomputes ee/ne/se/nw/sw/sse against its own static list.
 
       subroutine set_ragged_layout(mask, act, off, cnt, cntA, total, map, &
-                                   nActive, nStored, deadIdx)
+                                   nActive, deadIdx)
 
       use ice_domain, only: nblocks
 
@@ -7082,7 +7081,6 @@
       integer (kind=int_kind), intent(out) :: &
          total          , & ! total number of slots
          nActive        , & ! active slots, 1 .. nActive, contiguous
-         nStored        , & ! every slot held, dead slot and ring included
          deadIdx            ! the one dead slot, at nActive+1
 
       ! flattened: element (i,j,iblk) lives at ((j-1)*nx_block + i, iblk)
@@ -7150,7 +7148,6 @@
          enddo
          enddo
       enddo
-      nStored = total
 
       ! cnt is the count a block OWNS, active and ring together.  It is no
       ! longer an EXTENT: a block's ring is not adjacent to its active cells.
@@ -7724,21 +7721,21 @@
       enddo
 
       call set_ragged_layout(mask_any, mask_act, dynOff, dynCnt, dynCntA, &
-                             dynTot, dynMap, nActive_TU, nStored_TU, deadSlot)
+                             nStored_TU, dynMap, nActive_TU, deadSlot)
       deallocate(mask_any, mask_act)
       dynMaxCnt = max(maxval(dynCntA), 1)
 
-      allocate(Nbr_Task(dynTot,nbr_num), stat=ierr)
+      allocate(Nbr_Task(nStored_TU,nbr_num), stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
       call set_neighbours(dynMap, dynOff, dynCnt, Nbr_Task)
 
       ! Split the global form into one vector per direction and drop the
       ! rank-2 original; the builder keeps its d loop, the kernels get
       ! contiguous rank-1 actuals.
-      allocate(NbrW_Task (dynTot), NbrSW_Task(dynTot), &
-               NbrS_Task (dynTot), NbrE_Task (dynTot), &
-               NbrNE_Task(dynTot), NbrN_Task (dynTot), &
-               NbrNW_Task(dynTot), NbrSE_Task(dynTot), stat=ierr)
+      allocate(NbrW_Task (nStored_TU), NbrSW_Task(nStored_TU), &
+               NbrS_Task (nStored_TU), NbrE_Task (nStored_TU), &
+               NbrNE_Task(nStored_TU), NbrN_Task (nStored_TU), &
+               NbrNW_Task(nStored_TU), NbrSE_Task(nStored_TU), stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
       NbrW_Task (:) = Nbr_Task(:,nbr_W )
       NbrSW_Task(:) = Nbr_Task(:,nbr_SW)
@@ -7750,7 +7747,7 @@
       NbrSE_Task(:) = Nbr_Task(:,nbr_SE)
       deallocate(Nbr_Task)
 
-      allocate(dynIJ(dynTot), dynBlk(dynTot), stat=ierr)
+      allocate(dynIJ(nStored_TU), dynBlk(nStored_TU), stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
       call set_slot_cells(dynMap, dynOff, dynCnt, dynIJ, dynBlk)
 
@@ -7763,13 +7760,13 @@
       ! jb..je bounds select, which is what lets a slot reduction match the
       ! block one.  Dead slots own no cell and stay .false.
       ! ------------------------------------------------------------------
-      allocate(lmask_n_slot(dynTot), lmask_s_slot(dynTot), &
-               tmask_slot(dynTot), stat=ierr)
+      allocate(lmask_n_slot(nStored_TU), lmask_s_slot(nStored_TU), &
+               tmask_slot(nStored_TU), stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
       lmask_n_slot(:) = .false.
       lmask_s_slot(:) = .false.
       tmask_slot  (:) = .false.
-      do m = 1, dynTot
+      do m = 1, nStored_TU
          if (dynIJ(m) == 0) cycle
          lmask_n_slot(m) = lmask_n(dynIJ(m), dynBlk(m))
          lmask_s_slot(m) = lmask_s(dynIJ(m), dynBlk(m))
@@ -7783,25 +7780,25 @@
       !
       ! Packed for every grid rather than only the one in use.  They are all
       ! allocated unconditionally in alloc_grid, the cost is one pass and one
-      ! array of dynTot reals each, and a conditional here would have to track
+      ! array of nStored_TU reals each, and a conditional here would have to track
       ! grid_ice in a second place.
       ! ------------------------------------------------------------------
-      allocate(uarear_slot(dynTot), tarear_slot(dynTot),               &
-               dxN_slot(dynTot), dyE_slot(dynTot),                      &
-               HTN_slot(dynTot), HTE_slot(dynTot),                      &
-               HTNe_slot(dynTot), HTEn_slot(dynTot),                    &
-               uarea_slot(dynTot), tarea_slot(dynTot),                  &
-               earea_slot(dynTot), narea_slot(dynTot), hm_slot(dynTot), &
-               earear_slot(dynTot), narear_slot(dynTot), &
-               dxU_slot(dynTot), dyT_slot(dynTot),                      &
-               dxT_slot(dynTot), dyU_slot(dynTot),                      &
-               dxE_slot(dynTot), dyN_slot(dynTot),                      &
-               epm_slot(dynTot), npm_slot(dynTot), uvm_slot(dynTot),   &
-               uareaavg_slot(dynTot), wsumN_slot(dynTot),              &
-               wsumE_slot(dynTot), wsumNW_slot(dynTot),                &
-               wsumSE_slot(dynTot), wsumNE_slot(dynTot),               &
-               skipRmp(dynTot), skipEdgeN(dynTot), skipEdgeE(dynTot),   &
-               skipPhys(dynTot),                                        &
+      allocate(uarear_slot(nStored_TU), tarear_slot(nStored_TU),               &
+               dxN_slot(nStored_TU), dyE_slot(nStored_TU),                      &
+               HTN_slot(nStored_TU), HTE_slot(nStored_TU),                      &
+               HTNe_slot(nStored_TU), HTEn_slot(nStored_TU),                    &
+               uarea_slot(nStored_TU), tarea_slot(nStored_TU),                  &
+               earea_slot(nStored_TU), narea_slot(nStored_TU), hm_slot(nStored_TU), &
+               earear_slot(nStored_TU), narear_slot(nStored_TU), &
+               dxU_slot(nStored_TU), dyT_slot(nStored_TU),                      &
+               dxT_slot(nStored_TU), dyU_slot(nStored_TU),                      &
+               dxE_slot(nStored_TU), dyN_slot(nStored_TU),                      &
+               epm_slot(nStored_TU), npm_slot(nStored_TU), uvm_slot(nStored_TU),   &
+               uareaavg_slot(nStored_TU), wsumN_slot(nStored_TU),              &
+               wsumE_slot(nStored_TU), wsumNW_slot(nStored_TU),                &
+               wsumSE_slot(nStored_TU), wsumNE_slot(nStored_TU),               &
+               skipRmp(nStored_TU), skipEdgeN(nStored_TU), skipEdgeE(nStored_TU),   &
+               skipPhys(nStored_TU),                                        &
                stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
       ! default is SKIP: only slots inside the range below are cleared, so a

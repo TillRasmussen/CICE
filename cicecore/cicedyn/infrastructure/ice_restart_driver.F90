@@ -502,7 +502,7 @@
       use ice_blocks, only: nx_block, ny_block
       use ice_domain, only: nblocks
       use ice_domain_size, only: max_blocks
-      use ice_grid, only: dynTot, dynIJ, dynBlk
+      use ice_grid, only: nStored_TU, dynIJ, dynBlk
       use ice_constants, only: c0
 
       integer (kind=int_kind), intent(in) :: nu
@@ -527,7 +527,7 @@
       ! field must still appear in the restart file.  Zero is what the block
       ! arrays held on that path.
       if (allocated(fld_s)) then
-         do is = 1, dynTot
+         do is = 1, nStored_TU
             if (dynIJ(is) == 0) cycle      ! dead slot, owned by no cell
             wrk_flat(dynIJ(is),dynBlk(is)) = fld_s(is)
          enddo
