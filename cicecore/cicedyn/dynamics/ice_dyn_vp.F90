@@ -264,7 +264,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
           ns_boundary_type
       use ice_domain, only: blocks_ice, halo_info, maskhalo_dyn
       use ice_domain_size, only: max_blocks
-      use ice_dyn_shared, only: deformations, iceTmask, iceUmask, &
+      use ice_dyn_shared, only: deformations, iceUmask, &
                                NbrW_Task, NbrSW_Task, NbrS_Task, &
                                NbrE_Task, NbrNE_Task, NbrN_Task, &
           stressp_1_slot, stressp_2_slot, stressp_3_slot, stressp_4_slot, &
@@ -386,7 +386,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
                            vsno_slot,                              &
                            dynMap  (:,iblk),   tmask   (:,  iblk), &
                          dynOff(iblk),       dynCntA(iblk),       &
-                         tmass   (:,iblk),   iceTmask(:,iblk))
+                         tmass   (:,iblk))
 
       enddo                     ! iblk
       !$OMP END PARALLEL DO
@@ -399,19 +399,6 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
       call ice_HaloUpdate2DL1_compressed(iceTmask_slot, halo_info, &
                            field_loc_center,  field_type_scalar,     &
                            dynMap, dynOff)
-
-      ! ⚠ The block copy still has consumers -- dyn_prep2 takes it at every
-      ! call site, and evp1d's set_skipMe reads it -- so its GHOSTS must be
-      ! refreshed from the slots.  Dropping the block halo without this
-      ! leaves them stale and diverges on every grid.
-      !$OMP PARALLEL DO PRIVATE(iblk,ij,ms) SCHEDULE(runtime)
-      do iblk = 1, nblocks
-         do ij = 1, nx_block*ny_block
-            ms = dynMap(ij,iblk)
-            if (ms > 0) iceTmask(ij,iblk) = iceTmask_slot(ms)
-         enddo
-      enddo
-      !$OMP END PARALLEL DO
       call ice_timer_stop(timer_bound)
 
       !-----------------------------------------------------------------
@@ -494,7 +481,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCntA, dynOff
                          strairyU,                                                                   &
                          ss_tltxU_slot, &
                          ss_tltyU_slot, &
-                         iceTmask  (:,iblk),   iceUmask  (:,iblk),                                                                     &
+                         iceUmask  (:,iblk),                                                                     &
                          fmU_slot, dt,                                                                                       &
                          strtltxU, &
                          strtltyU, &

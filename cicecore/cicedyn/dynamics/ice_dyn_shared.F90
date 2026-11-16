@@ -446,11 +446,6 @@
          iceNmask, &   ! ice extent mask (N-cell)
          iceEmask      ! ice extent mask (E-cell)
 
-      ! the i and j dimensions are flattened: element (i,j,iblk) of the block
-      ! layout lives at ((j-1)*nx_block + i, iblk)
-      logical (kind=log_kind), dimension (:,:), allocatable, target, public :: &
-         iceTmask      ! ice extent mask (T-cell)
-
       ! ice isotropic tensile strength parameter
       real (kind=dbl_kind), public :: &
          Ktens               ! T=Ktens*P (tensile strength: see Konig and Holland, 2010)
@@ -646,14 +641,12 @@
       allocate( &
          uvel_init (nStored_TU), & ! x-component of velocity (m/s), beginning of timestep
          vvel_init (nStored_TU), & ! y-component of velocity (m/s), beginning of timestep
-         iceTmask  (nx_block*ny_block,max_blocks), & ! T mask for dynamics
          iceUmask  (nx_block*ny_block,max_blocks), & ! U mask for dynamics
          stat=ierr)
       if (ierr/=0) call abort_ice(subname//': Out of memory')
 
       uvel_init  = c0
       vvel_init  = c0
-      iceTmask   = .false.
       iceUmask   = .false.
 
       allocate( &
@@ -1435,7 +1428,7 @@
                             aice,      vice,     &
                             vsno,      map,      Tmask,    &
                             Xoff,      ncnt,     &
-                            Tmass,     iceTmask)
+                            Tmass)
 
       integer (kind=int_kind), intent(in) :: &
          nx_block, ny_block, & ! block dimensions
@@ -1471,8 +1464,6 @@
       real (kind=dbl_kind), dimension (:), intent(out), contiguous :: &
          Tmass       ! total mass of ice and snow (kg/m^2)
 
-      logical (kind=log_kind), dimension (:), intent(out), contiguous :: &
-         iceTmask    ! ice extent mask (T-cell)
 
       ! local variables
 
@@ -1532,7 +1523,6 @@
          !-----------------------------------------------------------------
          ! augmented mask (land + open ocean)
          !-----------------------------------------------------------------
-         iceTmask (ij) = .false.
 
       enddo
 
@@ -1596,9 +1586,6 @@
          ! upstream branch icetmask-tmask-invariant.
          if (.not.tmask(ij,iblk)) iceTmask_slot(ms) = .false.
 
-         ! the block copy stays current for the consumers still on it
-         iceTmask(ij,iblk) = iceTmask_slot(ms)
-
       enddo
       !$OMP END PARALLEL DO
 
@@ -1647,10 +1634,8 @@
       ! stress must be zero.  It is upstream's rule.
       !$OMP PARALLEL DO PRIVATE(ms,ij,iblk) SCHEDULE(runtime)
       do ms = 1, nStored_TU
-         iblk = dynBlk(ms)
-         if (iblk == 0) cycle                   ! the dead slot
-         ij = dynIJ(ms)
-         if (.not. iceTmask(ij,iblk)) then
+         if (ms == deadSlot) cycle
+         if (.not. iceTmask_slot(ms)) then
             stressp_1_slot (ms) = c0
             stressp_2_slot (ms) = c0
             stressp_3_slot (ms) = c0
@@ -1704,7 +1689,7 @@
                             uocn,       vocn,       &
                             strairx,    strairy,    &
                             ss_tltx,    ss_tlty,    &
-                            iceTmask,   iceXmask,   &
+                            iceXmask,   &
                             fm,         dt,         &
                             strtltx,    strtlty,    &
                             strintx,    strinty,    &
@@ -1730,11 +1715,6 @@
       ! i.e. element (i,j) is stored at (j-1)*nx_block+i
       logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
          Xmask       ! land/boundary mask, thickness (X-grid-cell)
-
-      ! iceTmask is assumed shape, 1D over the block in Fortran storage order,
-      ! i.e. element (i,j) is stored at (j-1)*nx_block+i
-      logical (kind=log_kind), dimension (:), intent(in), contiguous :: &
-         iceTmask    ! ice extent mask (T-cell)
 
       ! iceXmask is assumed shape, 1D over the block in Fortran storage order,
       ! i.e. element (i,j) is stored at (j-1)*nx_block+i
@@ -1936,7 +1916,6 @@
       call chk_len(size(strtltx), size(TbU), 'strtltx', subname)
 
       call chk_len(size(Xmask)   , nflat, 'Xmask'   , subname)
-      call chk_len(size(iceTmask), nflat, 'iceTmask', subname)
       call chk_len(size(iceXmask), nflat, 'iceXmask', subname)
       call chk_len(size(aiX)     , size(TbU), 'aiX'     , subname)
       call chk_len(size(Xmass)   , size(TbU), 'Xmass'   , subname)

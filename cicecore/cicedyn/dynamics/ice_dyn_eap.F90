@@ -159,14 +159,14 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
           dyn_prep1, dyn_prep1_dilate, dyn_prep2_slots, dyn_prep2, stepu, dyn_finish,             &
           seabed_stress_factor_LKD, seabed_stress_factor_prob,                   &
           seabed_stress_method, seabed_stress,                                   &
-          stack_fields, unstack_fields, iceTmask, iceUmask,                      &
+          stack_fields, unstack_fields, iceUmask,                      &
           fld2, fld3, fld4, fld2c
       use ice_flux, only: rdg_conv, strairxT, strairyT, &
           strairxU, strairyU, uocn, vocn, ss_tltx, ss_tlty, fmU, &
           strtltxU, strtltyU, strocnxU, strocnyU, strintxU, strintyU, taubxU, taubyU, &
           strax, stray, &
           hwater, hwater_slot
-      use ice_grid, only: deadSlot, dynBlk, tmask, umask, dxT, dyT, dxU, dyU, &
+      use ice_grid, only: deadSlot, dynBlk, tmask, tmask_slot, umask, dxT, dyT, dxU, dyU, &
           tarear, uarear, grid_average_X2Y, &
           grid_atm_dynu, grid_atm_dynv, grid_ocn_dynu, grid_ocn_dynv
       use ice_restoring, only: ice_restoring_halo, restore_ice
@@ -265,7 +265,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
                            vsno_slot,                              &
                            dynMap  (:,iblk),   tmask   (:,  iblk), &
                          dynOff(iblk),       dynCntA(iblk),       &
-                         tmass   (:,iblk),   iceTmask(:,iblk))
+                         tmass   (:,iblk))
 
       enddo                     ! iblk
       !$OMP END PARALLEL DO
@@ -278,19 +278,6 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
       call ice_HaloUpdate2DL1_compressed(iceTmask_slot, halo_info, &
                            field_loc_center,  field_type_scalar,     &
                            dynMap, dynOff)
-
-      ! ⚠ The block copy still has consumers -- dyn_prep2 takes it at every
-      ! call site, and evp1d's set_skipMe reads it -- so its GHOSTS must be
-      ! refreshed from the slots.  Dropping the block halo without this
-      ! leaves them stale and diverges on every grid.
-      !$OMP PARALLEL DO PRIVATE(iblk,ij,ms) SCHEDULE(runtime)
-      do iblk = 1, nblocks
-         do ij = 1, nx_block*ny_block
-            ms = dynMap(ij,iblk)
-            if (ms > 0) iceTmask(ij,iblk) = iceTmask_slot(ms)
-         enddo
-      enddo
-      !$OMP END PARALLEL DO
       call ice_timer_stop(timer_bound)
 
       !-----------------------------------------------------------------
@@ -344,6 +331,53 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
       ! whole array, and the pack this replaces cleared the inactive
       ! cells and the dead slot as a side effect of copying the block.
       strength_slot(:) = c0
+      ! Reset the structure tensor where the ice has gone, in SLOTS.
+      ! It used to write the block arrays and the pack below carried the
+      ! result across; writing the slots directly is what lets that pack go.
+      !
+      ! ⚠ Runs over the whole task.  It must reach the RING as well as the
+      ! active cells: a ring cell is land, takes the c0 branch, and the eap
+      ! restart carries that value out -- bounded at dynCntA it keeps the p5
+      ! an ocean cell was initialised with, which is 1572 values in the gx3
+      ! eap restart.
+      !
+      ! ⚠ It must also run BEFORE dyn_prep2_slots, which narrows
+      ! iceTmask_slot to the T-stress range (skipTstr).  This loop wants the
+      ! mask as dilate and the halo produced it -- unrestricted -- which is
+      ! what the block copy it used to read held at this point.  Moving it
+      ! after the narrowing makes slots outside that band take the land
+      ! branch and writes a tensor the block form never wrote.
+      !
+      ! (The older note here said it could not be hoisted above the block
+      ! loop because dyn_prep2 built iceTmask inside it.  That stopped being
+      ! true when dyn_prep1_dilate became the producer.)
+      !
+      ! dynBlk is 0 only at the dead slot, so the skip is layout-agnostic.
+      do is = 1, nStored_TU
+         ! ⚠ the dead slot still has to be skipped: tmask_slot is .false.
+         ! there, which would otherwise take the land branch and write the
+         ! structure tensor at a slot the block loop never touched.
+         if (dynBlk(is) == 0) cycle          ! dead slot
+         if (.not. iceTmask_slot(is)) then
+            if (tmask_slot(is)) then
+               ! structure tensor
+               a11_1_slot(is) = p5
+               a11_2_slot(is) = p5
+               a11_3_slot(is) = p5
+               a11_4_slot(is) = p5
+            else
+               a11_1_slot(is) = c0
+               a11_2_slot(is) = c0
+               a11_3_slot(is) = c0
+               a11_4_slot(is) = c0
+            endif
+            a12_1_slot(is) = c0
+            a12_2_slot(is) = c0
+            a12_3_slot(is) = c0
+            a12_4_slot(is) = c0
+         endif                  ! iceTmask
+      enddo                     ! is
+
       ! The task-level half of dyn_prep2.  ⚠ BEFORE the loop: the body reads
       ! iceTmask_slot, so the mask has to be current on entry.
       call dyn_prep2_slots
@@ -372,7 +406,7 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
                          strairyU, &
                          ss_tltxU_slot, &
                          ss_tltyU_slot, &
-                         iceTmask  (:,iblk),   iceUmask  (:,iblk),   &
+                         iceUmask  (:,iblk),   &
                          fmU_slot, dt,                   &
                          strtltxU, &
                          strtltyU, &
@@ -416,45 +450,23 @@ use ice_dyn_shared, only: iceTmask_slot, dynIJ, dynCnt, dynCntA, dynOff
          enddo  ! is
       enddo  ! iblk
 
-      ! Reset the structure tensor where the ice has gone, in SLOTS.
-      ! It used to write the block arrays and the pack below carried the
-      ! result across; writing the slots directly is what lets that pack go.
-      !
-      ! ⚠ Runs over the whole task, AFTER the block loop.  It must reach the
-      ! RING as well as the active cells: a ring cell is land, takes the c0
-      ! branch, and the eap restart carries that value out -- bounded at
-      ! dynCntA it keeps the p5 an ocean cell was initialised with, which is
-      ! 1572 values in the gx3 eap restart.  It cannot be hoisted ABOVE the
-      ! block loop either: dyn_prep2 builds iceTmask inside it.
-      ! dynBlk is 0 only at the dead slot, so the skip is layout-agnostic.
-      do is = 1, nStored_TU
-         jblk = dynBlk(is)
-         if (jblk == 0) cycle                ! dead slot
-         ij = dynIJ(is)
-         if (.not. iceTmask(ij,jblk)) then
-            if (tmask(ij,jblk)) then
-               ! structure tensor
-               a11_1_slot(is) = p5
-               a11_2_slot(is) = p5
-               a11_3_slot(is) = p5
-               a11_4_slot(is) = p5
-            else
-               a11_1_slot(is) = c0
-               a11_2_slot(is) = c0
-               a11_3_slot(is) = c0
-               a11_4_slot(is) = c0
-            endif
-            a12_1_slot(is) = c0
-            a12_2_slot(is) = c0
-            a12_3_slot(is) = c0
-            a12_4_slot(is) = c0
-         endif                  ! iceTmask
-      enddo                     ! is
 
-      ! ⚠ The dead slot, which the pack used to clear for free:
-      ! pack_to_slots zeroes it on every call so a missing neighbour reads
-      ! zero.  Nothing else writes it, and the kernels below read a11/a12 at
-      ! neighbours, so without this it keeps whatever the last subcycle left.
+      ! The dead slot, which the pack used to clear for free: pack_to_slots
+      ! zeroes it on every call, and nothing else writes it.
+      !
+      ! ⚠ The reason given here before was WRONG: it claimed the kernels read
+      ! a11/a12 at neighbours.  They do not -- the only index expressions used
+      ! on these arrays anywhere are the own-cell `is` and `ms`.  Nor does the
+      ! value reach the restart: write_eap_slot unpacks through dynMap, and no
+      ! dynMap entry points at the dead slot.  And stepa, the one kernel that
+      ! loops 1..nStored_TU over them, gates on icemask_s, which is .false.
+      ! there.
+      !
+      ! So this clear has no demonstrated consumer.  It is kept because the
+      ! debug build initialises reals to sNaN and traps on invalid, so an
+      ! untouched slot is a trap waiting on any future reader -- but that is a
+      ! defensive argument, not a load-bearing one.  Removing it should be
+      ! tested rather than assumed either way.
       ms = deadSlot
       a11_1_slot(ms) = c0
       a11_2_slot(ms) = c0
