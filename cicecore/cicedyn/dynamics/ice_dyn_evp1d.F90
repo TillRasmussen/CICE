@@ -1312,6 +1312,23 @@ module ice_dyn_evp1d
      jhi = ny - nghost
 
      ! the cyclic exchange, both directions
+
+     if (trim(ew_boundary_type) == 'cyclic') then
+        do j = 1, ny
+        do g = 1, nghost
+           call halo_point(g      , j, ihi-nghost+g, j, ihi-nghost+g, j, 0, domark)
+           call halo_point(ihi + g, j, ilo+g-1     , j, ilo+g-1     , j, 0, domark)
+        end do
+        end do
+     endif
+
+     ! ⚠ AFTER the east/west cyclic pass, not before.  This is the
+     ! north/south pass and the ordering rule above applies to it: the
+     ! north/south pass must read ghosts the east/west pass has already
+     ! written, or the corners come out wrong.  Running the fold first
+     ! let the cyclic pass overwrite it at the two ghost columns with an
+     ! unfolded source and sgn +1 -- measured on gbox80 tripoleT as the
+     ! four corner cells (ghost columns x seam row and north ghost row).
      if (trim(ns_boundary_type) == 'tripole') then
         call tripole_sweep(domark)
 
@@ -1333,7 +1350,10 @@ module ice_dyn_evp1d
         ! Without cyclic there is no such image and the column is left to the
         ! old behaviour.
         do g = 1, nghost
-        do i = 1, nx - 1
+        ! ⚠ to nx, not nx-1.  The east ghost column is a fold destination
+        ! like any other; stopping short left it to the cyclic pass, which
+        ! has no fold and no sign.
+        do i = 1, nx
            isrc = nx - i
            if (isrc < 1 + nghost) then
               if (trim(ew_boundary_type) /= 'cyclic') cycle
@@ -1341,15 +1361,6 @@ module ice_dyn_evp1d
            endif
            call halo_point(i, jhi + g, isrc, jhi - g, isrc, jhi - g, &
                            0, domark, -c1)
-        end do
-        end do
-     endif
-
-     if (trim(ew_boundary_type) == 'cyclic') then
-        do j = 1, ny
-        do g = 1, nghost
-           call halo_point(g      , j, ihi-nghost+g, j, ihi-nghost+g, j, 0, domark)
-           call halo_point(ihi + g, j, ilo+g-1     , j, ilo+g-1     , j, 0, domark)
         end do
         end do
      endif

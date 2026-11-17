@@ -297,6 +297,18 @@
       character(len=*), parameter :: subname = '(init_dyn_shared)'
 
       ! checks
+      ! ⚠ tripoleT only.  evp1d's fold implements the U-fold: its ghost-row
+      ! map is (i, jhi+g) <- (nx+1-i, jhi+1-g).  The T-fold folds through the
+      ! centre of ny_global, sources a row further in, and averages the
+      ! degenerate seam row pairwise -- none of which is written.  Measured on
+      ! gbox80: applying the U-fold to a tripoleT grid leaves the four corner
+      ! cells wrong.  Lift this when the 1-D path uses ice_boundary's fold
+      ! instead of reimplementing it.
+      if (kdyn == 1 .and. evp_algorithm == 'shared_mem_1d' .and. &
+          ns_boundary_type == 'tripoleT') then
+         call abort_ice(subname//' ERROR: evp_alg shared mem 1d not supported with tripoleT', &
+            file=__FILE__, line=__LINE__)
+      endif
 
       call set_evp_parameters (dt)
       ! allocate dyn shared (init_uvel,init_vvel)
