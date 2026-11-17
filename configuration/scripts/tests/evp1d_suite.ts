@@ -5,12 +5,14 @@ smoke          gx3      4x1        diag1,run2day
 smoke          gx3      4x1        diag1,run2day,evp1d     smoke_gx3_4x1_diag1_run2day
 smoke          gx3      4x2        diag1,run2day
 smoke          gx3      4x2        diag1,run2day,evp1d     smoke_gx3_4x2_diag1_run2day
+smoke          gx3      4x2        diag1,run2day,evp1d,evp1dreorder     smoke_gx3_4x2_diag1_run2day
 smoke          gx3      1x1        diag1,run2day,nghost2
 smoke          gx3      1x1        diag1,run2day,nghost2,evp1d     smoke_gx3_1x1_diag1_nghost2_run2day
 smoke          gx1      32x1       diag1,run2day
 smoke          gx1      32x1       diag1,run2day,evp1d     smoke_gx1_32x1_diag1_run2day
 smoke          tx1m     20x2       diag1,run2day
 smoke          tx1m     20x2       diag1,run2day,evp1d     smoke_tx1m_20x2_diag1_run2day
+smoke          tx1m     20x2       diag1,run2day,evp1d,evp1dreorder     smoke_tx1m_20x2_diag1_run2day
 smoke          tx1m     20x2       diag1,run2day,nghost2
 smoke          tx1m     20x2       diag1,run2day,nghost2,evp1d     smoke_tx1m_20x2_diag1_nghost2_run2day
 smoke          gbox80   1x1        diag1,run1day,bcopen
@@ -35,5 +37,7 @@ restart        tx1m     20x2       diag1
 restart        tx1m     20x2       diag1,evp1d     restart_tx1m_20x2_diag1
 smoke          gx1      32x1       run1day,perfmar
 smoke          gx1      32x1       run1day,perfmar,evp1d     smoke_gx1_32x1_perfmar_run1day
+smoke          gx1      32x1       run1day,perfmar,evp1d,evp1dreorder     smoke_gx1_32x1_perfmar_run1day
 smoke          gx1      32x1       run1day,perfsep
 smoke          gx1      32x1       run1day,perfsep,evp1d     smoke_gx1_32x1_perfsep_run1day
+smoke          gx1      32x1       run1day,perfsep,evp1d,evp1dreorder     smoke_gx1_32x1_perfsep_run1day
