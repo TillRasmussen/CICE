@@ -33,3 +33,7 @@ restart        gx3      4x1        diag1
 restart        gx3      4x1        diag1,evp1d     restart_gx3_4x1_diag1
 restart        tx1m     20x2       diag1
 restart        tx1m     20x2       diag1,evp1d     restart_tx1m_20x2_diag1
+smoke          gx1      32x1       run1day,perfmar
+smoke          gx1      32x1       run1day,perfmar,evp1d     smoke_gx1_32x1_perfmar_run1day
+smoke          gx1      32x1       run1day,perfsep
+smoke          gx1      32x1       run1day,perfsep,evp1d     smoke_gx1_32x1_perfsep_run1day

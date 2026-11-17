@@ -1,0 +1,6 @@
+year_init   = 2005
+month_init  = 3
+day_init    = 1
+sec_init    = 0
+ice_ic      = 'default'
+histfreq    = 'x','x','x','x','x'
