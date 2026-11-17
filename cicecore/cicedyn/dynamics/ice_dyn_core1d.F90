@@ -70,7 +70,7 @@ module ice_dyn_core1d
   ! arguments ------------------------------------------------------------------
   subroutine stress_1d (nbrW, nbrSW, nbrS, lb, ub, aList,                       &
                         uvel, vvel, dxT, dyT, DminTarea,                 &
-                        dxhy, dyhx, skipme, strength,                    &
+                        skipme, strength,                                &
                         hte, htn, htem1, htnm1,                          &
                         stressp_1,  stressp_2,  stressp_3,  stressp_4,   &
                         stressm_1,  stressm_2,  stressm_3,  stressm_4,   &
@@ -103,8 +103,6 @@ module ice_dyn_core1d
       dxT      , & ! width of T-cell through the middle (m)
       dyT      , & ! height of T-cell through the middle (m)
       DminTarea, & ! deltamin * tarea (m^2/s)
-      dxhy     , & ! 0.5*(HTE(i,j) - HTE(i-1,j))
-      dyhx     , & ! 0.5*(HTN(i,j) - HTN(i,j-1))
       hte      , &
       htn      , &
       htem1    , &
@@ -190,7 +188,7 @@ module ice_dyn_core1d
     !$omp         tmp_cxp, tmp_cyp, tmp_cxm, tmp_cym         , &
     !$omp         tmp_strength, tmp_DminTarea                , &
     !$omp         tmp_dxhy, tmp_dyhx)                          &
-    !$omp  shared(uvel,vvel,dxT,dyT,DminTarea,dxhy,dyhx      , &
+    !$omp  shared(uvel,vvel,dxT,dyT,DminTarea               , &
     !$omp         htn,hte,htnm1,htem1                        , &
     !$omp         str1,str2,str3,str4,str5,str6,str7,str8    , &
     !$omp         stressp_1,stressp_2,stressp_3,stressp_4    , &
@@ -226,12 +224,14 @@ module ice_dyn_core1d
       ! not -- on a MOM grid tarea is a sum of four sub-areas.  Reading the same
       ! array the 2d kernel reads makes the two agree on every grid.
       tmp_DminTarea = DminTarea(iw)
-      ! dxhy and dyhx are supplied rather than rebuilt from hte/htn here, so
-      ! this kernel and the 2d one read the same quantity from the same place.
-      ! The caller decides how they are formed; evp1d still builds them as
-      ! p5*(HTE - HTEm1) off its gathered grid, so its values are unchanged.
-      tmp_dxhy      = dxhy(iw)
-      tmp_dyhx      = dyhx(iw)
+      ! ⚠ Rebuilt here rather than read from two more arrays.  These kernels
+      ! are bandwidth bound, so two fewer streams per cell beats six flops.
+      ! Bit-for-bit: evp1d's dxhy_1d is p5*(G_HTE(i,j) - G_HTE(i-1,j)) and its
+      ! hte/htem1 are those same two gathered values, so this is the identical
+      ! expression on identical operands.  Unlike DminTarea above, there is no
+      ! grid on which the two forms disagree.
+      tmp_dxhy      = p5 * (hte(iw) - htem1(iw))
+      tmp_dyhx      = p5 * (htn(iw) - htnm1(iw))
 
       !--------------------------------------------------------------------------
       ! strain rates - NOTE these are actually strain rates * area  (m^2/s)

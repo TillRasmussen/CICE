@@ -361,7 +361,7 @@ module ice_dyn_evp1d
           do ksub = 1,ndte        ! subcycling, tripole
              call stress_1d (nbrW, nbrSW, nbrS, 1, nIce, aList,                                    &
                              uvel, vvel, dxT_1d, dyT_1d, DminTarea_1d,                  &
-                             dxhy_1d, dyhx_1d, skipTcell, strength,                     &
+                             skipTcell, strength,                                       &
                              HTE_1d, HTN_1d, HTEm1_1d, HTNm1_1d,                        &
                              stressp_1,  stressp_2,  stressp_3,  stressp_4,             &
                              stressm_1,  stressm_2,  stressm_3,  stressm_4,             &
@@ -387,7 +387,7 @@ module ice_dyn_evp1d
           do ksub = 1,ndte        ! subcycling
              call stress_1d (nbrW, nbrSW, nbrS, 1, nIce, aList,                                    &
                              uvel, vvel, dxT_1d, dyT_1d, DminTarea_1d,                  &
-                             dxhy_1d, dyhx_1d, skipTcell, strength,                     &
+                             skipTcell, strength,                                       &
                              HTE_1d, HTN_1d, HTEm1_1d, HTNm1_1d,                        &
                              stressp_1,  stressp_2,  stressp_3,  stressp_4,             &
                              stressm_1,  stressm_2,  stressm_3,  stressm_4,             &
