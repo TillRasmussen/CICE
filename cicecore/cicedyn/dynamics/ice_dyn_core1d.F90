@@ -141,7 +141,7 @@ module ice_dyn_core1d
 #ifdef _OPENMP_TARGET
     !$omp target teams distribute parallel do
 #else
-    !$omp parallel do schedule(runtime)                        &
+    !$omp parallel do schedule(static)                        &
     !$omp default(none)                                        &
     !$omp private(iw, divune, divunw, divuse, divusw         , &
     !$omp         tensionne, tensionnw, tensionse, tensionsw , &
@@ -545,7 +545,7 @@ module ice_dyn_core1d
 #ifdef _OPENMP_TARGET
     !$omp target teams distribute parallel do
 #else
-    !$omp parallel do schedule(runtime)                                        &
+    !$omp parallel do schedule(static)                                        &
     !$omp default(none)                                                        &
     !$omp private(iw, tmp_str2_nw,tmp_str3_sse,tmp_str4_sw,                    &
     !$omp         tmp_str6_sse,tmp_str7_nw,tmp_str8_sw,                        &
@@ -646,7 +646,7 @@ module ice_dyn_core1d
 #ifdef _OPENMP_TARGET
     !$omp target teams distribute parallel do
 #else
-    !$omp parallel do schedule(runtime)                                   &
+    !$omp parallel do schedule(static)                                   &
     !$omp default(none)                                                   &
     !$omp private(iw, tmp_str2_nw,tmp_str3_sse,tmp_str4_sw,               &
     !$omp         tmp_str6_sse,tmp_str7_nw,tmp_str8_sw)                   &
