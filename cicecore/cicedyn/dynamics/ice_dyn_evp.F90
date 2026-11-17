@@ -860,6 +860,26 @@
                                Tbu       , taubxU    , taubyU    , uvel      , &
                                vvel      , icetmask  , iceUmask)
 
+            ! ⚠ The compressed fold writes only cells that OWN A SLOT.  The
+            ! ghost columns and the land cells on the seam row have none, so
+            ! they keep what the scatter left -- +0.0 -- where the 2-D path's
+            ! per-subcycle halo stamps -0.0 into them.  Numerically identical,
+            ! bitwise not, and md5/complog both see it.
+            !
+            ! Running the real handler once makes the two paths agree BY
+            ! CONSTRUCTION rather than by reproducing its sign-of-zero
+            ! convention in the compressed fold.  One halo update per
+            ! timestep, against ndte subcycles in the branch below.
+            if (trim(ns_boundary_type) == 'tripole' .or. &
+                trim(ns_boundary_type) == 'tripoleT') then
+               call ice_timer_start(timer_bound)
+               call ice_HaloUpdate (uvel, halo_info, &
+                                    field_loc_NEcorner, field_type_vector)
+               call ice_HaloUpdate (vvel, halo_info, &
+                                    field_loc_NEcorner, field_type_vector)
+               call ice_timer_stop(timer_bound)
+            endif
+
          else ! evp_algorithm == standard_2d (Standard CICE)
 
             do ksub = 1,ndte        ! subcycling

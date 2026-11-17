@@ -296,11 +296,6 @@
       character(len=*), parameter :: subname = '(init_dyn_shared)'
 
       ! checks
-      if (kdyn == 1 .and. evp_algorithm == 'shared_mem_1d' .and. &
-          (ns_boundary_type == 'tripole' .or. ns_boundary_type == 'tripoleT')) then
-         call abort_ice(subname//' ERROR: evp_alg shared mem 1d not supported with tripole', &
-            file=__FILE__, line=__LINE__)
-      endif
 
       call set_evp_parameters (dt)
       ! allocate dyn shared (init_uvel,init_vvel)
