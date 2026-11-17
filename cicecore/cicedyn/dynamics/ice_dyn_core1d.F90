@@ -68,7 +68,7 @@ module ice_dyn_core1d
   contains
 
   ! arguments ------------------------------------------------------------------
-  subroutine stress_1d (ee, ne, se, lb, ub,                              &
+  subroutine stress_1d (ee, ne, se, lb, ub, aList,                              &
                         uvel, vvel, dxT, dyT, skipme, strength,          &
                         hte, htn, htem1, htnm1,                          &
                         stressp_1,  stressp_2,  stressp_3,  stressp_4,   &
@@ -86,6 +86,12 @@ module ice_dyn_core1d
     implicit none
     ! arguments ------------------------------------------------------------------
     integer (kind=int_kind), intent(in)                           :: lb,ub
+    ! Slots to visit, aList(lb:ub).  With evp1d_reorder off this is the
+    ! identity over every ocean cell; with it on, only the cells carrying
+    ! ice, so the subcycles stop streaming the ice-free ocean.  The skip
+    ! tests stay either way -- aList is the union of iceTmask and iceUmask,
+    ! and a cell can be in it without being active this subcycle.
+    integer (kind=int_kind), intent(in) :: aList(:)
     integer (kind=int_kind), dimension(:), intent(in), contiguous :: ee,ne,se
     logical (kind=log_kind), dimension(:), intent(in), contiguous :: skipme
     real    (kind=dbl_kind), dimension(:), intent(in), contiguous ::             &
@@ -108,7 +114,7 @@ module ice_dyn_core1d
       str1,str2,str3,str4,str5,str6,str7,str8
 
     ! local variables
-    integer (kind=int_kind) :: iw
+    integer (kind=int_kind) :: iw, n
 
     real    (kind=dbl_kind) ::                          &
       divune, divunw, divuse, divusw            ,       & ! divergence
@@ -143,7 +149,7 @@ module ice_dyn_core1d
 #else
     !$omp parallel do schedule(static)                        &
     !$omp default(none)                                        &
-    !$omp private(iw, divune, divunw, divuse, divusw         , &
+    !$omp private(iw, n, divune, divunw, divuse, divusw         , &
     !$omp         tensionne, tensionnw, tensionse, tensionsw , &
     !$omp         shearne, shearnw, shearse, shearsw         , &
     !$omp         Deltane, Deltanw, Deltase, Deltasw         , &
@@ -172,10 +178,11 @@ module ice_dyn_core1d
     !$omp         stress12_1,stress12_2,stress12_3,stress12_4, &
     !$omp         deltaminEVP, arlx1i, denom1, e_factor      , &
     !$omp         epp2i, capping,                              &
-    !$omp         skipme,strength,ee,se,ne,lb,ub,revp)
+    !$omp         skipme,strength,ee,se,ne,lb,ub,aList,revp)
 #endif
 
-    do iw = lb, ub
+    do n = lb, ub
+      iw = aList(n)
       if (skipme(iw)) cycle
       ! divergence  =  e_11 + e_22
       tmp_uvel_cc   = uvel(iw)
@@ -474,7 +481,7 @@ module ice_dyn_core1d
   ! Calculation of the surface stresses
   ! Integration of the momentum equation to find velocity (u,v)
   ! author: Elizabeth C. Hunke, LANL
-  subroutine stepu_1d (lb       , ub       , &
+  subroutine stepu_1d (lb       , ub, aList       , &
                        Cw       , aiX      , &
                        uocn     , vocn     , &
                        waterx   , watery   , &
@@ -497,6 +504,12 @@ module ice_dyn_core1d
 
     ! arguments ------------------------------------------------------------------
     integer(kind=int_kind), intent(in)                           :: lb,ub
+    ! Slots to visit, aList(lb:ub).  With evp1d_reorder off this is the
+    ! identity over every ocean cell; with it on, only the cells carrying
+    ! ice, so the subcycles stop streaming the ice-free ocean.  The skip
+    ! tests stay either way -- aList is the union of iceTmask and iceUmask,
+    ! and a cell can be in it without being active this subcycle.
+    integer(kind=int_kind), intent(in) :: aList(:)
     integer(kind=int_kind), intent(in), dimension(:), contiguous :: nw,sw,sse
     logical(kind=log_kind), intent(in), dimension(:), contiguous :: skipme
     real   (kind=dbl_kind), intent(in), dimension(:), contiguous ::              &
@@ -525,7 +538,7 @@ module ice_dyn_core1d
     real (kind=dbl_kind), intent(in)  :: rhow
 
     ! local variables
-    integer (kind=int_kind) :: iw
+    integer (kind=int_kind) :: iw, n
 
     real (kind=dbl_kind) ::&
        uold, vold        , & ! old-time uvel, vvel
@@ -547,7 +560,7 @@ module ice_dyn_core1d
 #else
     !$omp parallel do schedule(static)                                        &
     !$omp default(none)                                                        &
-    !$omp private(iw, tmp_str2_nw,tmp_str3_sse,tmp_str4_sw,                    &
+    !$omp private(iw, n, tmp_str2_nw,tmp_str3_sse,tmp_str4_sw,                    &
     !$omp         tmp_str6_sse,tmp_str7_nw,tmp_str8_sw,                        &
     !$omp         vrel, uold, vold, taux, tauy, cca, ccb, ab2,                 &
     !$omp         cc1, cc2,strintx, strinty)                                   &
@@ -555,9 +568,10 @@ module ice_dyn_core1d
     !$omp        Cb,nw,sw,sse,skipme,Tbu,uvel_init,vvel_init,                  &
     !$omp        aiX,waterx,watery,forcex,forcey,Umassdti,uocn,vocn,fm,uarear, &
     !$omp        rheofactU,                                                    &
-    !$omp           Cw,lb,ub,brlx, revp, rhow)
+    !$omp           Cw,lb,ub,aList,brlx, revp, rhow)
 #endif
-    do iw = lb, ub
+    do n = lb, ub
+      iw = aList(n)
       if (skipme(iw)) cycle
 
       uold = uvel(iw)
@@ -613,7 +627,7 @@ module ice_dyn_core1d
 
   !=============================================================================
   ! calculates strintx and strinty if needed
-  subroutine calc_diag_1d (lb     , ub     , &
+  subroutine calc_diag_1d (lb     , ub, aList     , &
                            uarear , skipme , &
                            str1   , str2   , &
                            str3   , str4   , &
@@ -631,12 +645,18 @@ module ice_dyn_core1d
        strintx, strinty
 
     integer(kind=int_kind), intent(in)                           :: lb,ub
+    ! Slots to visit, aList(lb:ub).  With evp1d_reorder off this is the
+    ! identity over every ocean cell; with it on, only the cells carrying
+    ! ice, so the subcycles stop streaming the ice-free ocean.  The skip
+    ! tests stay either way -- aList is the union of iceTmask and iceUmask,
+    ! and a cell can be in it without being active this subcycle.
+    integer(kind=int_kind), intent(in) :: aList(:)
     integer(kind=int_kind), intent(in), dimension(:), contiguous :: nw,sw,sse
     logical(kind=log_kind), intent(in), dimension(:), contiguous :: skipme
     real   (kind=dbl_kind), intent(in), dimension(:), contiguous :: uarear, rheofactU
 
   ! local variables
-    integer (kind=int_kind) :: iw
+    integer (kind=int_kind) :: iw, n
     real (kind=dbl_kind) ::                 &
       tmp_str2_nw,tmp_str3_sse,tmp_str4_sw, &
       tmp_str6_sse,tmp_str7_nw,tmp_str8_sw
@@ -648,14 +668,15 @@ module ice_dyn_core1d
 #else
     !$omp parallel do schedule(static)                                   &
     !$omp default(none)                                                   &
-    !$omp private(iw, tmp_str2_nw,tmp_str3_sse,tmp_str4_sw,               &
+    !$omp private(iw, n, tmp_str2_nw,tmp_str3_sse,tmp_str4_sw,               &
     !$omp         tmp_str6_sse,tmp_str7_nw,tmp_str8_sw)                   &
     !$omp shared(strintx,strinty,str1,str2,str3,str4,str5,str6,str7,str8, &
     !$omp        rheofactU,                                               &
-    !$omp        nw,sw,sse,skipme, uarear, lb,ub)
+    !$omp        nw,sw,sse,skipme, uarear, lb,ub,aList)
 #endif
 
-    do iw = lb, ub
+    do n = lb, ub
+      iw = aList(n)
       if (skipme(iw)) cycle
 
       tmp_str2_nw = str2(nw(iw))

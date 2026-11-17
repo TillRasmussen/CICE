@@ -16,7 +16,7 @@ module ice_dyn_evp1d
   use ice_domain_size, only: max_blocks, nx_global, ny_global
   use ice_fileunits, only: nu_diag
   use ice_exit, only: abort_ice
-  use ice_dyn_shared, only: rheo_area_min, free_drift_approx
+  use ice_dyn_shared, only: rheo_area_min, free_drift_approx, evp1d_reorder
 
   !- directives ----------------------------------------------------------------
   implicit none
@@ -32,6 +32,14 @@ module ice_dyn_evp1d
   ! nx_global+2*nghost, ny_global+2*nghost
   ! nactive are number of active points (both t and u). navel is number of active
   integer(kind=int_kind), save :: nx, ny, nActive, navel, nallocated
+  ! Visit list for the kernels.  With evp1d_reorder off it is the identity
+  ! over nActive; with it on, only the slots carrying ice, and nIce is how
+  ! many.  A visit list, NOT a compacted layout: the twelve stresses are
+  ! persistent subcycle state and the static metrics cannot be permuted at
+  ! all, so nothing moves -- only the traversal changes.
+  integer(kind=int_kind), save :: nIce = 0
+  logical(kind=log_kind), save :: first_reorder = .true.
+  integer(kind=int_kind), allocatable, dimension(:) :: aList
 
   ! indexes
   integer(kind=int_kind), allocatable, dimension(:,:) :: iwidx
@@ -267,7 +275,7 @@ module ice_dyn_evp1d
 
     ltripole = (trim(ns_boundary_type) == 'tripole')
        do ksub = 1,ndte        ! subcycling
-          call stress_1d (ee, ne, se, 1, nActive,                                    &
+          call stress_1d (ee, ne, se, 1, nIce, aList,                                    &
                           uvel, vvel, dxT_1d, dyT_1d, skipTcell, strength,           &
                           HTE_1d, HTN_1d, HTEm1_1d, HTNm1_1d,                        &
                           stressp_1,  stressp_2,  stressp_3,  stressp_4,             &
@@ -275,7 +283,7 @@ module ice_dyn_evp1d
                           stress12_1, stress12_2, stress12_3, stress12_4,            &
                           str1, str2, str3, str4, str5, str6, str7, str8)
 
-          call stepu_1d  (1, nActive, cdn_ocn, aiu, uocn, vocn,                         &
+          call stepu_1d  (1, nIce, aList, cdn_ocn, aiu, uocn, vocn,                         &
                           waterxU, wateryU, forcexU, forceyU, umassdti, fmU, uarear_1d, &
                           uvel_init, vvel_init, uvel, vvel,                             &
                           str1, str2, str3, str4, str5, str6, str7, str8,               &
@@ -286,7 +294,7 @@ module ice_dyn_evp1d
        call evp1d_tripole_stress()
        ! This can be skipped if diagnostics of strintx and strinty is not needed
        ! They will either both be calculated or not.
-       call calc_diag_1d(1        , nActive  , &
+       call calc_diag_1d(1   , nIce  , aList, &
                          uarear_1d, skipUcell, &
                          str1     , str2     , &
                          str3     , str4     , &
@@ -429,11 +437,20 @@ module ice_dyn_evp1d
              strintxU (1:na0), strintyU (1:na0), &
              Tbu      (1:na0), Cb       (1:na0), &
              uvel_init(1:na0), vvel_init(1:na0), &
+             aList    (1:na0),                   &
              stat=ierr)
 
     if (ierr/=0) then
        call abort_ice(subname//' ERROR: allocating', file=__FILE__, line=__LINE__)
     endif
+
+    ! The identity, which is what the kernels walk when evp1d_reorder is off.
+    ! Written once here rather than rebuilt every timestep: with the flag off
+    ! the list never changes.
+    do ierr = 1, na0
+       aList(ierr) = ierr
+    enddo
+    nIce = na0
 
   end subroutine evp1d_alloc_static_na
 
@@ -539,6 +556,11 @@ module ice_dyn_evp1d
       j = indxtj(iw)
       if ( iceTmask(i,j) .or. iceUmask(i,j)) then
          niw=niw+1
+         ! ⚠ The UNION, not iceTmask alone.  iceTmask comes from aice and
+         ! iceUmask from aice_init -- two different snapshots -- so iceUmask
+         ! is true at a few cells where iceTmask is false.  Dropping those
+         ! would leave stepu never updating their velocity, silently.
+         if (evp1d_reorder) aList(niw) = iw
       endif
       if (.not. (iceTmask(i,j))) skipTcell(iw)=.true.
       if (.not. (iceUmask(i,j))) skipUcell(iw)=.true.
@@ -548,6 +570,21 @@ module ice_dyn_evp1d
       if (i > nx - nghost) skipUcell(iw)=.true.
       if (j > ny - nghost) skipUcell(iw)=.true.
     enddo
+
+    if (evp1d_reorder) then
+       nIce = niw
+       ! Once, on the first step: the compaction ratio is the whole point of
+       ! the flag and it is entirely domain-dependent.  A basin that is mostly
+       ! ice gains nothing and pays one extra integer stream; a global domain,
+       ! where the ice-free tropics are most of the ocean, is where it pays.
+       if (first_reorder) then
+          first_reorder = .false.
+          write(nu_diag,*) subname//' evp1d_reorder: ', niw, ' of ', na0, &
+                           ' slots carry ice'
+       endif
+    else
+       nIce = na0
+    endif
     !    write(nu_diag,*) 'number of points and Active points', na0, niw
 
   end subroutine set_skipMe
