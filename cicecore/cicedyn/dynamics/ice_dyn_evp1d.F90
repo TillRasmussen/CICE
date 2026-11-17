@@ -30,10 +30,10 @@ module ice_dyn_evp1d
   !- private vars --------------------------------------------------------------
   ! nx and ny are module variables for arrays after gather (G_*) Dimension according to CICE is
   ! nx_global+2*nghost, ny_global+2*nghost
-  ! nactive are number of active points (both t and u). navel is number of active
-  integer(kind=int_kind), save :: nx, ny, nActive, navel, nallocated
+  ! nactive are number of active points (both t and u). nStored_TU_glob is number of active
+  integer(kind=int_kind), save :: nx, ny, nActive_TU_glob, nStored_TU_glob, nallocated
   ! Visit list for the kernels.  With evp1d_reorder off it is the identity
-  ! over nActive; with it on, only the slots carrying ice, and nIce is how
+  ! over nActive_TU_glob; with it on, only the slots carrying ice, and nIce is how
   ! many.  A visit list, NOT a compacted layout: the twelve stresses are
   ! persistent subcycle state and the static metrics cannot be permuted at
   ! all, so nothing moves -- only the traversal changes.
@@ -48,7 +48,7 @@ module ice_dyn_evp1d
   integer(kind=int_kind), allocatable, dimension(:)   :: indxti, indxtj, indxTij
   ! Scratch map over the gathered grid, linear index i+(j-1)*nx -> slot.
   ! -1 marks a cell the solver needs before slots are handed out, 0 a cell it
-  ! does not. Built by calc_navel, consumed and released by convert_2d_1d_init,
+  ! does not. Built by calc_nStoredTU, consumed and released by convert_2d_1d_init,
   ! so it exists only during init and only on the master task.
   integer(kind=int_kind), allocatable, dimension(:)   :: ijslot
 
@@ -118,15 +118,15 @@ module ice_dyn_evp1d
     ! calculate number of water points (T and U). Only needed for the static version
     ! tmask in ocean/ice
     if (my_task == master_task) then
-      call calc_nActiveTU(G_tmask,nActive)
-      call evp1d_alloc_static_na(nActive)
-      call calc_2d_indices_init(nActive, G_tmask)
-      call calc_navel(nActive, navel)
-      call evp1d_alloc_static_navel(navel)
-      call numainit(1,nActive,navel+1)
-      call convert_2d_1d_init(nActive,G_HTE, G_HTN, G_uarear, G_dxT, G_dyT)
+      call calc_nActiveTU(G_tmask,nActive_TU_glob)
+      call evp1d_alloc_static_nActive(nActive_TU_glob)
+      call calc_2d_indices_init(nActive_TU_glob, G_tmask)
+      call calc_nStoredTU(nActive_TU_glob, nStored_TU_glob)
+      call evp1d_alloc_static_nStored(nStored_TU_glob)
+      call numainit(1,nActive_TU_glob,nStored_TU_glob)
+      call convert_2d_1d_init(nActive_TU_glob,G_HTE, G_HTN, G_uarear, G_dxT, G_dyT)
       call evp1d_alloc_static_halo()
-      ! The halo geometry -- indxTij, na0, navel and the boundary types -- does
+      ! The halo geometry -- indxTij, nActive_TU_glob0, nStored_TU_glob and the boundary types -- does
       ! not change, so the list is built once here.
       call halo_sweep(.false.)
       ! ijslot has served its purpose: slots are assigned and both halo lists
@@ -226,9 +226,9 @@ module ice_dyn_evp1d
                     G_iceTmask,  G_iceUmask)
 
     if (my_task == master_task) then
-       call set_skipMe(G_iceTmask, G_iceUmask,nActive)
+       call set_skipMe(G_iceTmask, G_iceUmask,nActive_TU_glob)
        ! Map from 2d to 1d
-       call convert_2d_1d_dyn(nActive,                                                    &
+       call convert_2d_1d_dyn(nActive_TU_glob,                                                    &
                               G_stressp_1 , G_stressp_2 , G_stressp_3 ,  G_stressp_4,     &
                               G_stressm_1 , G_stressm_2 , G_stressm_3 ,  G_stressm_4,     &
                               G_stress12_1, G_stress12_2, G_stress12_3, G_stress12_4,     &
@@ -264,14 +264,14 @@ module ice_dyn_evp1d
        !$omp target update to(arlx1i,denom1,capping,deltaminEVP,e_factor,epp2i,brlx)
 #endif
        ! initialization of str? in order to avoid influence from old time steps
-       str1(1:navel+1)=c0
-       str2(1:navel+1)=c0
-       str3(1:navel+1)=c0
-       str4(1:navel+1)=c0
-       str5(1:navel+1)=c0
-       str6(1:navel+1)=c0
-       str7(1:navel+1)=c0
-       str8(1:navel+1)=c0
+       str1(1:nStored_TU_glob)=c0
+       str2(1:nStored_TU_glob)=c0
+       str3(1:nStored_TU_glob)=c0
+       str4(1:nStored_TU_glob)=c0
+       str5(1:nStored_TU_glob)=c0
+       str6(1:nStored_TU_glob)=c0
+       str7(1:nStored_TU_glob)=c0
+       str8(1:nStored_TU_glob)=c0
 
     ltripole = (trim(ns_boundary_type) == 'tripole')
        do ksub = 1,ndte        ! subcycling
@@ -310,7 +310,7 @@ module ice_dyn_evp1d
        !$omp end target data
 #endif
        ! Map results back to 2d
-       call convert_1d_2d_dyn(nActive, navel,                                         &
+       call convert_1d_2d_dyn(nActive_TU_glob, nStored_TU_glob,                                         &
                               G_stressp_1 , G_stressp_2 , G_stressp_3 , G_stressp_4 , &
                               G_stressm_1 , G_stressm_2 , G_stressm_3 , G_stressm_4 , &
                               G_stress12_1, G_stress12_2, G_stress12_3, G_stress12_4, &
@@ -334,19 +334,19 @@ module ice_dyn_evp1d
                      G_strintxU  , G_strintyU  , G_uvel      , G_vvel      , &
                      G_taubxU    , G_taubyU)
     ! calculate number of active points. allocate if initial or if array size should increase
-    ! call calc_nActiveTU(iceTmask_log,nActive, iceUmask)
+    ! call calc_nActiveTU(iceTmask_log,nActive_TU_glob, iceUmask)
     ! if (nActiveold ==0) then ! first
-    !     call evp_1d_alloc(nActive, nActive,nx,ny)
-    !     nactiveold=nActive+buf1d ! allocate
+    !     call evp_1d_alloc(nActive_TU_glob, nActive_TU_glob,nx,ny)
+    !     nactiveold=nActive_TU_glob+buf1d ! allocate
     !     call init_unionTU(nx, ny, iceTmask_log,iceUmask)
-    ! else if (nactiveold < nActive) then
-    !     write(nu_diag,*) 'Warning nActive is bigger than old allocation. Need to re allocate'
+    ! else if (nactiveold < nActive_TU_glob) then
+    !     write(nu_diag,*) 'Warning nActive_TU_glob is bigger than old allocation. Need to re allocate'
     !     call evp_1d_dealloc() ! only deallocate if not first time step
-    !     call evp_1d_alloc(nActive, nActive,nx,ny)
-    !     nactiveold=nActive+buf1d ! allocate
+    !     call evp_1d_alloc(nActive_TU_glob, nActive_TU_glob,nx,ny)
+    !     nactiveold=nActive_TU_glob+buf1d ! allocate
     !     call init_unionTU(nx, ny, iceTmask_log,iceUmask)
     ! endif
-    ! call cp_2dto1d(nActive)
+    ! call cp_2dto1d(nActive_TU_glob)
     ! FIXME THIS IS THE LOGIC FOR RE ALLOCATION IF NEEDED
     ! call add_1d(nx, ny, natmp, iceTmask_log, iceUmask, ts)
 
@@ -367,15 +367,15 @@ module ice_dyn_evp1d
 
 !=============================================================================
 
-  subroutine evp1d_alloc_static_na(na0)
+  subroutine evp1d_alloc_static_nActive(nActive_TU_glob0)
     implicit none
 
-    integer(kind=int_kind), intent(in) :: na0
+    integer(kind=int_kind), intent(in) :: nActive_TU_glob0
     integer(kind=int_kind) :: ierr
-    character(len=*), parameter :: subname = '(evp1d_alloc_static_na)'
+    character(len=*), parameter :: subname = '(evp1d_alloc_static_nActive)'
 
-    allocate(skipTcell(1:na0),  &
-             skipUcell(1:na0),  &
+    allocate(skipTcell(1:nActive_TU_glob0),  &
+             skipUcell(1:nActive_TU_glob0),  &
              iwidx(1:nx,1:ny),  &
              stat=ierr)
 
@@ -383,61 +383,61 @@ module ice_dyn_evp1d
        call abort_ice(subname//' ERROR: allocating', file=__FILE__, line=__LINE__)
     endif
 
-    allocate(indxTi(1:na0), &
-             indxTj(1:na0), &
+    allocate(indxTi(1:nActive_TU_glob0), &
+             indxTj(1:nActive_TU_glob0), &
              stat=ierr)
 
     if (ierr/=0) then
        call abort_ice(subname//' ERROR: allocating', file=__FILE__, line=__LINE__)
     endif
 
-    allocate(ee(1:na0) , &
-             ne(1:na0) , &
-             se(1:na0) , &
-             nw(1:na0) , &
-             sw(1:na0) , &
-             sse(1:na0), &
+    allocate(ee(1:nActive_TU_glob0) , &
+             ne(1:nActive_TU_glob0) , &
+             se(1:nActive_TU_glob0) , &
+             nw(1:nActive_TU_glob0) , &
+             sw(1:nActive_TU_glob0) , &
+             sse(1:nActive_TU_glob0), &
              stat=ierr)
 
     if (ierr/=0) then
        call abort_ice(subname//' ERROR: allocating', file=__FILE__, line=__LINE__)
     endif
 
-    allocate( HTE_1d    (1:na0), &
-              HTN_1d    (1:na0), &
-              HTEm1_1d  (1:na0), &
-              HTNm1_1d  (1:na0), &
-              dxT_1d    (1:na0), &
-              dyT_1d    (1:na0), &
-              strength  (1:na0), &
-              stressp_1 (1:na0), &
-              stressp_2 (1:na0), &
-              stressp_3 (1:na0), &
-              stressp_4 (1:na0), &
-              stressm_1 (1:na0), &
-              stressm_2 (1:na0), &
-              stressm_3 (1:na0), &
-              stressm_4 (1:na0), &
-              stress12_1(1:na0), &
-              stress12_2(1:na0), &
-              stress12_3(1:na0), &
-              stress12_4(1:na0), &
+    allocate( HTE_1d    (1:nActive_TU_glob0), &
+              HTN_1d    (1:nActive_TU_glob0), &
+              HTEm1_1d  (1:nActive_TU_glob0), &
+              HTNm1_1d  (1:nActive_TU_glob0), &
+              dxT_1d    (1:nActive_TU_glob0), &
+              dyT_1d    (1:nActive_TU_glob0), &
+              strength  (1:nActive_TU_glob0), &
+              stressp_1 (1:nActive_TU_glob0), &
+              stressp_2 (1:nActive_TU_glob0), &
+              stressp_3 (1:nActive_TU_glob0), &
+              stressp_4 (1:nActive_TU_glob0), &
+              stressm_1 (1:nActive_TU_glob0), &
+              stressm_2 (1:nActive_TU_glob0), &
+              stressm_3 (1:nActive_TU_glob0), &
+              stressm_4 (1:nActive_TU_glob0), &
+              stress12_1(1:nActive_TU_glob0), &
+              stress12_2(1:nActive_TU_glob0), &
+              stress12_3(1:nActive_TU_glob0), &
+              stress12_4(1:nActive_TU_glob0), &
               stat=ierr)
 
     if (ierr/=0) then
        call abort_ice(subname//' ERROR: allocating', file=__FILE__, line=__LINE__)
     endif
 
-    allocate(cdn_ocn  (1:na0), aiu      (1:na0), rheofactU(1:na0), &
-             uocn     (1:na0), vocn     (1:na0), &
-             waterxU  (1:na0), wateryU  (1:na0), &
-             forcexU  (1:na0), forceyU  (1:na0), &
-             umassdti (1:na0), fmU      (1:na0), &
-             uarear_1d(1:na0),                   &
-             strintxU (1:na0), strintyU (1:na0), &
-             Tbu      (1:na0), Cb       (1:na0), &
-             uvel_init(1:na0), vvel_init(1:na0), &
-             aList    (1:na0),                   &
+    allocate(cdn_ocn  (1:nActive_TU_glob0), aiu      (1:nActive_TU_glob0), rheofactU(1:nActive_TU_glob0), &
+             uocn     (1:nActive_TU_glob0), vocn     (1:nActive_TU_glob0), &
+             waterxU  (1:nActive_TU_glob0), wateryU  (1:nActive_TU_glob0), &
+             forcexU  (1:nActive_TU_glob0), forceyU  (1:nActive_TU_glob0), &
+             umassdti (1:nActive_TU_glob0), fmU      (1:nActive_TU_glob0), &
+             uarear_1d(1:nActive_TU_glob0),                   &
+             strintxU (1:nActive_TU_glob0), strintyU (1:nActive_TU_glob0), &
+             Tbu      (1:nActive_TU_glob0), Cb       (1:nActive_TU_glob0), &
+             uvel_init(1:nActive_TU_glob0), vvel_init(1:nActive_TU_glob0), &
+             aList    (1:nActive_TU_glob0),                   &
              stat=ierr)
 
     if (ierr/=0) then
@@ -447,36 +447,36 @@ module ice_dyn_evp1d
     ! The identity, which is what the kernels walk when evp1d_reorder is off.
     ! Written once here rather than rebuilt every timestep: with the flag off
     ! the list never changes.
-    do ierr = 1, na0
+    do ierr = 1, nActive_TU_glob0
        aList(ierr) = ierr
     enddo
-    nIce = na0
+    nIce = nActive_TU_glob0
 
-  end subroutine evp1d_alloc_static_na
+  end subroutine evp1d_alloc_static_nActive
 
 !=============================================================================
 
-  subroutine evp1d_alloc_static_navel(navel0)
+  subroutine evp1d_alloc_static_nStored(nStored_TU_glob0)
     implicit none
 
-    integer(kind=int_kind), intent(in) :: navel0
+    integer(kind=int_kind), intent(in) :: nStored_TU_glob0
     integer(kind=int_kind) :: ierr
-    character(len=*), parameter :: subname = '(evp1d_alloc_static_na)'
+    character(len=*), parameter :: subname = '(evp1d_alloc_static_nStored)'
 
-    ! navel0+1: the last slot is the dead slot.  Directions that leave the
+    ! nStored_TU_glob0: the last slot is the dead slot.  Directions that leave the
     ! grid point at it, so the kernels can read a neighbour unconditionally
     ! and get zero -- the same convention the compressed 2-D layout uses.
-    allocate(str1(1:navel0+1)   , str2(1:navel0+1), str3(1:navel0+1), &
-             str4(1:navel0+1)   , str5(1:navel0+1), str6(1:navel0+1), &
-             str7(1:navel0+1)   , str8(1:navel0+1),                   &
-             indxTij(1:navel0+1), uvel(1:navel0+1), vvel(1:navel0+1), &
+    allocate(str1(1:nStored_TU_glob0)   , str2(1:nStored_TU_glob0), str3(1:nStored_TU_glob0), &
+             str4(1:nStored_TU_glob0)   , str5(1:nStored_TU_glob0), str6(1:nStored_TU_glob0), &
+             str7(1:nStored_TU_glob0)   , str8(1:nStored_TU_glob0),                   &
+             indxTij(1:nStored_TU_glob0), uvel(1:nStored_TU_glob0), vvel(1:nStored_TU_glob0), &
              stat=ierr)
 
     if (ierr/=0) then
        call abort_ice(subname//' ERROR: allocating', file=__FILE__, line=__LINE__)
     endif
 
-  end subroutine evp1d_alloc_static_navel
+  end subroutine evp1d_alloc_static_nStored
 
 !=============================================================================
 
@@ -500,27 +500,27 @@ module ice_dyn_evp1d
 
 !=============================================================================
 
-  subroutine calc_nActiveTU(Tmask,na0, Umask)
+  subroutine calc_nActiveTU(Tmask,nActive_TU_glob0, Umask)
 
     ! Calculate number of active points with a given mask.
 
     implicit none
     logical(kind=log_kind), intent(in) :: Tmask(:,:)
     logical(kind=log_kind), optional, intent(in) :: Umask(:,:)
-    integer(kind=int_kind), intent(out)  :: na0
+    integer(kind=int_kind), intent(out)  :: nActive_TU_glob0
     integer(kind=int_kind)              :: i,j
     character(len=*), parameter :: subname = '(calc_nActivceTU)'
 
     ! Same range as calc_2d_indices_init, which fills the index arrays this
     ! counts: ilo..ihi+1, one cell into the ghosts, where ihi is nx-nghost.
-    ! The two must agree or nActive exceeds what gets filled and the tail of
+    ! The two must agree or nActive_TU_glob exceeds what gets filled and the tail of
     ! indxti/indxtj is left at zero.
-    na0=0
+    nActive_TU_glob0=0
     if (present(Umask)) then
        do i=1+nghost,nx-nghost+1
        do j=1+nghost,ny-nghost+1
           if ((Tmask(i,j)) .or. (Umask(i,j))) then
-             na0=na0+1
+             nActive_TU_glob0=nActive_TU_glob0+1
           endif
        enddo
        enddo
@@ -528,7 +528,7 @@ module ice_dyn_evp1d
        do i=1+nghost,nx-nghost+1
        do j=1+nghost,ny-nghost+1
           if (Tmask(i,j)) then
-             na0=na0+1
+             nActive_TU_glob0=nActive_TU_glob0+1
           endif
        enddo
        enddo
@@ -538,37 +538,37 @@ module ice_dyn_evp1d
 
 !=============================================================================
 
-  subroutine set_skipMe(iceTmask, iceUmask,na0)
+  subroutine set_skipMe(iceTmask, iceUmask,nActive_TU_glob0)
 
     implicit none
 
     logical(kind=log_kind), intent(in) :: iceTmask(:,:), iceUmask(:,:)
-    integer(kind=int_kind), intent(in) :: na0
-    integer(kind=int_kind)              :: iw, i, j, niw
+    integer(kind=int_kind), intent(in) :: nActive_TU_glob0
+    integer(kind=int_kind)              :: is, i, j, niw
     character(len=*), parameter :: subname = '(set_skipMe)'
 
     skipUcell=.false.
     skipTcell=.false.
     niw=0
     ! first count
-    do iw=1, na0
-      i = indxti(iw)
-      j = indxtj(iw)
+    do is=1, nActive_TU_glob0
+      i = indxti(is)
+      j = indxtj(is)
       if ( iceTmask(i,j) .or. iceUmask(i,j)) then
          niw=niw+1
          ! ⚠ The UNION, not iceTmask alone.  iceTmask comes from aice and
          ! iceUmask from aice_init -- two different snapshots -- so iceUmask
          ! is true at a few cells where iceTmask is false.  Dropping those
          ! would leave stepu never updating their velocity, silently.
-         if (evp1d_reorder) aList(niw) = iw
+         if (evp1d_reorder) aList(niw) = is
       endif
-      if (.not. (iceTmask(i,j))) skipTcell(iw)=.true.
-      if (.not. (iceUmask(i,j))) skipUcell(iw)=.true.
+      if (.not. (iceTmask(i,j))) skipTcell(is)=.true.
+      if (.not. (iceUmask(i,j))) skipUcell(is)=.true.
       ! No U point outside ilo..ihi, jlo..jhi, which is where the 2-D solver
       ! steps U.  ihi is nx-nghost, so every ghost column past it is skipped,
       ! not just the outermost one -- the same one-ghost assumption as above.
-      if (i > nx - nghost) skipUcell(iw)=.true.
-      if (j > ny - nghost) skipUcell(iw)=.true.
+      if (i > nx - nghost) skipUcell(is)=.true.
+      if (j > ny - nghost) skipUcell(is)=.true.
     enddo
 
     if (evp1d_reorder) then
@@ -579,25 +579,25 @@ module ice_dyn_evp1d
        ! where the ice-free tropics are most of the ocean, is where it pays.
        if (first_reorder) then
           first_reorder = .false.
-          write(nu_diag,*) subname//' evp1d_reorder: ', niw, ' of ', na0, &
+          write(nu_diag,*) subname//' evp1d_reorder: ', niw, ' of ', nActive_TU_glob0, &
                            ' slots carry ice'
        endif
     else
-       nIce = na0
+       nIce = nActive_TU_glob0
     endif
-    !    write(nu_diag,*) 'number of points and Active points', na0, niw
+    !    write(nu_diag,*) 'number of points and Active points', nActive_TU_glob0, niw
 
   end subroutine set_skipMe
 
 !=============================================================================
 
-  subroutine calc_2d_indices_init(na0, Tmask)
+  subroutine calc_2d_indices_init(nActive_TU_glob0, Tmask)
     ! All points are active. Need to find neighbors.
     ! This should include de selection of u points.
 
     implicit none
 
-    integer(kind=int_kind), intent(in) :: na0
+    integer(kind=int_kind), intent(in) :: nActive_TU_glob0
     ! nx, ny
     logical(kind=log_kind), dimension(:,:), intent(in) :: Tmask
 
@@ -821,33 +821,33 @@ module ice_dyn_evp1d
 
 !=============================================================================
 
-  subroutine convert_2d_1d_init(na0, G_HTE, G_HTN, G_uarear,  G_dxT, G_dyT)
+  subroutine convert_2d_1d_init(nActive_TU_glob0, G_HTE, G_HTN, G_uarear,  G_dxT, G_dyT)
 
      implicit none
 
-     integer(kind=int_kind), intent(in) ::  na0
+     integer(kind=int_kind), intent(in) ::  nActive_TU_glob0
      real (kind=dbl_kind), dimension(:, :), intent(in) :: G_HTE, G_HTN, G_uarear, G_dxT, G_dyT
 
      ! local variables
 
-     integer(kind=int_kind) :: iw, lo, up, j, i, ij, islot
+     integer(kind=int_kind) :: is, lo, up, j, i, ij, islot
 
      character(len=*), parameter :: subname = '(convert_2d_1d_init)'
 
      ! Hand out the slots.  The layout is the one the kernels rely on: the
-     ! active T and U points first, 1..na0, in the order calc_2d_indices_init
+     ! active T and U points first, 1..nActive_TU_glob0, in the order calc_2d_indices_init
      ! found them, then the cells that are only ever read.  stress_1d and
-     ! stepu_1d both run over 1..na0, so nothing downstream has to know where
-     ! the halo tail begins beyond na0 itself.
-     do iw = 1, na0
-        ij = indxti(iw) + (indxtj(iw) - 1) * nx
-        ijslot(ij)  = iw
-        indxTij(iw) = ij
+     ! stepu_1d both run over 1..nActive_TU_glob0, so nothing downstream has to know where
+     ! the halo tail begins beyond nActive_TU_glob0 itself.
+     do is = 1, nActive_TU_glob0
+        ij = indxti(is) + (indxtj(is) - 1) * nx
+        ijslot(ij)  = is
+        indxTij(is) = ij
      end do
 
      ! The read-only cells take the slots after them, in ascending linear
      ! index -- the same order the sorted union used to produce.
-     islot = na0
+     islot = nActive_TU_glob0
      do ij = 1, nx * ny
         if (ijslot(ij) == -1) then
            islot = islot + 1
@@ -855,53 +855,53 @@ module ice_dyn_evp1d
            indxTij(islot) = ij
         endif
      end do
-     if (islot /= navel) then
-        call abort_ice(subname//' ERROR: slot count does not match navel', &
+     if (islot /= nStored_TU_glob - 1) then
+        call abort_ice(subname//' ERROR: slot count does not match nStored_TU_glob', &
                        file=__FILE__, line=__LINE__)
      endif
 
      ! Neighbour slots.  A direction that leaves the grid takes the dead slot
-     ! at navel+1, which holds zero and is never written.  That only happens
+     ! at nStored_TU_glob, which holds zero and is never written.  That only happens
      ! for nw/sw/sse at i == nx or j == ny, where the cell has no U point to
      ! step -- skipUcell is already .true. there, matching the 2-D solver,
      ! which computes stress over jlo..jhi+1 but steps U only over jlo..jhi.
      ! ee/ne/se step towards i-1 and j-1 and active T cells start at
      ! 1+nghost, so for nghost >= 1 they always land inside the grid.
-     do iw = 1, na0
-        i = indxti(iw)
-        j = indxtj(iw)
-        ee (iw) = slot_of(i - 1, j    , navel + 1)
-        ne (iw) = slot_of(i - 1, j - 1, navel + 1)
-        se (iw) = slot_of(i    , j - 1, navel + 1)
-        nw (iw) = slot_of(i + 1, j    , navel + 1)
-        sw (iw) = slot_of(i + 1, j + 1, navel + 1)
-        sse(iw) = slot_of(i    , j + 1, navel + 1)
+     do is = 1, nActive_TU_glob0
+        i = indxti(is)
+        j = indxtj(is)
+        ee (is) = slot_of(i - 1, j    , nStored_TU_glob)
+        ne (is) = slot_of(i - 1, j - 1, nStored_TU_glob)
+        se (is) = slot_of(i    , j - 1, nStored_TU_glob)
+        nw (is) = slot_of(i + 1, j    , nStored_TU_glob)
+        sw (is) = slot_of(i + 1, j + 1, nStored_TU_glob)
+        sse(is) = slot_of(i    , j + 1, nStored_TU_glob)
      end do
 
-     !tar      i$OMP PARALLEL PRIVATE(iw, lo, up, j, i)
+     !tar      i$OMP PARALLEL PRIVATE(is, lo, up, j, i)
      ! write 1D arrays from 2D arrays (target points)
-     !tar      call domp_get_domain(1, na0, lo, up)
+     !tar      call domp_get_domain(1, nActive_TU_glob0, lo, up)
      lo=1
-     up=na0
-     do iw = 1, na0
+     up=nActive_TU_glob0
+     do is = 1, nActive_TU_glob0
         ! get 2D indices
-        i = indxti(iw)
-        j = indxtj(iw)
+        i = indxti(is)
+        j = indxtj(is)
         ! map
-        uarear_1d(iw)  = G_uarear(i, j)
-        dxT_1d(iw)     = G_dxT(i, j)
-        dyT_1d(iw)     = G_dyT(i, j)
-        HTE_1d(iw)     = G_HTE(i, j)
-        HTN_1d(iw)     = G_HTN(i, j)
-        HTEm1_1d(iw)   = G_HTE(i - 1, j)
-        HTNm1_1d(iw)   = G_HTN(i, j - 1)
+        uarear_1d(is)  = G_uarear(i, j)
+        dxT_1d(is)     = G_dxT(i, j)
+        dyT_1d(is)     = G_dyT(i, j)
+        HTE_1d(is)     = G_HTE(i, j)
+        HTN_1d(is)     = G_HTN(i, j)
+        HTEm1_1d(is)   = G_HTE(i - 1, j)
+        HTNm1_1d(is)   = G_HTN(i, j - 1)
      end do
 
   end subroutine convert_2d_1d_init
 
 !=============================================================================
 
-  subroutine convert_2d_1d_dyn(na0         ,                                           &
+  subroutine convert_2d_1d_dyn(nActive_TU_glob0         ,                                           &
                                G_stressp_1 , G_stressp_2 , G_stressp_3 , G_stressp_4 , &
                                G_stressm_1 , G_stressm_2 , G_stressm_3 , G_stressm_4 , &
                                G_stress12_1, G_stress12_2, G_stress12_3, G_stress12_4, &
@@ -912,7 +912,7 @@ module ice_dyn_evp1d
 
      implicit none
 
-     integer(kind=int_kind), intent(in) ::  na0
+     integer(kind=int_kind), intent(in) ::  nActive_TU_glob0
 
      ! nx, ny
      real(kind=dbl_kind), dimension(:, :), intent(in) :: &
@@ -924,71 +924,71 @@ module ice_dyn_evp1d
         G_forceyU   , G_umassdti  , G_fmU       , G_Tbu      , &
         G_uvel      , G_vvel
 
-     integer(kind=int_kind) ::  lo, up, iw, i, j
+     integer(kind=int_kind) ::  lo, up, is, i, j
      character(len=*), parameter :: subname = '(convert_2d_1d_dyn)'
 
      lo=1
-     up=na0
-     do iw = 1, na0
+     up=nActive_TU_glob0
+     do is = 1, nActive_TU_glob0
         ! get 2D indices
-        i = indxti(iw)
-        j = indxtj(iw)
+        i = indxti(is)
+        j = indxtj(is)
         ! map
-        stressp_1(iw)  = G_stressp_1(i, j)
-        stressp_2(iw)  = G_stressp_2(i, j)
-        stressp_3(iw)  = G_stressp_3(i, j)
-        stressp_4(iw)  = G_stressp_4(i, j)
-        stressm_1(iw)  = G_stressm_1(i, j)
-        stressm_2(iw)  = G_stressm_2(i, j)
-        stressm_3(iw)  = G_stressm_3(i, j)
-        stressm_4(iw)  = G_stressm_4(i, j)
-        stress12_1(iw) = G_stress12_1(i, j)
-        stress12_2(iw) = G_stress12_2(i, j)
-        stress12_3(iw) = G_stress12_3(i, j)
-        stress12_4(iw) = G_stress12_4(i, j)
-        strength(iw)   = G_strength(i,j)
-        cdn_ocn(iw)    = G_cdn_ocn(i, j)
-        aiu(iw)        = G_aiu(i, j)
+        stressp_1(is)  = G_stressp_1(i, j)
+        stressp_2(is)  = G_stressp_2(i, j)
+        stressp_3(is)  = G_stressp_3(i, j)
+        stressp_4(is)  = G_stressp_4(i, j)
+        stressm_1(is)  = G_stressm_1(i, j)
+        stressm_2(is)  = G_stressm_2(i, j)
+        stressm_3(is)  = G_stressm_3(i, j)
+        stressm_4(is)  = G_stressm_4(i, j)
+        stress12_1(is) = G_stress12_1(i, j)
+        stress12_2(is) = G_stress12_2(i, j)
+        stress12_3(is) = G_stress12_3(i, j)
+        stress12_4(is) = G_stress12_4(i, j)
+        strength(is)   = G_strength(i,j)
+        cdn_ocn(is)    = G_cdn_ocn(i, j)
+        aiu(is)        = G_aiu(i, j)
         ! The rule dyn_prep2 uses: 1, or 0 where the U cell carries less ice
         ! than rheo_area_min.  #1133 added this factor to the 2-D stepu but
         ! not to this kernel, so the two solvers disagreed on any grid with
         ! marginal ice -- gx3 shows it, a solid-ice box grid does not.
         if (free_drift_approx .and. G_aiu(i, j) <= rheo_area_min) then
-           rheofactU(iw) = c0
+           rheofactU(is) = c0
         else
-           rheofactU(iw) = c1
+           rheofactU(is) = c1
         endif
-        uocn(iw)       = G_uocn(i, j)
-        vocn(iw)       = G_vocn(i, j)
-        waterxU(iw)    = G_waterxU(i, j)
-        wateryU(iw)    = G_wateryU(i, j)
-        forcexU(iw)    = G_forcexU(i, j)
-        forceyU(iw)    = G_forceyU(i, j)
-        umassdti(iw)   = G_umassdti(i, j)
-        fmU(iw)        = G_fmU(i, j)
-        strintxU(iw)   = C0
-        strintyU(iw)   = C0
-        Tbu(iw)        = G_Tbu(i, j)
-        Cb(iw)         = c0
-        uvel(iw)       = G_uvel(i,j)
-        vvel(iw)       = G_vvel(i,j)
-        uvel_init(iw)  = G_uvel(i,j)
-        vvel_init(iw)  = G_vvel(i,j)
+        uocn(is)       = G_uocn(i, j)
+        vocn(is)       = G_vocn(i, j)
+        waterxU(is)    = G_waterxU(i, j)
+        wateryU(is)    = G_wateryU(i, j)
+        forcexU(is)    = G_forcexU(i, j)
+        forceyU(is)    = G_forceyU(i, j)
+        umassdti(is)   = G_umassdti(i, j)
+        fmU(is)        = G_fmU(i, j)
+        strintxU(is)   = C0
+        strintyU(is)   = C0
+        Tbu(is)        = G_Tbu(i, j)
+        Cb(is)         = c0
+        uvel(is)       = G_uvel(i,j)
+        vvel(is)       = G_vvel(i,j)
+        uvel_init(is)  = G_uvel(i,j)
+        vvel_init(is)  = G_vvel(i,j)
      end do
 
      ! Halos can potentially have values of u and v
-     do iw=na0+1,navel
-        j = int((indxTij(iw) - 1) / (nx)) + 1
-        i =      indxTij(iw) - (j - 1) * nx
-        uvel(iw)=G_uvel(i,j)
-        vvel(iw)=G_vvel(i,j)
+     do is=nActive_TU_glob0+1,nStored_TU_glob-1
+        j = int((indxTij(is) - 1) / (nx)) + 1
+        i =      indxTij(is) - (j - 1) * nx
+        uvel(is)=G_uvel(i,j)
+        vvel(is)=G_vvel(i,j)
      end do
 
   end subroutine convert_2d_1d_dyn
 
 !=============================================================================
 
-  subroutine convert_1d_2d_dyn(na0         , navel0      ,                             &
+  subroutine convert_1d_2d_dyn(nActive_TU_glob0         , nStored_TU_glob0      ,                             &
                                G_stressp_1 , G_stressp_2 , G_stressp_3 , G_stressp_4 , &
                                G_stressm_1 , G_stressm_2 , G_stressm_3 , G_stressm_4 , &
                                G_stress12_1, G_stress12_2, G_stress12_3, G_stress12_4, &
@@ -1001,7 +1001,7 @@ module ice_dyn_evp1d
 
      implicit none
 
-     integer(kind=int_kind), intent(in) ::  na0, navel0
+     integer(kind=int_kind), intent(in) ::  nActive_TU_glob0, nStored_TU_glob0
      ! nx, ny
      real(kind=dbl_kind), dimension(:, :), intent(inout) ::     &
         G_stressp_1 , G_stressp_2 , G_stressp_3 , G_stressp_4 , &
@@ -1014,7 +1014,7 @@ module ice_dyn_evp1d
         G_Tbu       , G_uvel      , G_vvel      , G_taubxU    , &
         G_taubyU
 
-     integer(kind=int_kind) ::  lo, up, iw, i, j
+     integer(kind=int_kind) ::  lo, up, is, i, j
      character(len=*), parameter :: subname = '(convert_1d_2d_dyn)'
 
      G_stressp_1  = c0
@@ -1059,42 +1059,42 @@ module ice_dyn_evp1d
      ! where the solver does own the cell.
 
      lo=1
-     up=na0
-     do iw = lo, up
+     up=nActive_TU_glob0
+     do is = lo, up
         ! get 2D indices
-        i = indxti(iw)
-        j = indxtj(iw)
+        i = indxti(is)
+        j = indxtj(is)
         ! map to 2d
-        G_stressp_1 (i,j) = stressp_1(iw)
-        G_stressp_2 (i,j) = stressp_2(iw)
-        G_stressp_3 (i,j) = stressp_3(iw)
-        G_stressp_4 (i,j) = stressp_4(iw)
-        G_stressm_1 (i,j) = stressm_1(iw)
-        G_stressm_2 (i,j) = stressm_2(iw)
-        G_stressm_3 (i,j) = stressm_3(iw)
-        G_stressm_4 (i,j) = stressm_4(iw)
-        G_stress12_1(i,j) = stress12_1(iw)
-        G_stress12_2(i,j) = stress12_2(iw)
-        G_stress12_3(i,j) = stress12_3(iw)
-        G_stress12_4(i,j) = stress12_4(iw)
-        G_strintxU(i,j)   = strintxU(iw)
-        G_strintyU(i,j)   = strintyU (iw)
-        G_taubxU(i,j)     = -uvel(iw)*Cb(iw)
-        G_taubyU(i,j)     = -vvel(iw)*Cb(iw)
-        G_uvel(i,j)       = uvel(iw)
-        G_vvel(i,j)       = vvel(iw)
+        G_stressp_1 (i,j) = stressp_1(is)
+        G_stressp_2 (i,j) = stressp_2(is)
+        G_stressp_3 (i,j) = stressp_3(is)
+        G_stressp_4 (i,j) = stressp_4(is)
+        G_stressm_1 (i,j) = stressm_1(is)
+        G_stressm_2 (i,j) = stressm_2(is)
+        G_stressm_3 (i,j) = stressm_3(is)
+        G_stressm_4 (i,j) = stressm_4(is)
+        G_stress12_1(i,j) = stress12_1(is)
+        G_stress12_2(i,j) = stress12_2(is)
+        G_stress12_3(i,j) = stress12_3(is)
+        G_stress12_4(i,j) = stress12_4(is)
+        G_strintxU(i,j)   = strintxU(is)
+        G_strintyU(i,j)   = strintyU (is)
+        G_taubxU(i,j)     = -uvel(is)*Cb(is)
+        G_taubyU(i,j)     = -vvel(is)*Cb(is)
+        G_uvel(i,j)       = uvel(is)
+        G_vvel(i,j)       = vvel(is)
      end do
 
-     do iw=na0+1,navel0
-        j = int((indxTij(iw) - 1) / (nx)) + 1
-        i = indxTij(iw) - (j - 1) * nx
-        G_uvel(i,j)       = uvel(iw)
-        G_vvel(i,j)       = vvel(iw)
+     do is=nActive_TU_glob0+1,nStored_TU_glob0-1
+        j = int((indxTij(is) - 1) / (nx)) + 1
+        i = indxTij(is) - (j - 1) * nx
+        G_uvel(i,j)       = uvel(is)
+        G_vvel(i,j)       = vvel(is)
      end do
 
   end subroutine convert_1d_2d_dyn
 
-  subroutine calc_navel(na0, navel0)
+  subroutine calc_nStoredTU(nActive_TU_glob0, nStored_TU_glob0)
      ! Calculate number of active points, including halo points.
      !
      ! Marks every cell the 1-D solver touches -- each active T cell, plus the
@@ -1113,14 +1113,14 @@ module ice_dyn_evp1d
 
      implicit none
 
-     integer(kind=int_kind), intent(in) :: na0
-     integer(kind=int_kind), intent(out) :: navel0
+     integer(kind=int_kind), intent(in) :: nActive_TU_glob0
+     integer(kind=int_kind), intent(out) :: nStored_TU_glob0
 
      ! local variables
 
-     integer(kind=int_kind) :: iw, i, j, ij, ierr
+     integer(kind=int_kind) :: is, i, j, ij, ierr
 
-     character(len=*), parameter :: subname = '(calc_navel)'
+     character(len=*), parameter :: subname = '(calc_nStoredTU)'
 
      allocate(ijslot(1:nx*ny), stat=ierr)
      if (ierr/=0) then
@@ -1129,9 +1129,9 @@ module ice_dyn_evp1d
 
      ijslot(:) = 0
 
-     do iw = 1, na0
-        i = indxti(iw)
-        j = indxtj(iw)
+     do is = 1, nActive_TU_glob0
+        i = indxti(is)
+        j = indxtj(is)
         ! No trailing backslashes in these comments: .F90 is preprocessed and
         ! cpp splices a line ending in one into the comment above it, which
         ! silently deletes the call.
@@ -1150,12 +1150,19 @@ module ice_dyn_evp1d
      ! kernels reach -- see halo_sweep
      call halo_sweep(.true.)
 
-     navel0 = 0
+     nStored_TU_glob0 = 0
      do ij = 1, nx * ny
-        if (ijslot(ij) /= 0) navel0 = navel0 + 1
+        if (ijslot(ij) /= 0) nStored_TU_glob0 = nStored_TU_glob0 + 1
      end do
 
-  end subroutine calc_navel
+     ! ⚠ Plus the dead slot.  nStored_TU_glob counts what is STORED, which
+     ! includes the one slot at the end that owns no cell and absorbs every
+     ! direction leaving the domain -- the same convention nStored_TU uses
+     ! for the 2-D layout.  Folding it in here removes the +1 that was
+     ! otherwise written out at every allocation and every slot_of fallback.
+     nStored_TU_glob0 = nStored_TU_glob0 + 1
+
+  end subroutine calc_nStoredTU
 
 !=======================================================================
 
@@ -1201,72 +1208,72 @@ module ice_dyn_evp1d
 
      implicit none
      integer(kind=int_kind),intent(in) :: lo,up,uu
-     integer(kind=int_kind) :: iw
+     integer(kind=int_kind) :: is
      character(len=*), parameter :: subname = '(numainit)'
 
-     !$omp parallel do schedule(runtime) private(iw)
-     do iw = lo,up
-        skipTcell(iw)=.false.
-        skipUcell(iw)=.false.
-        ee(iw)=0
-        ne(iw)=0
-        se(iw)=0
-        nw(iw)=0
-        sw(iw)=0
-        sse(iw)=0
-        aiu(iw)=c0
-        rheofactU(iw)=c1
-        Cb(iw)=c0
-        cdn_ocn(iw)=c0
-        dxT_1d(iw)=c0
-        dyT_1d(iw)=c0
-        fmU(iw)=c0
-        forcexU(iw)=c0
-        forceyU(iw)=c0
-        HTE_1d(iw)=c0
-        HTEm1_1d(iw)=c0
-        HTN_1d(iw)=c0
-        HTNm1_1d(iw)=c0
-        strength(iw)= c0
-        stress12_1(iw)=c0
-        stress12_2(iw)=c0
-        stress12_3(iw)=c0
-        stress12_4(iw)=c0
-        stressm_1(iw)=c0
-        stressm_2(iw)=c0
-        stressm_3(iw)=c0
-        stressm_4(iw)=c0
-        stressp_1(iw)=c0
-        stressp_2(iw)=c0
-        stressp_3(iw)=c0
-        stressp_4(iw)=c0
-        strintxU(iw)= c0
-        strintyU(iw)= c0
-        Tbu(iw)=c0
-        uarear_1d(iw)=c0
-        umassdti(iw)=c0
-        uocn(iw)=c0
-        uvel_init(iw)=c0
-        uvel(iw)=c0
-        vocn(iw)=c0
-        vvel_init(iw)=c0
-        vvel(iw)=c0
-        waterxU(iw)=c0
-        wateryU(iw)=c0
+     !$omp parallel do schedule(runtime) private(is)
+     do is = lo,up
+        skipTcell(is)=.false.
+        skipUcell(is)=.false.
+        ee(is)=0
+        ne(is)=0
+        se(is)=0
+        nw(is)=0
+        sw(is)=0
+        sse(is)=0
+        aiu(is)=c0
+        rheofactU(is)=c1
+        Cb(is)=c0
+        cdn_ocn(is)=c0
+        dxT_1d(is)=c0
+        dyT_1d(is)=c0
+        fmU(is)=c0
+        forcexU(is)=c0
+        forceyU(is)=c0
+        HTE_1d(is)=c0
+        HTEm1_1d(is)=c0
+        HTN_1d(is)=c0
+        HTNm1_1d(is)=c0
+        strength(is)= c0
+        stress12_1(is)=c0
+        stress12_2(is)=c0
+        stress12_3(is)=c0
+        stress12_4(is)=c0
+        stressm_1(is)=c0
+        stressm_2(is)=c0
+        stressm_3(is)=c0
+        stressm_4(is)=c0
+        stressp_1(is)=c0
+        stressp_2(is)=c0
+        stressp_3(is)=c0
+        stressp_4(is)=c0
+        strintxU(is)= c0
+        strintyU(is)= c0
+        Tbu(is)=c0
+        uarear_1d(is)=c0
+        umassdti(is)=c0
+        uocn(is)=c0
+        uvel_init(is)=c0
+        uvel(is)=c0
+        vocn(is)=c0
+        vvel_init(is)=c0
+        vvel(is)=c0
+        waterxU(is)=c0
+        wateryU(is)=c0
      enddo
      !$omp end parallel do
-     !$omp parallel do schedule(runtime) private(iw)
-     do iw = lo,uu
-        uvel(iw)=c0
-        vvel(iw)=c0
-        str1(iw)=c0
-        str2(iw)=c0
-        str3(iw)=c0
-        str4(iw)=c0
-        str5(iw)=c0
-        str6(iw)=c0
-        str7(iw)=c0
-        str8(iw)=c0
+     !$omp parallel do schedule(runtime) private(is)
+     do is = lo,uu
+        uvel(is)=c0
+        vvel(is)=c0
+        str1(is)=c0
+        str2(is)=c0
+        str3(is)=c0
+        str4(is)=c0
+        str5(is)=c0
+        str6(is)=c0
+        str7(is)=c0
+        str8(is)=c0
      enddo
      !$omp end parallel do
 
@@ -1279,7 +1286,7 @@ module ice_dyn_evp1d
      ! 2-D halo fills them.
      !
      ! One sweep, two uses.  With domark it marks the cells the halo update
-     ! reads and writes, so calc_navel gives them slots; without it, it builds
+     ! reads and writes, so calc_nStoredTU gives them slots; without it, it builds
      ! the list.  Sharing the loop is the point: a cell the build pass needs
      ! but the mark pass missed would drop out of the list with no sign of it.
      !
@@ -1416,18 +1423,18 @@ module ice_dyn_evp1d
   subroutine evp1d_halo_update()
 
      implicit none
-     integer(kind=int_kind) :: iw
+     integer(kind=int_kind) :: is
 
      character(len=*), parameter :: subname = '(evp1d_halo_update)'
 
 ! One sequential pass over the list built in halo_sweep.  Not parallelised
 ! and not to be: north/south destinations are east/west sources at the
 ! corners, so the entries are order-dependent.  See halo_sweep.
-     do iw = 1, n_halo_bc
-        uvel(halo_bc_dst(iw)) = uvel(halo_bc_s1(iw)) + halo_bc_w(iw) *      &
-                               (uvel(halo_bc_s1(iw)) - uvel(halo_bc_s2(iw)))
-        vvel(halo_bc_dst(iw)) = vvel(halo_bc_s1(iw)) + halo_bc_w(iw) *      &
-                               (vvel(halo_bc_s1(iw)) - vvel(halo_bc_s2(iw)))
+     do is = 1, n_halo_bc
+        uvel(halo_bc_dst(is)) = uvel(halo_bc_s1(is)) + halo_bc_w(is) *      &
+                               (uvel(halo_bc_s1(is)) - uvel(halo_bc_s2(is)))
+        vvel(halo_bc_dst(is)) = vvel(halo_bc_s1(is)) + halo_bc_w(is) *      &
+                               (vvel(halo_bc_s1(is)) - vvel(halo_bc_s2(is)))
      end do
 
   end subroutine evp1d_halo_update
@@ -1605,12 +1612,12 @@ module ice_dyn_evp1d
         sa = ijslot(i  + (jhi + g - 1) * nx)
         sb = ijslot(ip + (jhi + 1 - g - 1) * nx)
         ! ⚠ Both ends must be ACTIVE slots.  The stress arrays are
-        ! dimension(nActive); slots above that are the read-only neighbour
+        ! dimension(nActive_TU_glob); slots above that are the read-only neighbour
         ! tail and have no stress storage at all.  Cells outside
         ! calc_2d_indices_init's range -- the ghost COLUMNS i=1 and i=nx --
-        ! land there, and indexing them overran f1 by exactly nx*ny-nActive.
+        ! land there, and indexing them overran f1 by exactly nx*ny-nActive_TU_glob.
         if (sa == 0 .or. sb == 0) cycle
-        if (sa > nActive .or. sb > nActive) cycle
+        if (sa > nActive_TU_glob .or. sb > nActive_TU_glob) cycle
         n_tri_str = n_tri_str + 1
         tst_d(n_tri_str) = sa
         tst_s(n_tri_str) = sb

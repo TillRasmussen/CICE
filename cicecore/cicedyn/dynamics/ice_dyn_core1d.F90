@@ -114,7 +114,7 @@ module ice_dyn_core1d
       str1,str2,str3,str4,str5,str6,str7,str8
 
     ! local variables
-    integer (kind=int_kind) :: iw, n
+    integer (kind=int_kind) :: is, n
 
     real    (kind=dbl_kind) ::                          &
       divune, divunw, divuse, divusw            ,       & ! divergence
@@ -149,7 +149,7 @@ module ice_dyn_core1d
 #else
     !$omp parallel do schedule(static)                        &
     !$omp default(none)                                        &
-    !$omp private(iw, n, divune, divunw, divuse, divusw         , &
+    !$omp private(is, n, divune, divunw, divuse, divusw         , &
     !$omp         tensionne, tensionnw, tensionse, tensionsw , &
     !$omp         shearne, shearnw, shearse, shearsw         , &
     !$omp         Deltane, Deltanw, Deltase, Deltasw         , &
@@ -182,32 +182,32 @@ module ice_dyn_core1d
 #endif
 
     do n = lb, ub
-      iw = aList(n)
-      if (skipme(iw)) cycle
+      is = aList(n)
+      if (skipme(is)) cycle
       ! divergence  =  e_11 + e_22
-      tmp_uvel_cc   = uvel(iw)
-      tmp_vvel_cc   = vvel(iw)
-      tmp_uvel_ee   = uvel(ee(iw))
-      tmp_vvel_se   = vvel(se(iw))
-      tmp_vvel_ee   = vvel(ee(iw))
-      tmp_vvel_ne   = vvel(ne(iw))
-      tmp_uvel_ne   = uvel(ne(iw))
-      tmp_uvel_se   = uvel(se(iw))
-      tmp_dxT       = dxT(iw)
-      tmp_dyT       = dyT(iw)
-      tmp_cxp       = c1p5 * htn(iw) - p5 * htnm1(iw)
-      tmp_cyp       = c1p5 * hte(iw) - p5 * htem1(iw)
-      tmp_cxm       = -(c1p5 * htnm1(iw) - p5 * htn(iw))
-      tmp_cym       = -(c1p5 * htem1(iw) - p5 * hte(iw))
-      tmp_strength  = strength(iw)
+      tmp_uvel_cc   = uvel(is)
+      tmp_vvel_cc   = vvel(is)
+      tmp_uvel_ee   = uvel(ee(is))
+      tmp_vvel_se   = vvel(se(is))
+      tmp_vvel_ee   = vvel(ee(is))
+      tmp_vvel_ne   = vvel(ne(is))
+      tmp_uvel_ne   = uvel(ne(is))
+      tmp_uvel_se   = uvel(se(is))
+      tmp_dxT       = dxT(is)
+      tmp_dyT       = dyT(is)
+      tmp_cxp       = c1p5 * htn(is) - p5 * htnm1(is)
+      tmp_cyp       = c1p5 * hte(is) - p5 * htem1(is)
+      tmp_cxm       = -(c1p5 * htnm1(is) - p5 * htn(is))
+      tmp_cym       = -(c1p5 * htem1(is) - p5 * hte(is))
+      tmp_strength  = strength(is)
       ! ⚠ The parentheses are load bearing.  Written as deltaminEVP*dxT*dyT
       ! Fortran associates left to right, giving (deltaminEVP*dxT)*dyT, which
       ! differs in the last bit for ~41% of inputs (measured, 2e6 samples,
       ! gfortran -O0/-O2 and ifx -O2).  Parenthesised it is bit-identical to
       ! the temporary this replaces, on both compilers.
-      tmp_DminTarea = deltaminEVP * (dxT(iw) * dyT(iw))
-      tmp_dxhy      = p5 * (hte(iw) - htem1(iw))
-      tmp_dyhx      = p5 * (htn(iw) - htnm1(iw))
+      tmp_DminTarea = deltaminEVP * (dxT(is) * dyT(is))
+      tmp_dxhy      = p5 * (hte(is) - htem1(is))
+      tmp_dyhx      = p5 * (htn(is) - htnm1(is))
 
       !--------------------------------------------------------------------------
       ! strain rates - NOTE these are actually strain rates * area  (m^2/s)
@@ -249,75 +249,75 @@ module ice_dyn_core1d
       !--------------------------------------------------------------------------
       ! NOTE: for comp. efficiency 2 x zeta and 2 x eta are used in the code
 
-      stressp_1 (iw) = (stressp_1 (iw)*(c1-arlx1i*revp) &
+      stressp_1 (is) = (stressp_1 (is)*(c1-arlx1i*revp) &
                      +  arlx1i*(zetax2ne*divune - rep_prsne)) * denom1
-      stressp_2 (iw) = (stressp_2 (iw)*(c1-arlx1i*revp) &
+      stressp_2 (is) = (stressp_2 (is)*(c1-arlx1i*revp) &
                      +  arlx1i*(zetax2nw*divunw - rep_prsnw)) * denom1
-      stressp_3 (iw) = (stressp_3 (iw)*(c1-arlx1i*revp)&
+      stressp_3 (is) = (stressp_3 (is)*(c1-arlx1i*revp)&
                      +  arlx1i*(zetax2sw*divusw - rep_prssw)) * denom1
-      stressp_4 (iw) = (stressp_4 (iw)*(c1-arlx1i*revp) &
+      stressp_4 (is) = (stressp_4 (is)*(c1-arlx1i*revp) &
                      +  arlx1i*(zetax2se*divuse - rep_prsse)) * denom1
 
-      stressm_1 (iw) = (stressm_1 (iw)*(c1-arlx1i*revp) &
+      stressm_1 (is) = (stressm_1 (is)*(c1-arlx1i*revp) &
                      +  arlx1i*etax2ne*tensionne) * denom1
-      stressm_2 (iw) = (stressm_2 (iw)*(c1-arlx1i*revp) &
+      stressm_2 (is) = (stressm_2 (is)*(c1-arlx1i*revp) &
                    +  arlx1i*etax2nw*tensionnw) * denom1
-      stressm_3 (iw) = (stressm_3 (iw)*(c1-arlx1i*revp) &
+      stressm_3 (is) = (stressm_3 (is)*(c1-arlx1i*revp) &
                      +  arlx1i*etax2sw*tensionsw) * denom1
-      stressm_4 (iw) = (stressm_4 (iw)*(c1-arlx1i*revp) &
+      stressm_4 (is) = (stressm_4 (is)*(c1-arlx1i*revp) &
                      +  arlx1i*etax2se*tensionse) * denom1
 
-      stress12_1(iw) = (stress12_1(iw)*(c1-arlx1i*revp) &
+      stress12_1(is) = (stress12_1(is)*(c1-arlx1i*revp) &
                      +  arlx1i*p5*etax2ne*shearne) * denom1
-      stress12_2(iw) = (stress12_2(iw)*(c1-arlx1i*revp) &
+      stress12_2(is) = (stress12_2(is)*(c1-arlx1i*revp) &
                      +  arlx1i*p5*etax2nw*shearnw) * denom1
-      stress12_3(iw) = (stress12_3(iw)*(c1-arlx1i*revp) &
+      stress12_3(is) = (stress12_3(is)*(c1-arlx1i*revp) &
                      +  arlx1i*p5*etax2sw*shearsw) * denom1
-      stress12_4(iw) = (stress12_4(iw)*(c1-arlx1i*revp) &
+      stress12_4(is) = (stress12_4(is)*(c1-arlx1i*revp) &
                      +  arlx1i*p5*etax2se*shearse) * denom1
 
       !--------------------------------------------------------------------------
       ! combinations of the stresses for the momentum equation ! kg/s^2
       !--------------------------------------------------------------------------
-      ssigpn  = stressp_1(iw) + stressp_2(iw)
-      ssigps  = stressp_3(iw) + stressp_4(iw)
-      ssigpe  = stressp_1(iw) + stressp_4(iw)
-      ssigpw  = stressp_2(iw) + stressp_3(iw)
-      ssigp1  =(stressp_1(iw) + stressp_3(iw))*p055
-      ssigp2  =(stressp_2(iw) + stressp_4(iw))*p055
+      ssigpn  = stressp_1(is) + stressp_2(is)
+      ssigps  = stressp_3(is) + stressp_4(is)
+      ssigpe  = stressp_1(is) + stressp_4(is)
+      ssigpw  = stressp_2(is) + stressp_3(is)
+      ssigp1  =(stressp_1(is) + stressp_3(is))*p055
+      ssigp2  =(stressp_2(is) + stressp_4(is))*p055
 
-      ssigmn  = stressm_1(iw) + stressm_2(iw)
-      ssigms  = stressm_3(iw) + stressm_4(iw)
-      ssigme  = stressm_1(iw) + stressm_4(iw)
-      ssigmw  = stressm_2(iw) + stressm_3(iw)
-      ssigm1  =(stressm_1(iw) + stressm_3(iw))*p055
-      ssigm2  =(stressm_2(iw) + stressm_4(iw))*p055
+      ssigmn  = stressm_1(is) + stressm_2(is)
+      ssigms  = stressm_3(is) + stressm_4(is)
+      ssigme  = stressm_1(is) + stressm_4(is)
+      ssigmw  = stressm_2(is) + stressm_3(is)
+      ssigm1  =(stressm_1(is) + stressm_3(is))*p055
+      ssigm2  =(stressm_2(is) + stressm_4(is))*p055
 
-      ssig12n = stress12_1(iw) + stress12_2(iw)
-      ssig12s = stress12_3(iw) + stress12_4(iw)
-      ssig12e = stress12_1(iw) + stress12_4(iw)
-      ssig12w = stress12_2(iw) + stress12_3(iw)
-      ssig121 =(stress12_1(iw) + stress12_3(iw))*p111
-      ssig122 =(stress12_2(iw) + stress12_4(iw))*p111
+      ssig12n = stress12_1(is) + stress12_2(is)
+      ssig12s = stress12_3(is) + stress12_4(is)
+      ssig12e = stress12_1(is) + stress12_4(is)
+      ssig12w = stress12_2(is) + stress12_3(is)
+      ssig121 =(stress12_1(is) + stress12_3(is))*p111
+      ssig122 =(stress12_2(is) + stress12_4(is))*p111
 
-      csigpne = p111*stressp_1(iw) + ssigp2 + p027*stressp_3(iw)
-      csigpnw = p111*stressp_2(iw) + ssigp1 + p027*stressp_4(iw)
-      csigpsw = p111*stressp_3(iw) + ssigp2 + p027*stressp_1(iw)
-      csigpse = p111*stressp_4(iw) + ssigp1 + p027*stressp_2(iw)
+      csigpne = p111*stressp_1(is) + ssigp2 + p027*stressp_3(is)
+      csigpnw = p111*stressp_2(is) + ssigp1 + p027*stressp_4(is)
+      csigpsw = p111*stressp_3(is) + ssigp2 + p027*stressp_1(is)
+      csigpse = p111*stressp_4(is) + ssigp1 + p027*stressp_2(is)
 
-      csigmne = p111*stressm_1(iw) + ssigm2 + p027*stressm_3(iw)
-      csigmnw = p111*stressm_2(iw) + ssigm1 + p027*stressm_4(iw)
-      csigmsw = p111*stressm_3(iw) + ssigm2 + p027*stressm_1(iw)
-      csigmse = p111*stressm_4(iw) + ssigm1 + p027*stressm_2(iw)
+      csigmne = p111*stressm_1(is) + ssigm2 + p027*stressm_3(is)
+      csigmnw = p111*stressm_2(is) + ssigm1 + p027*stressm_4(is)
+      csigmsw = p111*stressm_3(is) + ssigm2 + p027*stressm_1(is)
+      csigmse = p111*stressm_4(is) + ssigm1 + p027*stressm_2(is)
 
-      csig12ne = p222*stress12_1(iw) + ssig122 &
-               + p055*stress12_3(iw)
-      csig12nw = p222*stress12_2(iw) + ssig121 &
-               + p055*stress12_4(iw)
-      csig12sw = p222*stress12_3(iw) + ssig122 &
-               + p055*stress12_1(iw)
-      csig12se = p222*stress12_4(iw) + ssig121 &
-               + p055*stress12_2(iw)
+      csig12ne = p222*stress12_1(is) + ssig122 &
+               + p055*stress12_3(is)
+      csig12nw = p222*stress12_2(is) + ssig121 &
+               + p055*stress12_4(is)
+      csig12sw = p222*stress12_3(is) + ssig122 &
+               + p055*stress12_1(is)
+      csig12se = p222*stress12_4(is) + ssig121 &
+               + p055*stress12_2(is)
 
       str12ew = p5*tmp_dxt*(p333*ssig12e + p166*ssig12w)
       str12we = p5*tmp_dxt*(p333*ssig12w + p166*ssig12e)
@@ -331,22 +331,22 @@ module ice_dyn_core1d
       strm_tmp  = p25*tmp_dyT*(p333*ssigmn  + p166*ssigms)
 
       ! northeast (i,j)
-      str1(iw) = -strp_tmp - strm_tmp - str12ew &
+      str1(is) = -strp_tmp - strm_tmp - str12ew &
                  +tmp_dxhy*(-csigpne + csigmne) + tmp_dyhx*csig12ne
 
       ! northwest (i+1,j)
-      str2(iw) = strp_tmp + strm_tmp - str12we &
+      str2(is) = strp_tmp + strm_tmp - str12we &
                  +tmp_dxhy*(-csigpnw + csigmnw) + tmp_dyhx*csig12nw
 
       strp_tmp  = p25*tmp_dyT*(p333*ssigps  + p166*ssigpn)
       strm_tmp  = p25*tmp_dyT*(p333*ssigms  + p166*ssigmn)
 
       ! southeast (i,j+1)
-      str3(iw) = -strp_tmp - strm_tmp + str12ew &
+      str3(is) = -strp_tmp - strm_tmp + str12ew &
                  +tmp_dxhy*(-csigpse + csigmse) + tmp_dyhx*csig12se
 
       ! southwest (i+1,j+1)
-      str4(iw) = strp_tmp + strm_tmp + str12we &
+      str4(is) = strp_tmp + strm_tmp + str12we &
                  +tmp_dxhy*(-csigpsw + csigmsw) + tmp_dyhx*csig12sw
 
       !--------------------------------------------------------------------------
@@ -356,22 +356,22 @@ module ice_dyn_core1d
       strm_tmp  = p25*tmp_dxT*(p333*ssigme  + p166*ssigmw)
 
       ! northeast (i,j)
-      str5(iw) = -strp_tmp + strm_tmp - str12ns &
+      str5(is) = -strp_tmp + strm_tmp - str12ns &
                  -tmp_dyhx*(csigpne + csigmne) + tmp_dxhy*csig12ne
 
       ! southeast (i,j+1)
-      str6(iw) =  strp_tmp - strm_tmp - str12sn &
+      str6(is) =  strp_tmp - strm_tmp - str12sn &
                  -tmp_dyhx*(csigpse + csigmse) + tmp_dxhy*csig12se
 
       strp_tmp  = p25*tmp_dxT*(p333*ssigpw  + p166*ssigpe)
       strm_tmp  = p25*tmp_dxT*(p333*ssigmw  + p166*ssigme)
 
        ! northwest (i+1,j)
-      str7(iw) = -strp_tmp + strm_tmp + str12ns &
+      str7(is) = -strp_tmp + strm_tmp + str12ns &
                  -tmp_dyhx*(csigpnw + csigmnw) + tmp_dxhy*csig12nw
 
       ! southwest (i+1,j+1)
-      str8(iw) =  strp_tmp - strm_tmp + str12sn &
+      str8(is) =  strp_tmp - strm_tmp + str12sn &
                  -tmp_dyhx*(csigpsw + csigmsw) + tmp_dxhy*csig12sw
     enddo
 #ifdef _OPENMP_TARGET
@@ -538,7 +538,7 @@ module ice_dyn_core1d
     real (kind=dbl_kind), intent(in)  :: rhow
 
     ! local variables
-    integer (kind=int_kind) :: iw, n
+    integer (kind=int_kind) :: is, n
 
     real (kind=dbl_kind) ::&
        uold, vold        , & ! old-time uvel, vvel
@@ -560,7 +560,7 @@ module ice_dyn_core1d
 #else
     !$omp parallel do schedule(static)                                        &
     !$omp default(none)                                                        &
-    !$omp private(iw, n, tmp_str2_nw,tmp_str3_sse,tmp_str4_sw,                    &
+    !$omp private(is, n, tmp_str2_nw,tmp_str3_sse,tmp_str4_sw,                    &
     !$omp         tmp_str6_sse,tmp_str7_nw,tmp_str8_sw,                        &
     !$omp         vrel, uold, vold, taux, tauy, cca, ccb, ab2,                 &
     !$omp         cc1, cc2,strintx, strinty)                                   &
@@ -571,48 +571,48 @@ module ice_dyn_core1d
     !$omp           Cw,lb,ub,aList,brlx, revp, rhow)
 #endif
     do n = lb, ub
-      iw = aList(n)
-      if (skipme(iw)) cycle
+      is = aList(n)
+      if (skipme(is)) cycle
 
-      uold = uvel(iw)
-      vold = vvel(iw)
+      uold = uvel(is)
+      vold = vvel(is)
 
       ! (magnitude of relative ocean current)*rhow*drag*aice
-      vrel = aiX(iw)*rhow*Cw(iw)*sqrt((uocn(iw)-uold)**2+(vocn(iw)-vold)**2)
+      vrel = aiX(is)*rhow*Cw(is)*sqrt((uocn(is)-uold)**2+(vocn(is)-vold)**2)
       ! ice/ocean stress
-      taux = vrel*waterx(iw) ! NOTE this is not the entire
-      tauy = vrel*watery(iw) ! ocn stress term
+      taux = vrel*waterx(is) ! NOTE this is not the entire
+      tauy = vrel*watery(is) ! ocn stress term
 
-      Cb(iw)  = Tbu(iw) / (sqrt(uold**2 + vold**2) + u0) ! for basal stress
+      Cb(is)  = Tbu(is) / (sqrt(uold**2 + vold**2) + u0) ! for basal stress
 
       ! revp = 0 for classic evp, 1 for revised evp
-      cca = (brlx + revp)*umassdti(iw) + vrel * cosw + Cb(iw) ! kg/m^2 s
-      ccb = fm(iw) + sign(c1,fm(iw)) * vrel * sinw ! kg/m^2 s
+      cca = (brlx + revp)*umassdti(is) + vrel * cosw + Cb(is) ! kg/m^2 s
+      ccb = fm(is) + sign(c1,fm(is)) * vrel * sinw ! kg/m^2 s
 
       ab2 = cca**2 + ccb**2
 
-      tmp_str2_nw = str2(nw(iw))
-      tmp_str3_sse = str3(sse(iw))
-      tmp_str4_sw = str4(sw(iw))
-      tmp_str6_sse = str6(sse(iw))
-      tmp_str7_nw = str7(nw(iw))
-      tmp_str8_sw = str8(sw(iw))
+      tmp_str2_nw = str2(nw(is))
+      tmp_str3_sse = str3(sse(is))
+      tmp_str4_sw = str4(sw(is))
+      tmp_str6_sse = str6(sse(is))
+      tmp_str7_nw = str7(nw(is))
+      tmp_str8_sw = str8(sw(is))
 
       ! divergence of the internal stress tensor
       ! rheofactU is 1, or 0 where the U cell carries less ice than
       ! rheo_area_min and free_drift_approx is on.  The 2-D stepu applies it
       ! here (#1133); #1133 did not reach this kernel, so the two solvers
       ! disagreed wherever a grid has marginal ice.
-      strintx = rheofactU(iw)*uarear(iw)*(str1(iw)+tmp_str2_nw+tmp_str3_sse+tmp_str4_sw)
-      strinty = rheofactU(iw)*uarear(iw)*(str5(iw)+tmp_str6_sse+tmp_str7_nw+tmp_str8_sw)
+      strintx = rheofactU(is)*uarear(is)*(str1(is)+tmp_str2_nw+tmp_str3_sse+tmp_str4_sw)
+      strinty = rheofactU(is)*uarear(is)*(str5(is)+tmp_str6_sse+tmp_str7_nw+tmp_str8_sw)
 
       ! finally, the velocity components
-      cc1 = strintx + forcex(iw) + taux &
-            + umassdti(iw)*(brlx*uold + revp*uvel_init(iw))
-      cc2 = strinty + forcey(iw) + tauy &
-            + umassdti(iw)*(brlx*vold + revp*vvel_init(iw))
-      uvel(iw) = (cca*cc1 + ccb*cc2) / ab2 ! m/s
-      vvel(iw) = (cca*cc2 - ccb*cc1) / ab2
+      cc1 = strintx + forcex(is) + taux &
+            + umassdti(is)*(brlx*uold + revp*uvel_init(is))
+      cc2 = strinty + forcey(is) + tauy &
+            + umassdti(is)*(brlx*vold + revp*vvel_init(is))
+      uvel(is) = (cca*cc1 + ccb*cc2) / ab2 ! m/s
+      vvel(is) = (cca*cc2 - ccb*cc1) / ab2
 
       ! calculate seabed stress component for outputs
       ! only needed on last iteration.
@@ -656,7 +656,7 @@ module ice_dyn_core1d
     real   (kind=dbl_kind), intent(in), dimension(:), contiguous :: uarear, rheofactU
 
   ! local variables
-    integer (kind=int_kind) :: iw, n
+    integer (kind=int_kind) :: is, n
     real (kind=dbl_kind) ::                 &
       tmp_str2_nw,tmp_str3_sse,tmp_str4_sw, &
       tmp_str6_sse,tmp_str7_nw,tmp_str8_sw
@@ -668,7 +668,7 @@ module ice_dyn_core1d
 #else
     !$omp parallel do schedule(static)                                   &
     !$omp default(none)                                                   &
-    !$omp private(iw, n, tmp_str2_nw,tmp_str3_sse,tmp_str4_sw,               &
+    !$omp private(is, n, tmp_str2_nw,tmp_str3_sse,tmp_str4_sw,               &
     !$omp         tmp_str6_sse,tmp_str7_nw,tmp_str8_sw)                   &
     !$omp shared(strintx,strinty,str1,str2,str3,str4,str5,str6,str7,str8, &
     !$omp        rheofactU,                                               &
@@ -676,19 +676,19 @@ module ice_dyn_core1d
 #endif
 
     do n = lb, ub
-      iw = aList(n)
-      if (skipme(iw)) cycle
+      is = aList(n)
+      if (skipme(is)) cycle
 
-      tmp_str2_nw = str2(nw(iw))
-      tmp_str3_sse = str3(sse(iw))
-      tmp_str4_sw = str4(sw(iw))
-      tmp_str6_sse = str6(sse(iw))
-      tmp_str7_nw = str7(nw(iw))
-      tmp_str8_sw = str8(sw(iw))
+      tmp_str2_nw = str2(nw(is))
+      tmp_str3_sse = str3(sse(is))
+      tmp_str4_sw = str4(sw(is))
+      tmp_str6_sse = str6(sse(is))
+      tmp_str7_nw = str7(nw(is))
+      tmp_str8_sw = str8(sw(is))
 
       ! divergence of the internal stress tensor
-      strintx(iw) = rheofactU(iw)*uarear(iw)*(str1(iw)+tmp_str2_nw+tmp_str3_sse+tmp_str4_sw)
-      strinty(iw) = rheofactU(iw)*uarear(iw)*(str5(iw)+tmp_str6_sse+tmp_str7_nw+tmp_str8_sw)
+      strintx(is) = rheofactU(is)*uarear(is)*(str1(is)+tmp_str2_nw+tmp_str3_sse+tmp_str4_sw)
+      strinty(is) = rheofactU(is)*uarear(is)*(str5(is)+tmp_str6_sse+tmp_str7_nw+tmp_str8_sw)
     enddo
 
 #ifdef _OPENMP_TARGET
