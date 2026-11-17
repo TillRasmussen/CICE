@@ -288,10 +288,10 @@ module ice_dyn_evp1d
                           uvel_init, vvel_init, uvel, vvel,                             &
                           str1, str2, str3, str4, str5, str6, str7, str8,               &
                           nw, sw, sse, skipUcell, Tbu, Cb, rhow, rheofactU)
-          call evp1d_tripole_seam()
+          if (ltripole) call evp1d_tripole_seam()
           call evp1d_halo_update()
        enddo
-       call evp1d_tripole_stress()
+       if (ltripole) call evp1d_tripole_stress()
        ! This can be skipped if diagnostics of strintx and strinty is not needed
        ! They will either both be calculated or not.
        call calc_diag_1d(1   , nIce  , aList, &
@@ -486,7 +486,8 @@ module ice_dyn_evp1d
 
     ! One entry per ghost cell per edge, for the cyclic pass and again for
     ! the zero_gradient/linear_extrap pass.
-    allocate(halo_bc_dst(4*nghost*(nx+ny)), halo_bc_s1(4*nghost*(nx+ny)), &
+    allocate(halo_bc_sgn(4*nghost*(nx+ny)), &
+             halo_bc_dst(4*nghost*(nx+ny)), halo_bc_s1(4*nghost*(nx+ny)), &
              halo_bc_s2(4*nghost*(nx+ny)), halo_bc_w (4*nghost*(nx+ny)), &
              stat=ierr)
 
@@ -1297,7 +1298,7 @@ module ice_dyn_evp1d
 
      ! local variables
 
-     integer(kind=int_kind) :: i, j, g, ilo, ihi, jlo, jhi, w
+     integer(kind=int_kind) :: i, j, g, ilo, ihi, jlo, jhi, w, isrc
 
      character(len=*), parameter :: subname = '(halo_sweep)'
 
@@ -1311,6 +1312,39 @@ module ice_dyn_evp1d
      jhi = ny - nghost
 
      ! the cyclic exchange, both directions
+     if (trim(ns_boundary_type) == 'tripole') then
+        call tripole_sweep(domark)
+
+        ! u(i, jhi+g) = -u(nx-i, jhi-g).  The source row is jhi-g, NOT the seam,
+        ! so these are independent of the seam symmetry and may run either side
+        ! of it.
+        !
+        ! ⚠ i runs to nx-1, not nx-2.  The earlier bound assumed the cyclic
+        ! pass would fill what the fold skipped, but cyclic writes only the
+        ! GHOST columns 1 and nx -- column nx-1 is PHYSICAL, so nothing wrote
+        ! (nx-1, jhi+g) at all, and (1, jhi+g) then inherited that stale value
+        ! cyclically.  Measured as the entire residual: with ndte=1 the only
+        ! cells differing from the 2-D solver were uvel and vvel at exactly
+        ! those two.
+        !
+        ! At i = nx-1 the mirror column nx-i is 1, a ghost.  Under a cyclic
+        ! east-west boundary that ghost IS column nx-1, so the source is taken
+        ! there directly rather than relying on the cyclic pass having run.
+        ! Without cyclic there is no such image and the column is left to the
+        ! old behaviour.
+        do g = 1, nghost
+        do i = 1, nx - 1
+           isrc = nx - i
+           if (isrc < 1 + nghost) then
+              if (trim(ew_boundary_type) /= 'cyclic') cycle
+              isrc = isrc + (nx - 2*nghost)
+           endif
+           call halo_point(i, jhi + g, isrc, jhi - g, isrc, jhi - g, &
+                           0, domark, -c1)
+        end do
+        end do
+     endif
+
      if (trim(ew_boundary_type) == 'cyclic') then
         do j = 1, ny
         do g = 1, nghost
@@ -1362,7 +1396,7 @@ module ice_dyn_evp1d
 
 !=======================================================================
 
-  subroutine halo_point(id, jd, i1, j1, i2, j2, w, domark)
+  subroutine halo_point(id, jd, i1, j1, i2, j2, w, domark, sgn)
      ! Mark, or append, one halo point.
      !
      ! Marking is what lets the append succeed: these cells are the halo
@@ -1380,6 +1414,7 @@ module ice_dyn_evp1d
 
      integer(kind=int_kind) :: sd, s1, s2
 
+     real   (kind=dbl_kind), intent(in), optional :: sgn
      character(len=*), parameter :: subname = '(halo_point)'
 
      if (domark) then
@@ -1405,6 +1440,12 @@ module ice_dyn_evp1d
      halo_bc_s1 (n_halo_bc) = s1
      halo_bc_s2 (n_halo_bc) = s2
      halo_bc_w  (n_halo_bc) = real(w, kind=dbl_kind)
+     ! +1 everywhere unless the caller says otherwise.  A tripole fold
+     ! negates both velocity components across the seam and the entry form
+     ! had no way to say so.  x*1.0 is exact, so this changes nothing on any
+     ! configuration that never passes sgn.
+     halo_bc_sgn(n_halo_bc) = c1
+     if (present(sgn)) halo_bc_sgn(n_halo_bc) = sgn
 
   end subroutine halo_point
 
@@ -1421,10 +1462,12 @@ module ice_dyn_evp1d
 ! and not to be: north/south destinations are east/west sources at the
 ! corners, so the entries are order-dependent.  See halo_sweep.
      do is = 1, n_halo_bc
-        uvel(halo_bc_dst(is)) = uvel(halo_bc_s1(is)) + halo_bc_w(is) *      &
-                               (uvel(halo_bc_s1(is)) - uvel(halo_bc_s2(is)))
-        vvel(halo_bc_dst(is)) = vvel(halo_bc_s1(is)) + halo_bc_w(is) *      &
-                               (vvel(halo_bc_s1(is)) - vvel(halo_bc_s2(is)))
+        uvel(halo_bc_dst(is)) = halo_bc_sgn(is) *                           &
+                               (uvel(halo_bc_s1(is)) + halo_bc_w(is) *      &
+                               (uvel(halo_bc_s1(is)) - uvel(halo_bc_s2(is))))
+        vvel(halo_bc_dst(is)) = halo_bc_sgn(is) *                           &
+                               (vvel(halo_bc_s1(is)) + halo_bc_w(is) *      &
+                               (vvel(halo_bc_s1(is)) - vvel(halo_bc_s2(is))))
      end do
 
   end subroutine evp1d_halo_update
