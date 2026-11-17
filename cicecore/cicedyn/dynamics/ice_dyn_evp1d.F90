@@ -10,7 +10,7 @@ module ice_dyn_evp1d
 
   !- modules -------------------------------------------------------------------
   use ice_kinds_mod
-  use ice_blocks, only: nx_block, ny_block, nghost
+  use ice_blocks, only: nx_block, ny_block, nghost, ns_boundary_type
   use ice_constants
   use ice_communicate, only: my_task, master_task
   use ice_domain_size, only: max_blocks, nx_global, ny_global
@@ -68,6 +68,11 @@ module ice_dyn_evp1d
     halo_bc_dst, halo_bc_s1, halo_bc_s2
   real   (kind=dbl_kind), allocatable, dimension(:)   :: halo_bc_w
   integer(kind=int_kind)                              :: n_halo_bc
+  real   (kind=dbl_kind), allocatable, dimension(:)   :: halo_bc_sgn
+  integer(kind=int_kind), save :: n_tri_pair = 0, n_tri_neg = 0
+  integer(kind=int_kind), allocatable, dimension(:) :: tri_a, tri_b, tri_neg
+  integer(kind=int_kind), allocatable, dimension(:) :: tst_d, tst_s
+  integer(kind=int_kind), save :: n_tri_str = 0
 
 !=============================================================================
   contains
@@ -183,6 +188,7 @@ module ice_dyn_evp1d
     logical(kind=log_kind), dimension (nx,ny) ::                 &
       G_iceUmask  , G_iceTmask
 
+    logical(kind=log_kind) :: ltripole
     character(len=*), parameter :: subname = '(dyn_evp1d_run)'
 
     integer(kind=int_kind) :: ksub
@@ -259,6 +265,7 @@ module ice_dyn_evp1d
        str7(1:navel+1)=c0
        str8(1:navel+1)=c0
 
+    ltripole = (trim(ns_boundary_type) == 'tripole')
        do ksub = 1,ndte        ! subcycling
           call stress_1d (ee, ne, se, 1, nActive,                                    &
                           uvel, vvel, dxT_1d, dyT_1d, skipTcell, strength,           &
@@ -273,8 +280,10 @@ module ice_dyn_evp1d
                           uvel_init, vvel_init, uvel, vvel,                             &
                           str1, str2, str3, str4, str5, str6, str7, str8,               &
                           nw, sw, sse, skipUcell, Tbu, Cb, rhow, rheofactU)
+          call evp1d_tripole_seam()
           call evp1d_halo_update()
        enddo
+       call evp1d_tripole_stress()
        ! This can be skipped if diagnostics of strintx and strinty is not needed
        ! They will either both be calculated or not.
        call calc_diag_1d(1        , nActive  , &
@@ -1385,6 +1394,225 @@ module ice_dyn_evp1d
      end do
 
   end subroutine evp1d_halo_update
+
+  subroutine evp1d_tripole_seam()
+
+     ! Symmetry ALONG the tripole seam row, applied before the halo list.
+     !
+     ! ⚠ This cannot be a halo_bc entry, for two independent reasons:
+     !
+     !   the arithmetic.  An entry computes sgn*(s1 + w*(s1-s2)); the seam
+     !   needs p5*(x1-x2), and solving the coefficients for that gives
+     !   sgn = 0.  Two independent coefficients would be required.
+     !
+     !   the ordering.  Both ends of a pair are written FROM THE ORIGINAL
+     !   PAIR.  The halo list is applied sequentially and deliberately so --
+     !   its north/south entries read ghosts the east/west ones just wrote --
+     !   so the second write of a pair would read the first's result.
+     !
+     ! Visiting each pair once and writing both ends from saved locals is
+     ! what makes it correct.
+     !
+     ! Mapping measured against the 2-D halo on a one-block tripole grid,
+     ! not transcribed from ice_boundary: for a pair (i, nx-i) on row jhi,
+     !     xavg = p5*(u(i) - u(nx-i)),  u(i) = xavg,  u(nx-i) = -xavg
+
+     implicit none
+
+     integer(kind=int_kind) :: k, ka, kb
+     real   (kind=dbl_kind) :: ua, ub, va, vb
+
+     character(len=*), parameter :: subname = '(evp1d_tripole_seam)'
+
+     do k = 1, n_tri_pair
+        ka = tri_a(k)
+        kb = tri_b(k)
+        ua = uvel(ka)
+        ub = uvel(kb)
+        va = vvel(ka)
+        vb = vvel(kb)
+        uvel(ka) =  p5*(ua - ub)
+        uvel(kb) = -p5*(ua - ub)
+        vvel(ka) =  p5*(va - vb)
+        vvel(kb) = -p5*(va - vb)
+     end do
+
+     ! The two columns with no distinct partner -- i = nx/2 and i = nx-1 --
+     ! are negated outright.  Measured, not assumed: both come back as
+     ! -(original) from the 2-D halo.
+     do k = 1, n_tri_neg
+        uvel(tri_neg(k)) = -uvel(tri_neg(k))
+        vvel(tri_neg(k)) = -vvel(tri_neg(k))
+     end do
+
+  end subroutine evp1d_tripole_seam
+
+  subroutine evp1d_tripole_stress()
+
+     ! The tripole fold for the twelve stresses, applied ONCE PER TIMESTEP
+     ! after the subcycle -- where evp's epilogue applies
+     ! ice_HaloUpdate_stress to the block/slot copies.
+     !
+     ! ⚠ Why evp1d needs its own.  That epilogue updates stressp_1_slot and
+     ! friends, but evp1d subcycles on its OWN stressp_1, seeded once by
+     ! gather_stresses and never refreshed.  Without this the seam never
+     ! reaches the working stresses and the error enters once per timestep --
+     ! which is exactly what the measurement showed: bit-for-bit within a
+     ! timestep at any ndte, diverging only across them.
+     !
+     ! ⚠ Each component is filled from its DIAGONAL PARTNER, 1<->3 and 2<->4,
+     ! matching the pairing in evp's twelve calls.  Sign is +1: these go in as
+     ! field_type_scalar, unlike the velocities.
+     !
+     ! Re-gathering from the slot copies would be the other way to do it, and
+     ! would cost twelve collectives per timestep -- the ones 2677687 removed.
+
+     implicit none
+     integer(kind=int_kind) :: k, d, sr
+
+     character(len=*), parameter :: subname = '(evp1d_tripole_stress)'
+
+     ! ⚠ A one-way copy into the GHOST, not a swap: the handler fills
+     ! array1's ghost cells from array2's interior and leaves the interior
+     ! alone.  Both partners are read before either is written, because the
+     ! two directed updates of a pair would otherwise see each other.
+     do k = 1, n_tri_str
+        d = tst_d(k)
+        sr = tst_s(k)
+        call swap_pair(stressp_1 , stressp_3 , d, sr)
+        call swap_pair(stressp_2 , stressp_4 , d, sr)
+        call swap_pair(stressm_1 , stressm_3 , d, sr)
+        call swap_pair(stressm_2 , stressm_4 , d, sr)
+        call swap_pair(stress12_1, stress12_3, d, sr)
+        call swap_pair(stress12_2, stress12_4, d, sr)
+     end do
+
+  contains
+
+     subroutine swap_pair(f1, f3, d, sr)
+        real   (kind=dbl_kind), dimension(:), intent(inout) :: f1, f3
+        integer(kind=int_kind), intent(in) :: d, sr
+        real   (kind=dbl_kind) :: v1, v3
+        v1 = f1(sr)
+        v3 = f3(sr)
+        f1(d) = v3
+        f3(d) = v1
+     end subroutine swap_pair
+
+  end subroutine evp1d_tripole_stress
+
+  subroutine tripole_sweep(domark)
+
+     ! Mark, or build, the seam-row symmetry lists.  Same two-pass shape as
+     ! halo_sweep: the marking pass is what gives these cells slots at all.
+
+     implicit none
+
+     logical(kind=log_kind), intent(in) :: domark
+
+     integer(kind=int_kind) :: i, ip, g, jhi, sa, sb, ierr
+
+     character(len=*), parameter :: subname = '(tripole_sweep)'
+
+     jhi = ny - nghost
+
+     if (domark) then
+        do i = 2, nx/2 - 1
+           call mark_cell(i     , jhi)
+           call mark_cell(nx - i, jhi)
+        end do
+        call mark_cell(nx/2  , jhi)
+        call mark_cell(nx - 1, jhi)
+        ! and the ghost rows the stress fold writes, plus their sources.
+        ! Columns only within calc_2d_indices_init's range: marking outside
+        ! it just grows the read-only tail, which the stresses cannot index.
+        do g = 1, nghost
+        do i = 1 + nghost, nx - nghost + 1
+           call mark_cell(i, jhi + g)
+           call mark_cell(nx + 1 - i, jhi + 1 - g)
+        end do
+        end do
+        return
+     endif
+
+     if (.not. allocated(tri_a)) then
+        allocate(tri_a(nx), tri_b(nx), tri_neg(2), &
+                 tst_d(nx*nghost), tst_s(nx*nghost), stat=ierr)
+        if (ierr /= 0) call abort_ice(subname//' ERROR: allocating', &
+                                      file=__FILE__, line=__LINE__)
+     endif
+
+     ! Ghost-row fold for the stresses.  field_loc_center and
+     ! field_type_scalar, unlike the velocities' NEcorner/vector, so the
+     ! offsets are 0,0 instead of 1,1 and the sign is +1 instead of -1:
+     !
+     !     stressX_1(i, jhi+g) = stressX_3(nx+1-i, jhi+1-g)
+     !
+     ! A centre-located field has no degenerate seam row -- that symmetry
+     ! exists only for NEcorner and Nface -- so there is no stage 1 here.
+     n_tri_str = 0
+     do g = 1, nghost
+     do i = 1, nx
+        ! Measured against ice_HaloUpdate_stress on a one-block tripole grid:
+        !     dst (i, jhi+g) <- partner (nx+1-i, jhi+1-g)
+        ! verified i=8 -> 75, i=15 -> 68, i=78 -> 5, source row jhi.
+        !
+        ! ⚠ At the ends nx+1-i leaves the physical range and the handler uses
+        ! the CYCLIC IMAGE, not the ghost: measured i=1 -> 2, where nx+1-i is
+        ! 82, the east ghost, whose image is column 2.  Reading the ghost
+        ! instead was the whole of the residual the derived mapping left.
+        ip = nx + 1 - i
+        if (ip > nx - nghost) ip = ip - (nx - 2*nghost)
+        if (ip < 1 + nghost)  ip = ip + (nx - 2*nghost)
+        if (ip < 1 .or. ip > nx) cycle
+        sa = ijslot(i  + (jhi + g - 1) * nx)
+        sb = ijslot(ip + (jhi + 1 - g - 1) * nx)
+        ! ⚠ Both ends must be ACTIVE slots.  The stress arrays are
+        ! dimension(nActive); slots above that are the read-only neighbour
+        ! tail and have no stress storage at all.  Cells outside
+        ! calc_2d_indices_init's range -- the ghost COLUMNS i=1 and i=nx --
+        ! land there, and indexing them overran f1 by exactly nx*ny-nActive.
+        if (sa == 0 .or. sb == 0) cycle
+        if (sa > nActive .or. sb > nActive) cycle
+        n_tri_str = n_tri_str + 1
+        tst_d(n_tri_str) = sa
+        tst_s(n_tri_str) = sb
+     end do
+     end do
+
+     n_tri_pair = 0
+     do i = 2, nx/2 - 1
+        ip = nx - i
+        sa = ijslot(i  + (jhi - 1) * nx)
+        sb = ijslot(ip + (jhi - 1) * nx)
+        if (sa == 0 .or. sb == 0) cycle
+        n_tri_pair = n_tri_pair + 1
+        tri_a(n_tri_pair) = sa
+        tri_b(n_tri_pair) = sb
+     end do
+
+     ! The two columns with no distinct partner: nx/2 and nx-1.
+     n_tri_neg = 0
+     do ip = 1, 2
+        i = nx/2
+        if (ip == 2) i = nx - 1
+        sa = ijslot(i + (jhi - 1) * nx)
+        if (sa == 0) cycle
+        n_tri_neg = n_tri_neg + 1
+        tri_neg(n_tri_neg) = sa
+     end do
+
+  end subroutine tripole_sweep
+
+     subroutine swap_pair(f1, f3, d, sr)
+        real   (kind=dbl_kind), dimension(:), intent(inout) :: f1, f3
+        integer(kind=int_kind), intent(in) :: d, sr
+        real   (kind=dbl_kind) :: v1, v3
+        v1 = f1(sr)
+        v3 = f3(sr)
+        f1(d) = v3
+        f3(d) = v1
+     end subroutine swap_pair
 
 end module ice_dyn_evp1d
 
