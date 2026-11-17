@@ -345,6 +345,7 @@
       type (block) :: &
          this_block   ! block information for current block
 
+      real (kind=dbl_kind), allocatable :: uvel_sv(:,:,:), vvel_sv(:,:,:)
       character(len=*), parameter :: subname = '(evp)'
 
       call ice_timer_start(timer_dynamics) ! dynamics
@@ -870,15 +871,40 @@
             ! CONSTRUCTION rather than by reproducing its sign-of-zero
             ! convention in the compressed fold.  One halo update per
             ! timestep, against ndte subcycles in the branch below.
-            if (trim(ns_boundary_type) == 'tripole' .or. &
-                trim(ns_boundary_type) == 'tripoleT') then
-               call ice_timer_start(timer_bound)
-               call ice_HaloUpdate (uvel, halo_info, &
-                                    field_loc_NEcorner, field_type_vector)
-               call ice_HaloUpdate (vvel, halo_info, &
-                                    field_loc_NEcorner, field_type_vector)
-               call ice_timer_stop(timer_bound)
-            endif
+              if (trim(ns_boundary_type) == 'tripole' .or. &
+                  trim(ns_boundary_type) == 'tripoleT') then
+                 call ice_timer_start(timer_bound)
+                 allocate(uvel_sv(nx_block,ny_block,max_blocks), &
+                          vvel_sv(nx_block,ny_block,max_blocks))
+                 uvel_sv = uvel
+                 vvel_sv = vvel
+                 call ice_HaloUpdate (uvel, halo_info, &
+                                      field_loc_NEcorner, field_type_vector)
+                 call ice_HaloUpdate (vvel, halo_info, &
+                                      field_loc_NEcorner, field_type_vector)
+                 ! ⚠ Put the PHYSICAL domain back.  The handler is here to fill
+                 ! the GHOSTS the compressed fold cannot reach; it has no business
+                 ! rewriting cells evp1d owns.  Measured on tx1: without this it
+                 ! overwrites the seam row at the unpaired columns -- cells evp2d
+                 ! never writes at all, leaving them as initialised.
+                 !$OMP PARALLEL DO PRIVATE(iblk,i,j,this_block,ilo,ihi,jlo,jhi)
+                 do iblk = 1, nblocks
+                    this_block = get_block(blocks_ice(iblk),iblk)
+                    ilo = this_block%ilo
+                    ihi = this_block%ihi
+                    jlo = this_block%jlo
+                    jhi = this_block%jhi
+                    do j = jlo, jhi
+                    do i = ilo, ihi
+                       uvel(i,j,iblk) = uvel_sv(i,j,iblk)
+                       vvel(i,j,iblk) = vvel_sv(i,j,iblk)
+                    enddo
+                    enddo
+                 enddo
+                 !$OMP END PARALLEL DO
+                 deallocate(uvel_sv, vvel_sv)
+                 call ice_timer_stop(timer_bound)
+              endif
 
          else ! evp_algorithm == standard_2d (Standard CICE)
 
