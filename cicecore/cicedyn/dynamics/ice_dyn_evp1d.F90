@@ -118,15 +118,15 @@ module ice_dyn_evp1d
     ! calculate number of water points (T and U). Only needed for the static version
     ! tmask in ocean/ice
     if (my_task == master_task) then
-      call calc_nActiveTU(G_tmask,nActive_TU_glob)
-      call evp1d_alloc_static_nActive(nActive_TU_glob)
-      call calc_2d_indices_init(nActive_TU_glob, G_tmask)
-      call calc_nStoredTU(nActive_TU_glob, nStored_TU_glob)
-      call evp1d_alloc_static_nStored(nStored_TU_glob)
+      call calc_nActiveTU(G_tmask)
+      call evp1d_alloc_static_nActive
+      call calc_2d_indices_init(G_tmask)
+      call calc_nStoredTU
+      call evp1d_alloc_static_nStored
       call numainit(1,nActive_TU_glob,nStored_TU_glob)
-      call convert_2d_1d_init(nActive_TU_glob,G_HTE, G_HTN, G_uarear, G_dxT, G_dyT)
+      call convert_2d_1d_init(G_HTE, G_HTN, G_uarear, G_dxT, G_dyT)
       call evp1d_alloc_static_halo()
-      ! The halo geometry -- indxTij, nActive_TU_glob0, nStored_TU_glob and the boundary types -- does
+      ! The halo geometry -- indxTij, nActive_TU_glob, nStored_TU_glob and the boundary types -- does
       ! not change, so the list is built once here.
       call halo_sweep(.false.)
       ! ijslot has served its purpose: slots are assigned and both halo lists
@@ -226,9 +226,9 @@ module ice_dyn_evp1d
                     G_iceTmask,  G_iceUmask)
 
     if (my_task == master_task) then
-       call set_skipMe(G_iceTmask, G_iceUmask,nActive_TU_glob)
+       call set_skipMe(G_iceTmask, G_iceUmask)
        ! Map from 2d to 1d
-       call convert_2d_1d_dyn(nActive_TU_glob,                                                    &
+       call convert_2d_1d_dyn(                                                                   &
                               G_stressp_1 , G_stressp_2 , G_stressp_3 ,  G_stressp_4,     &
                               G_stressm_1 , G_stressm_2 , G_stressm_3 ,  G_stressm_4,     &
                               G_stress12_1, G_stress12_2, G_stress12_3, G_stress12_4,     &
@@ -310,7 +310,7 @@ module ice_dyn_evp1d
        !$omp end target data
 #endif
        ! Map results back to 2d
-       call convert_1d_2d_dyn(nActive_TU_glob, nStored_TU_glob,                                         &
+       call convert_1d_2d_dyn(                                                                          &
                               G_stressp_1 , G_stressp_2 , G_stressp_3 , G_stressp_4 , &
                               G_stressm_1 , G_stressm_2 , G_stressm_3 , G_stressm_4 , &
                               G_stress12_1, G_stress12_2, G_stress12_3, G_stress12_4, &
@@ -367,15 +367,14 @@ module ice_dyn_evp1d
 
 !=============================================================================
 
-  subroutine evp1d_alloc_static_nActive(nActive_TU_glob0)
+  subroutine evp1d_alloc_static_nActive
     implicit none
 
-    integer(kind=int_kind), intent(in) :: nActive_TU_glob0
     integer(kind=int_kind) :: ierr
     character(len=*), parameter :: subname = '(evp1d_alloc_static_nActive)'
 
-    allocate(skipTcell(1:nActive_TU_glob0),  &
-             skipUcell(1:nActive_TU_glob0),  &
+    allocate(skipTcell(1:nActive_TU_glob),  &
+             skipUcell(1:nActive_TU_glob),  &
              iwidx(1:nx,1:ny),  &
              stat=ierr)
 
@@ -383,61 +382,61 @@ module ice_dyn_evp1d
        call abort_ice(subname//' ERROR: allocating', file=__FILE__, line=__LINE__)
     endif
 
-    allocate(indxTi(1:nActive_TU_glob0), &
-             indxTj(1:nActive_TU_glob0), &
+    allocate(indxTi(1:nActive_TU_glob), &
+             indxTj(1:nActive_TU_glob), &
              stat=ierr)
 
     if (ierr/=0) then
        call abort_ice(subname//' ERROR: allocating', file=__FILE__, line=__LINE__)
     endif
 
-    allocate(ee(1:nActive_TU_glob0) , &
-             ne(1:nActive_TU_glob0) , &
-             se(1:nActive_TU_glob0) , &
-             nw(1:nActive_TU_glob0) , &
-             sw(1:nActive_TU_glob0) , &
-             sse(1:nActive_TU_glob0), &
+    allocate(ee(1:nActive_TU_glob) , &
+             ne(1:nActive_TU_glob) , &
+             se(1:nActive_TU_glob) , &
+             nw(1:nActive_TU_glob) , &
+             sw(1:nActive_TU_glob) , &
+             sse(1:nActive_TU_glob), &
              stat=ierr)
 
     if (ierr/=0) then
        call abort_ice(subname//' ERROR: allocating', file=__FILE__, line=__LINE__)
     endif
 
-    allocate( HTE_1d    (1:nActive_TU_glob0), &
-              HTN_1d    (1:nActive_TU_glob0), &
-              HTEm1_1d  (1:nActive_TU_glob0), &
-              HTNm1_1d  (1:nActive_TU_glob0), &
-              dxT_1d    (1:nActive_TU_glob0), &
-              dyT_1d    (1:nActive_TU_glob0), &
-              strength  (1:nActive_TU_glob0), &
-              stressp_1 (1:nActive_TU_glob0), &
-              stressp_2 (1:nActive_TU_glob0), &
-              stressp_3 (1:nActive_TU_glob0), &
-              stressp_4 (1:nActive_TU_glob0), &
-              stressm_1 (1:nActive_TU_glob0), &
-              stressm_2 (1:nActive_TU_glob0), &
-              stressm_3 (1:nActive_TU_glob0), &
-              stressm_4 (1:nActive_TU_glob0), &
-              stress12_1(1:nActive_TU_glob0), &
-              stress12_2(1:nActive_TU_glob0), &
-              stress12_3(1:nActive_TU_glob0), &
-              stress12_4(1:nActive_TU_glob0), &
+    allocate( HTE_1d    (1:nActive_TU_glob), &
+              HTN_1d    (1:nActive_TU_glob), &
+              HTEm1_1d  (1:nActive_TU_glob), &
+              HTNm1_1d  (1:nActive_TU_glob), &
+              dxT_1d    (1:nActive_TU_glob), &
+              dyT_1d    (1:nActive_TU_glob), &
+              strength  (1:nActive_TU_glob), &
+              stressp_1 (1:nActive_TU_glob), &
+              stressp_2 (1:nActive_TU_glob), &
+              stressp_3 (1:nActive_TU_glob), &
+              stressp_4 (1:nActive_TU_glob), &
+              stressm_1 (1:nActive_TU_glob), &
+              stressm_2 (1:nActive_TU_glob), &
+              stressm_3 (1:nActive_TU_glob), &
+              stressm_4 (1:nActive_TU_glob), &
+              stress12_1(1:nActive_TU_glob), &
+              stress12_2(1:nActive_TU_glob), &
+              stress12_3(1:nActive_TU_glob), &
+              stress12_4(1:nActive_TU_glob), &
               stat=ierr)
 
     if (ierr/=0) then
        call abort_ice(subname//' ERROR: allocating', file=__FILE__, line=__LINE__)
     endif
 
-    allocate(cdn_ocn  (1:nActive_TU_glob0), aiu      (1:nActive_TU_glob0), rheofactU(1:nActive_TU_glob0), &
-             uocn     (1:nActive_TU_glob0), vocn     (1:nActive_TU_glob0), &
-             waterxU  (1:nActive_TU_glob0), wateryU  (1:nActive_TU_glob0), &
-             forcexU  (1:nActive_TU_glob0), forceyU  (1:nActive_TU_glob0), &
-             umassdti (1:nActive_TU_glob0), fmU      (1:nActive_TU_glob0), &
-             uarear_1d(1:nActive_TU_glob0),                   &
-             strintxU (1:nActive_TU_glob0), strintyU (1:nActive_TU_glob0), &
-             Tbu      (1:nActive_TU_glob0), Cb       (1:nActive_TU_glob0), &
-             uvel_init(1:nActive_TU_glob0), vvel_init(1:nActive_TU_glob0), &
-             aList    (1:nActive_TU_glob0),                   &
+    allocate(cdn_ocn  (1:nActive_TU_glob), aiu      (1:nActive_TU_glob), rheofactU(1:nActive_TU_glob), &
+             uocn     (1:nActive_TU_glob), vocn     (1:nActive_TU_glob), &
+             waterxU  (1:nActive_TU_glob), wateryU  (1:nActive_TU_glob), &
+             forcexU  (1:nActive_TU_glob), forceyU  (1:nActive_TU_glob), &
+             umassdti (1:nActive_TU_glob), fmU      (1:nActive_TU_glob), &
+             uarear_1d(1:nActive_TU_glob),                   &
+             strintxU (1:nActive_TU_glob), strintyU (1:nActive_TU_glob), &
+             Tbu      (1:nActive_TU_glob), Cb       (1:nActive_TU_glob), &
+             uvel_init(1:nActive_TU_glob), vvel_init(1:nActive_TU_glob), &
+             aList    (1:nActive_TU_glob),                   &
              stat=ierr)
 
     if (ierr/=0) then
@@ -447,29 +446,28 @@ module ice_dyn_evp1d
     ! The identity, which is what the kernels walk when evp1d_reorder is off.
     ! Written once here rather than rebuilt every timestep: with the flag off
     ! the list never changes.
-    do ierr = 1, nActive_TU_glob0
+    do ierr = 1, nActive_TU_glob
        aList(ierr) = ierr
     enddo
-    nIce = nActive_TU_glob0
+    nIce = nActive_TU_glob
 
   end subroutine evp1d_alloc_static_nActive
 
 !=============================================================================
 
-  subroutine evp1d_alloc_static_nStored(nStored_TU_glob0)
+  subroutine evp1d_alloc_static_nStored
     implicit none
 
-    integer(kind=int_kind), intent(in) :: nStored_TU_glob0
     integer(kind=int_kind) :: ierr
     character(len=*), parameter :: subname = '(evp1d_alloc_static_nStored)'
 
-    ! nStored_TU_glob0: the last slot is the dead slot.  Directions that leave the
+    ! nStored_TU_glob: the last slot is the dead slot.  Directions that leave the
     ! grid point at it, so the kernels can read a neighbour unconditionally
     ! and get zero -- the same convention the compressed 2-D layout uses.
-    allocate(str1(1:nStored_TU_glob0)   , str2(1:nStored_TU_glob0), str3(1:nStored_TU_glob0), &
-             str4(1:nStored_TU_glob0)   , str5(1:nStored_TU_glob0), str6(1:nStored_TU_glob0), &
-             str7(1:nStored_TU_glob0)   , str8(1:nStored_TU_glob0),                   &
-             indxTij(1:nStored_TU_glob0), uvel(1:nStored_TU_glob0), vvel(1:nStored_TU_glob0), &
+    allocate(str1(1:nStored_TU_glob)   , str2(1:nStored_TU_glob), str3(1:nStored_TU_glob), &
+             str4(1:nStored_TU_glob)   , str5(1:nStored_TU_glob), str6(1:nStored_TU_glob), &
+             str7(1:nStored_TU_glob)   , str8(1:nStored_TU_glob),                   &
+             indxTij(1:nStored_TU_glob), uvel(1:nStored_TU_glob), vvel(1:nStored_TU_glob), &
              stat=ierr)
 
     if (ierr/=0) then
@@ -500,14 +498,13 @@ module ice_dyn_evp1d
 
 !=============================================================================
 
-  subroutine calc_nActiveTU(Tmask,nActive_TU_glob0, Umask)
+  subroutine calc_nActiveTU(Tmask, Umask)
 
     ! Calculate number of active points with a given mask.
 
     implicit none
     logical(kind=log_kind), intent(in) :: Tmask(:,:)
     logical(kind=log_kind), optional, intent(in) :: Umask(:,:)
-    integer(kind=int_kind), intent(out)  :: nActive_TU_glob0
     integer(kind=int_kind)              :: i,j
     character(len=*), parameter :: subname = '(calc_nActivceTU)'
 
@@ -515,12 +512,12 @@ module ice_dyn_evp1d
     ! counts: ilo..ihi+1, one cell into the ghosts, where ihi is nx-nghost.
     ! The two must agree or nActive_TU_glob exceeds what gets filled and the tail of
     ! indxti/indxtj is left at zero.
-    nActive_TU_glob0=0
+    nActive_TU_glob=0
     if (present(Umask)) then
        do i=1+nghost,nx-nghost+1
        do j=1+nghost,ny-nghost+1
           if ((Tmask(i,j)) .or. (Umask(i,j))) then
-             nActive_TU_glob0=nActive_TU_glob0+1
+             nActive_TU_glob=nActive_TU_glob+1
           endif
        enddo
        enddo
@@ -528,7 +525,7 @@ module ice_dyn_evp1d
        do i=1+nghost,nx-nghost+1
        do j=1+nghost,ny-nghost+1
           if (Tmask(i,j)) then
-             nActive_TU_glob0=nActive_TU_glob0+1
+             nActive_TU_glob=nActive_TU_glob+1
           endif
        enddo
        enddo
@@ -538,12 +535,11 @@ module ice_dyn_evp1d
 
 !=============================================================================
 
-  subroutine set_skipMe(iceTmask, iceUmask,nActive_TU_glob0)
+  subroutine set_skipMe(iceTmask, iceUmask)
 
     implicit none
 
     logical(kind=log_kind), intent(in) :: iceTmask(:,:), iceUmask(:,:)
-    integer(kind=int_kind), intent(in) :: nActive_TU_glob0
     integer(kind=int_kind)              :: is, i, j, niw
     character(len=*), parameter :: subname = '(set_skipMe)'
 
@@ -551,7 +547,7 @@ module ice_dyn_evp1d
     skipTcell=.false.
     niw=0
     ! first count
-    do is=1, nActive_TU_glob0
+    do is=1, nActive_TU_glob
       i = indxti(is)
       j = indxtj(is)
       if ( iceTmask(i,j) .or. iceUmask(i,j)) then
@@ -579,25 +575,24 @@ module ice_dyn_evp1d
        ! where the ice-free tropics are most of the ocean, is where it pays.
        if (first_reorder) then
           first_reorder = .false.
-          write(nu_diag,*) subname//' evp1d_reorder: ', niw, ' of ', nActive_TU_glob0, &
+          write(nu_diag,*) subname//' evp1d_reorder: ', niw, ' of ', nActive_TU_glob, &
                            ' slots carry ice'
        endif
     else
-       nIce = nActive_TU_glob0
+       nIce = nActive_TU_glob
     endif
-    !    write(nu_diag,*) 'number of points and Active points', nActive_TU_glob0, niw
+    !    write(nu_diag,*) 'number of points and Active points', nActive_TU_glob, niw
 
   end subroutine set_skipMe
 
 !=============================================================================
 
-  subroutine calc_2d_indices_init(nActive_TU_glob0, Tmask)
+  subroutine calc_2d_indices_init(Tmask)
     ! All points are active. Need to find neighbors.
     ! This should include de selection of u points.
 
     implicit none
 
-    integer(kind=int_kind), intent(in) :: nActive_TU_glob0
     ! nx, ny
     logical(kind=log_kind), dimension(:,:), intent(in) :: Tmask
 
@@ -821,11 +816,10 @@ module ice_dyn_evp1d
 
 !=============================================================================
 
-  subroutine convert_2d_1d_init(nActive_TU_glob0, G_HTE, G_HTN, G_uarear,  G_dxT, G_dyT)
+  subroutine convert_2d_1d_init(G_HTE, G_HTN, G_uarear,  G_dxT, G_dyT)
 
      implicit none
 
-     integer(kind=int_kind), intent(in) ::  nActive_TU_glob0
      real (kind=dbl_kind), dimension(:, :), intent(in) :: G_HTE, G_HTN, G_uarear, G_dxT, G_dyT
 
      ! local variables
@@ -835,11 +829,11 @@ module ice_dyn_evp1d
      character(len=*), parameter :: subname = '(convert_2d_1d_init)'
 
      ! Hand out the slots.  The layout is the one the kernels rely on: the
-     ! active T and U points first, 1..nActive_TU_glob0, in the order calc_2d_indices_init
+     ! active T and U points first, 1..nActive_TU_glob, in the order calc_2d_indices_init
      ! found them, then the cells that are only ever read.  stress_1d and
-     ! stepu_1d both run over 1..nActive_TU_glob0, so nothing downstream has to know where
-     ! the halo tail begins beyond nActive_TU_glob0 itself.
-     do is = 1, nActive_TU_glob0
+     ! stepu_1d both run over 1..nActive_TU_glob, so nothing downstream has to know where
+     ! the halo tail begins beyond nActive_TU_glob itself.
+     do is = 1, nActive_TU_glob
         ij = indxti(is) + (indxtj(is) - 1) * nx
         ijslot(ij)  = is
         indxTij(is) = ij
@@ -847,7 +841,7 @@ module ice_dyn_evp1d
 
      ! The read-only cells take the slots after them, in ascending linear
      ! index -- the same order the sorted union used to produce.
-     islot = nActive_TU_glob0
+     islot = nActive_TU_glob
      do ij = 1, nx * ny
         if (ijslot(ij) == -1) then
            islot = islot + 1
@@ -867,7 +861,7 @@ module ice_dyn_evp1d
      ! which computes stress over jlo..jhi+1 but steps U only over jlo..jhi.
      ! ee/ne/se step towards i-1 and j-1 and active T cells start at
      ! 1+nghost, so for nghost >= 1 they always land inside the grid.
-     do is = 1, nActive_TU_glob0
+     do is = 1, nActive_TU_glob
         i = indxti(is)
         j = indxtj(is)
         ee (is) = slot_of(i - 1, j    , nStored_TU_glob)
@@ -880,10 +874,10 @@ module ice_dyn_evp1d
 
      !tar      i$OMP PARALLEL PRIVATE(is, lo, up, j, i)
      ! write 1D arrays from 2D arrays (target points)
-     !tar      call domp_get_domain(1, nActive_TU_glob0, lo, up)
+     !tar      call domp_get_domain(1, nActive_TU_glob, lo, up)
      lo=1
-     up=nActive_TU_glob0
-     do is = 1, nActive_TU_glob0
+     up=nActive_TU_glob
+     do is = 1, nActive_TU_glob
         ! get 2D indices
         i = indxti(is)
         j = indxtj(is)
@@ -901,7 +895,7 @@ module ice_dyn_evp1d
 
 !=============================================================================
 
-  subroutine convert_2d_1d_dyn(nActive_TU_glob0         ,                                           &
+  subroutine convert_2d_1d_dyn(                                                                    &
                                G_stressp_1 , G_stressp_2 , G_stressp_3 , G_stressp_4 , &
                                G_stressm_1 , G_stressm_2 , G_stressm_3 , G_stressm_4 , &
                                G_stress12_1, G_stress12_2, G_stress12_3, G_stress12_4, &
@@ -912,7 +906,6 @@ module ice_dyn_evp1d
 
      implicit none
 
-     integer(kind=int_kind), intent(in) ::  nActive_TU_glob0
 
      ! nx, ny
      real(kind=dbl_kind), dimension(:, :), intent(in) :: &
@@ -928,8 +921,8 @@ module ice_dyn_evp1d
      character(len=*), parameter :: subname = '(convert_2d_1d_dyn)'
 
      lo=1
-     up=nActive_TU_glob0
-     do is = 1, nActive_TU_glob0
+     up=nActive_TU_glob
+     do is = 1, nActive_TU_glob
         ! get 2D indices
         i = indxti(is)
         j = indxtj(is)
@@ -977,7 +970,7 @@ module ice_dyn_evp1d
      end do
 
      ! Halos can potentially have values of u and v
-     do is=nActive_TU_glob0+1,nStored_TU_glob-1
+     do is=nActive_TU_glob+1,nStored_TU_glob-1
         j = int((indxTij(is) - 1) / (nx)) + 1
         i =      indxTij(is) - (j - 1) * nx
         uvel(is)=G_uvel(i,j)
@@ -988,7 +981,7 @@ module ice_dyn_evp1d
 
 !=============================================================================
 
-  subroutine convert_1d_2d_dyn(nActive_TU_glob0         , nStored_TU_glob0      ,                             &
+  subroutine convert_1d_2d_dyn(                                                                                &
                                G_stressp_1 , G_stressp_2 , G_stressp_3 , G_stressp_4 , &
                                G_stressm_1 , G_stressm_2 , G_stressm_3 , G_stressm_4 , &
                                G_stress12_1, G_stress12_2, G_stress12_3, G_stress12_4, &
@@ -1001,7 +994,6 @@ module ice_dyn_evp1d
 
      implicit none
 
-     integer(kind=int_kind), intent(in) ::  nActive_TU_glob0, nStored_TU_glob0
      ! nx, ny
      real(kind=dbl_kind), dimension(:, :), intent(inout) ::     &
         G_stressp_1 , G_stressp_2 , G_stressp_3 , G_stressp_4 , &
@@ -1059,7 +1051,7 @@ module ice_dyn_evp1d
      ! where the solver does own the cell.
 
      lo=1
-     up=nActive_TU_glob0
+     up=nActive_TU_glob
      do is = lo, up
         ! get 2D indices
         i = indxti(is)
@@ -1085,7 +1077,7 @@ module ice_dyn_evp1d
         G_vvel(i,j)       = vvel(is)
      end do
 
-     do is=nActive_TU_glob0+1,nStored_TU_glob0-1
+     do is=nActive_TU_glob+1,nStored_TU_glob-1
         j = int((indxTij(is) - 1) / (nx)) + 1
         i = indxTij(is) - (j - 1) * nx
         G_uvel(i,j)       = uvel(is)
@@ -1094,7 +1086,7 @@ module ice_dyn_evp1d
 
   end subroutine convert_1d_2d_dyn
 
-  subroutine calc_nStoredTU(nActive_TU_glob0, nStored_TU_glob0)
+  subroutine calc_nStoredTU
      ! Calculate number of active points, including halo points.
      !
      ! Marks every cell the 1-D solver touches -- each active T cell, plus the
@@ -1113,9 +1105,7 @@ module ice_dyn_evp1d
 
      implicit none
 
-     integer(kind=int_kind), intent(in) :: nActive_TU_glob0
-     integer(kind=int_kind), intent(out) :: nStored_TU_glob0
-
+ 
      ! local variables
 
      integer(kind=int_kind) :: is, i, j, ij, ierr
@@ -1129,7 +1119,7 @@ module ice_dyn_evp1d
 
      ijslot(:) = 0
 
-     do is = 1, nActive_TU_glob0
+     do is = 1, nActive_TU_glob
         i = indxti(is)
         j = indxtj(is)
         ! No trailing backslashes in these comments: .F90 is preprocessed and
@@ -1150,9 +1140,9 @@ module ice_dyn_evp1d
      ! kernels reach -- see halo_sweep
      call halo_sweep(.true.)
 
-     nStored_TU_glob0 = 0
+     nStored_TU_glob = 0
      do ij = 1, nx * ny
-        if (ijslot(ij) /= 0) nStored_TU_glob0 = nStored_TU_glob0 + 1
+        if (ijslot(ij) /= 0) nStored_TU_glob = nStored_TU_glob + 1
      end do
 
      ! ⚠ Plus the dead slot.  nStored_TU_glob counts what is STORED, which
@@ -1160,7 +1150,7 @@ module ice_dyn_evp1d
      ! direction leaving the domain -- the same convention nStored_TU uses
      ! for the 2-D layout.  Folding it in here removes the +1 that was
      ! otherwise written out at every allocation and every slot_of fallback.
-     nStored_TU_glob0 = nStored_TU_glob0 + 1
+     nStored_TU_glob = nStored_TU_glob + 1
 
   end subroutine calc_nStoredTU
 
