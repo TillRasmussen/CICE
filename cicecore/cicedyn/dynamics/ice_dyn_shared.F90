@@ -1787,11 +1787,11 @@
          ncnt          ! dynCntA(iblk): this block's active count
 
       ! iceTmask_s is iceXmask_s's counterpart for the T cells: .true. where the slot
-      ! carries no ice this step.  It is set over the SAME range as icellT,
-      ! ilo..ihi+1 and jlo..jhi+1 -- one cell into the ghosts, where the
-      ! stresses are needed -- so a slot loop over it covers exactly what the
-      ! icellT/indxTi/indxTj chain covered.
-      logical (kind=log_kind), dimension(:), intent(out), contiguous :: &
+      ! carries no ice this step.  dyn_prep1_dilate writes it, over the same
+      ! range as icellT -- ilo..ihi+1 and jlo..jhi+1, one cell into the ghosts
+      ! where the stresses are needed -- so a slot loop over it covers exactly
+      ! what the icellT/indxTi/indxTj chain covered.
+      logical (kind=log_kind), dimension(:), intent(in), contiguous :: &
          iceTmask_s      ! inactive-slot flag, T cells
 
       ! iceXmask_s runs over this block's compressed slots: .true. where the slot
