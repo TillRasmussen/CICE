@@ -1208,7 +1208,7 @@ module ice_dyn_evp1d
 
      ! local variables
 
-     integer(kind=int_kind) :: iw, lo, up, j, i, ij, islot, ierr
+     integer(kind=int_kind) :: iw, lo, up, j, i, ij, islot
 
      character(len=*), parameter :: subname = '(convert_2d_1d_init)'
 
@@ -1671,8 +1671,7 @@ module ice_dyn_evp1d
 
      ! local variables
 
-     integer(kind=int_kind) :: i, j, g, ilo, ihi, jlo, jhi, isrc
-     real   (kind=dbl_kind) :: w
+     integer(kind=int_kind) :: i, j, g, ilo, ihi, jlo, jhi, w, isrc
 
      character(len=*), parameter :: subname = '(halo_sweep)'
 
@@ -1721,7 +1720,7 @@ module ice_dyn_evp1d
               isrc = isrc + (nx - 2*nghost)
            endif
            call halo_point(i, jhi + g, isrc, jhi - g, isrc, jhi - g, &
-                           c0, domark, -c1)
+                           0 , domark, -c1)
         end do
         end do
      endif
@@ -1730,8 +1729,8 @@ module ice_dyn_evp1d
      if (trim(ew_boundary_type) == 'cyclic') then
         do j = 1, ny
         do g = 1, nghost
-           call halo_point(g      , j, ihi-nghost+g, j, ihi-nghost+g, j, c0, domark)
-           call halo_point(ihi + g, j, ilo+g-1     , j, ilo+g-1     , j, c0, domark)
+           call halo_point(g      , j, ihi-nghost+g, j, ihi-nghost+g, j, 0, domark)
+           call halo_point(ihi + g, j, ilo+g-1     , j, ilo+g-1     , j, 0, domark)
         end do
         end do
      endif
@@ -1739,8 +1738,8 @@ module ice_dyn_evp1d
      if (trim(ns_boundary_type) == 'cyclic') then
         do i = 1, nx
         do g = 1, nghost
-           call halo_point(i, g      , i, jhi-nghost+g, i, jhi-nghost+g, c0, domark)
-           call halo_point(i, jhi + g, i, jlo+g-1     , i, jlo+g-1     , c0, domark)
+           call halo_point(i, g      , i, jhi-nghost+g, i, jhi-nghost+g, 0, domark)
+           call halo_point(i, jhi + g, i, jlo+g-1     , i, jlo+g-1     , 0, domark)
         end do
         end do
      endif
@@ -1750,11 +1749,11 @@ module ice_dyn_evp1d
          trim(ew_boundary_type) == 'linear_extrap') then
         do j = 1, ny
         do g = 1, nghost
-           w = c0
-           if (trim(ew_boundary_type) == 'linear_extrap') w = real(nghost-g+1, dbl_kind)
+           w = 0
+           if (trim(ew_boundary_type) == 'linear_extrap') w = nghost-g+1
            call halo_point(g      , j, ilo, j, ilo+1, j, w, domark)   ! west
-           w = c0
-           if (trim(ew_boundary_type) == 'linear_extrap') w = real(g, dbl_kind)
+           w = 0
+           if (trim(ew_boundary_type) == 'linear_extrap') w = g
            call halo_point(ihi + g, j, ihi, j, ihi-1, j, w, domark)   ! east
         end do
         end do
@@ -1764,11 +1763,11 @@ module ice_dyn_evp1d
          trim(ns_boundary_type) == 'linear_extrap') then
         do i = 1, nx
         do g = 1, nghost
-           w = c0
-           if (trim(ns_boundary_type) == 'linear_extrap') w = real(nghost-g+1, dbl_kind)
+           w = 0
+           if (trim(ns_boundary_type) == 'linear_extrap') w = nghost-g+1
            call halo_point(i, g      , i, jlo, i, jlo+1, w, domark)   ! south
-           w = c0
-           if (trim(ns_boundary_type) == 'linear_extrap') w = real(g, dbl_kind)
+           w = 0
+           if (trim(ns_boundary_type) == 'linear_extrap') w = g
            call halo_point(i, jhi + g, i, jhi, i, jhi-1, w, domark)   ! north
         end do
         end do
@@ -1895,8 +1894,7 @@ module ice_dyn_evp1d
 
      implicit none
 
-     integer(kind=int_kind), intent(in) :: id, jd, i1, j1, i2, j2
-     real   (kind=dbl_kind), intent(in) :: w
+     integer(kind=int_kind), intent(in) :: id, jd, i1, j1, i2, j2, w
      logical(kind=log_kind), intent(in) :: domark
      ! +1 unless the caller is folding a vector across a seam
      real   (kind=dbl_kind), intent(in), optional :: sgn
@@ -1904,26 +1902,23 @@ module ice_dyn_evp1d
      ! local variables
 
      integer(kind=int_kind) :: sd, s1, s2
-     logical(kind=log_kind) :: needs_s2
 
      character(len=*), parameter :: subname = '(halo_point)'
 
-     ! w is exactly c0 for every copying type -- cyclic, closed, the tripole
-     ! fold and zero_gradient -- or a ring distance of 1 or more for
-     ! linear_extrap.  It is never the result of arithmetic, so the exact
-     ! comparison is safe, and a zero w annihilates the w*(s1-s2) term below:
-     ! those entries never read s2, so a missing one is no obstacle.
+     ! w is 0 for every copying type -- cyclic, closed, the tripole fold and
+     ! zero_gradient -- or a ring distance of 1 or more for linear_extrap.
+     ! A zero w annihilates the w*(s1-s2) term below, so those entries never
+     ! read s2 and a missing one is no obstacle.
      !
      ! ⚠ Getting this wrong is silent.  A w that was meant to be zero but
      ! tested nonzero would take the return below and DROP the halo entry,
      ! leaving the ghost cell unwritten -- the fault this routine exists to
      ! avoid.
-     needs_s2 = (w /= c0)
 
      if (domark) then
         call mark_cell(id, jd)
         call mark_cell(i1, j1)
-        if (needs_s2) call mark_cell(i2, j2)
+        if (w /= 0) call mark_cell(i2, j2)
         return
      endif
 
@@ -1933,7 +1928,8 @@ module ice_dyn_evp1d
 
      s2 = ijslot(i2 + (j2 - 1) * nx)
      if (s2 == 0) then
-        if (needs_s2) return
+        ! w == 0 does not read s2, so a missing one is no obstacle
+        if (w /= 0) return
         s2 = s1
      endif
 
@@ -1941,7 +1937,7 @@ module ice_dyn_evp1d
      halo_bc_dst(n_halo_bc) = sd
      halo_bc_s1 (n_halo_bc) = s1
      halo_bc_s2 (n_halo_bc) = s2
-     halo_bc_w  (n_halo_bc) = w
+     halo_bc_w  (n_halo_bc) = real(w, kind=dbl_kind)
      halo_bc_sgn(n_halo_bc) = c1
      if (present(sgn)) halo_bc_sgn(n_halo_bc) = sgn
 

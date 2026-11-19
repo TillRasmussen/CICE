@@ -1294,7 +1294,7 @@
                ij = dynIJ(ms)
                j  = (ij-1)/nx_block + 1
                i  = ij - (j-1)*nx_block
-               if (aiU_slot(ms) /= c0) then
+               if (aiU_slot(ms) > puny) then
                   work1(i,j,iblk) = strocnxU(ms)/aiU_slot(ms)
                   work2(i,j,iblk) = strocnyU(ms)/aiU_slot(ms)
                endif
