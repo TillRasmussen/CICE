@@ -70,7 +70,7 @@ module ice_dyn_core1d
   ! arguments ------------------------------------------------------------------
   subroutine stress_1d (ee, ne, se, lb, ub, aList,                              &
                         uvel, vvel, dxT, dyT, skipme, strength,          &
-                        hte, htn, htem1, htnm1,                          &
+                        DminTarea, hte, htn, htem1, htnm1,               &
                         stressp_1,  stressp_2,  stressp_3,  stressp_4,   &
                         stressm_1,  stressm_2,  stressm_3,  stressm_4,   &
                         stress12_1, stress12_2, stress12_3, stress12_4,  &
@@ -81,7 +81,7 @@ module ice_dyn_core1d
                               p222, p25, p333, p5
 
     use ice_dyn_shared, only: arlx1i, denom1, revp,         &
-                              deltaminEVP, visc_replpress
+                              visc_replpress
     !
     implicit none
     ! arguments ------------------------------------------------------------------
@@ -100,6 +100,7 @@ module ice_dyn_core1d
       vvel     , & ! y-component of velocity (m/s)
       dxT      , & ! width of T-cell through the middle (m)
       dyT      , & ! height of T-cell through the middle (m)
+      DminTarea, & ! deltamin*tarea, from the 2-D solver's own array
       hte      , &
       htn      , &
       htem1    , &
@@ -172,11 +173,12 @@ module ice_dyn_core1d
     !$omp         tmp_strength, tmp_DminTarea                , &
     !$omp         tmp_dxhy, tmp_dyhx)                          &
     !$omp  shared(uvel,vvel,dxT,dyT,htn,hte,htnm1,htem1      , &
+    !$omp         DminTarea                                  , &
     !$omp         str1,str2,str3,str4,str5,str6,str7,str8    , &
     !$omp         stressp_1,stressp_2,stressp_3,stressp_4    , &
     !$omp         stressm_1,stressm_2,stressm_3,stressm_4    , &
     !$omp         stress12_1,stress12_2,stress12_3,stress12_4, &
-    !$omp         deltaminEVP, arlx1i, denom1, e_factor      , &
+    !$omp         arlx1i, denom1, e_factor                   , &
     !$omp         epp2i, capping,                              &
     !$omp         skipme,strength,ee,se,ne,lb,ub,aList,revp)
 #endif
@@ -200,12 +202,10 @@ module ice_dyn_core1d
       tmp_cxm       = -(c1p5 * htnm1(is) - p5 * htn(is))
       tmp_cym       = -(c1p5 * htem1(is) - p5 * hte(is))
       tmp_strength  = strength(is)
-      ! ⚠ The parentheses are load bearing.  Written as deltaminEVP*dxT*dyT
-      ! Fortran associates left to right, giving (deltaminEVP*dxT)*dyT, which
-      ! differs in the last bit for ~41% of inputs (measured, 2e6 samples,
-      ! gfortran -O0/-O2 and ifx -O2).  Parenthesised it is bit-identical to
-      ! the temporary this replaces, on both compilers.
-      tmp_DminTarea = deltaminEVP * (dxT(is) * dyT(is))
+      ! Taken from the 2-D solver's DminTarea rather than rebuilt as
+      ! deltaminEVP*dxT*dyT: tarea is only equal to dxT*dyT when ice_grid
+      ! forms it that way, which it does not for grid_format='mom_nc'.
+      tmp_DminTarea = DminTarea(is)
       tmp_dxhy      = p5 * (hte(is) - htem1(is))
       tmp_dyhx      = p5 * (htn(is) - htnm1(is))
 

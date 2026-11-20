@@ -56,7 +56,8 @@ module ice_dyn_evp1d
 
   ! Grid
   real   (kind=dbl_kind), allocatable, dimension(:)   :: &
-     HTE_1d,HTN_1d, HTEm1_1d,HTNm1_1d, dxT_1d, dyT_1d, uarear_1d
+     HTE_1d,HTN_1d, HTEm1_1d,HTNm1_1d, dxT_1d, dyT_1d, uarear_1d, &
+     DminTarea_1d
 
   ! time varying
   real(kind=dbl_kind)   , allocatable, dimension(:)   ::                  &
@@ -97,7 +98,8 @@ module ice_dyn_evp1d
 
     ! local variables
 
-    real(kind=dbl_kind)   , allocatable, dimension(:,:) :: G_dyT, G_dxT, G_uarear
+    real(kind=dbl_kind)   , allocatable, dimension(:,:) :: G_dyT, G_dxT, G_uarear, &
+                                                           G_DminTarea
     logical(kind=log_kind), allocatable, dimension(:,:) :: G_tmask
 
     integer(kind=int_kind) :: ierr
@@ -107,13 +109,14 @@ module ice_dyn_evp1d
     nx=nx_global+2*nghost
     ny=ny_global+2*nghost
 
-    allocate(G_dyT(nx,ny),G_dxT(nx,ny),G_uarear(nx,ny),G_tmask(nx,ny),stat=ierr)
+    allocate(G_dyT(nx,ny),G_dxT(nx,ny),G_uarear(nx,ny),G_DminTarea(nx,ny), &
+             G_tmask(nx,ny),stat=ierr)
     if (ierr/=0) then
        call abort_ice(subname//' ERROR: allocating', file=__FILE__, line=__LINE__)
     endif
 
     ! gather from blks to global
-    call gather_static(G_uarear, G_dxT, G_dyT, G_tmask)
+    call gather_static(G_uarear, G_dxT, G_dyT, G_DminTarea, G_tmask)
 
     ! calculate number of water points (T and U). Only needed for the static version
     ! tmask in ocean/ice
@@ -124,7 +127,7 @@ module ice_dyn_evp1d
       call calc_nStoredTU
       call evp1d_alloc_static_nStored
       call numainit(1,nActive_TU_glob,nStored_TU_glob)
-      call convert_2d_1d_init(G_HTE, G_HTN, G_uarear, G_dxT, G_dyT)
+      call convert_2d_1d_init(G_HTE, G_HTN, G_uarear, G_dxT, G_dyT, G_DminTarea)
       call evp1d_alloc_static_halo()
       ! The halo geometry -- indxTij, nActive_TU_glob, nStored_TU_glob and the boundary types -- does
       ! not change, so the list is built once here.
@@ -137,7 +140,7 @@ module ice_dyn_evp1d
       endif
     endif
 
-    deallocate(G_dyT,G_dxT,G_uarear,G_tmask,stat=ierr)
+    deallocate(G_dyT,G_dxT,G_uarear,G_DminTarea,G_tmask,stat=ierr)
     if (ierr/=0) then
        call abort_ice(subname//' ERROR: deallocating', file=__FILE__, line=__LINE__)
     endif
@@ -251,7 +254,8 @@ module ice_dyn_evp1d
        call ice_timer_start(timer_evp1dcore)
 #ifdef _OPENMP_TARGET
        !$omp target data map(to: ee, ne, se, nw, sw, sse, skipUcell, skipTcell,&
-       !$omp                 strength, dxT_1d, dyT_1d, HTE_1d,HTN_1d,HTEm1_1d, &
+       !$omp                 strength, dxT_1d, dyT_1d, DminTarea_1d,           &
+       !$omp                 HTE_1d,HTN_1d,HTEm1_1d,                           &
        !$omp                 HTNm1_1d,forcexU, forceyU, umassdti, fmU,         &
        !$omp                 uarear_1d,uvel_init, vvel_init, Tbu, Cb,          &
        !$omp                 str1, str2, str3, str4, str5, str6, str7, str8,   &
@@ -277,7 +281,7 @@ module ice_dyn_evp1d
        do ksub = 1,ndte        ! subcycling
           call stress_1d (ee, ne, se, 1, nIce, aList,                                    &
                           uvel, vvel, dxT_1d, dyT_1d, skipTcell, strength,           &
-                          HTE_1d, HTN_1d, HTEm1_1d, HTNm1_1d,                        &
+                          DminTarea_1d, HTE_1d, HTN_1d, HTEm1_1d, HTNm1_1d,          &
                           stressp_1,  stressp_2,  stressp_3,  stressp_4,             &
                           stressm_1,  stressm_2,  stressm_3,  stressm_4,             &
                           stress12_1, stress12_2, stress12_3, stress12_4,            &
@@ -408,6 +412,7 @@ module ice_dyn_evp1d
               HTNm1_1d  (1:nActive_TU_glob), &
               dxT_1d    (1:nActive_TU_glob), &
               dyT_1d    (1:nActive_TU_glob), &
+              DminTarea_1d(1:nActive_TU_glob), &
               strength  (1:nActive_TU_glob), &
               stressp_1 (1:nActive_TU_glob), &
               stressp_2 (1:nActive_TU_glob), &
@@ -621,17 +626,19 @@ module ice_dyn_evp1d
 
   end subroutine calc_2d_indices_init
 
-  subroutine gather_static(G_uarear, G_dxT, G_dyT, G_Tmask)
+  subroutine gather_static(G_uarear, G_dxT, G_dyT, G_DminTarea, G_Tmask)
 
      ! In standalone  distrb_info is an integer. Not needed anyway
      use ice_communicate, only : master_task
      use ice_gather_scatter, only : gather_global
      use ice_domain, only : distrb_info
      use ice_grid, only: dyT, dxT, uarear, tmask
+     use ice_dyn_shared, only: DminTarea
      implicit none
 
      ! nx, ny
-     real(kind=dbl_kind)   , dimension(:,:), intent(out) :: G_uarear, G_dxT, G_dyT
+     real(kind=dbl_kind)   , dimension(:,:), intent(out) :: G_uarear, G_dxT, G_dyT, &
+                                                            G_DminTarea
      logical(kind=log_kind), dimension(:,:), intent(out) :: G_Tmask
 
      character(len=*), parameter :: subname = '(gather_static)'
@@ -639,12 +646,14 @@ module ice_dyn_evp1d
      G_uarear = c0
      G_dyT = c0
      G_dxT = c0
+     G_DminTarea = c0
      G_tmask = .false.
 
      ! copy from distributed I_* to G_*
      call gather_global(G_uarear, uarear, master_task, distrb_info, grid_ext=.true.)
      call gather_global(G_dxT   , dxT   , master_task, distrb_info, grid_ext=.true.)
      call gather_global(G_dyT   , dyT   , master_task, distrb_info, grid_ext=.true.)
+     call gather_global(G_DminTarea, DminTarea, master_task, distrb_info, grid_ext=.true.)
      call gather_global(G_Tmask , Tmask , master_task, distrb_info, grid_ext=.true.)
 
   end subroutine gather_static
@@ -817,11 +826,12 @@ module ice_dyn_evp1d
 
 !=============================================================================
 
-  subroutine convert_2d_1d_init(G_HTE, G_HTN, G_uarear,  G_dxT, G_dyT)
+  subroutine convert_2d_1d_init(G_HTE, G_HTN, G_uarear,  G_dxT, G_dyT, G_DminTarea)
 
      implicit none
 
-     real (kind=dbl_kind), dimension(:, :), intent(in) :: G_HTE, G_HTN, G_uarear, G_dxT, G_dyT
+     real (kind=dbl_kind), dimension(:, :), intent(in) :: G_HTE, G_HTN, G_uarear, G_dxT, G_dyT, &
+                                                          G_DminTarea
 
      ! local variables
 
@@ -886,6 +896,7 @@ module ice_dyn_evp1d
         uarear_1d(is)  = G_uarear(i, j)
         dxT_1d(is)     = G_dxT(i, j)
         dyT_1d(is)     = G_dyT(i, j)
+        DminTarea_1d(is) = G_DminTarea(i, j)
         HTE_1d(is)     = G_HTE(i, j)
         HTN_1d(is)     = G_HTN(i, j)
         HTEm1_1d(is)   = G_HTE(i - 1, j)
@@ -1218,6 +1229,7 @@ module ice_dyn_evp1d
         cdn_ocn(is)=c0
         dxT_1d(is)=c0
         dyT_1d(is)=c0
+        DminTarea_1d(is)=c0
         fmU(is)=c0
         forcexU(is)=c0
         forceyU(is)=c0
