@@ -16,7 +16,7 @@ module ice_dyn_evp1d
   use ice_domain_size, only: max_blocks, nx_global, ny_global
   use ice_fileunits, only: nu_diag
   use ice_exit, only: abort_ice
-  use ice_dyn_shared, only: rheo_area_min, free_drift_approx, evp1d_reorder
+  use ice_dyn_shared, only: rheo_area_min, free_drift_approx
 
   !- directives ----------------------------------------------------------------
   implicit none
@@ -32,14 +32,6 @@ module ice_dyn_evp1d
   ! nx_global+2*nghost, ny_global+2*nghost
   ! nactive are number of active points (both t and u). nStored_TU_glob is number of active
   integer(kind=int_kind), save :: nx, ny, nActive_TU_glob, nStored_TU_glob, nallocated
-  ! Visit list for the kernels.  With evp1d_reorder off it is the identity
-  ! over nActive_TU_glob; with it on, only the slots carrying ice, and nIce is how
-  ! many.  A visit list, NOT a compacted layout: the twelve stresses are
-  ! persistent subcycle state and the static metrics cannot be permuted at
-  ! all, so nothing moves -- only the traversal changes.
-  integer(kind=int_kind), save :: nIce = 0
-  logical(kind=log_kind), save :: first_reorder = .true.
-  integer(kind=int_kind), allocatable, dimension(:) :: aList
 
   ! indexes
   integer(kind=int_kind), allocatable, dimension(:,:) :: iwidx
@@ -279,7 +271,7 @@ module ice_dyn_evp1d
 
     ltripole = (trim(ns_boundary_type) == 'tripole')
        do ksub = 1,ndte        ! subcycling
-          call stress_1d (ee, ne, se, 1, nIce, aList,                                    &
+          call stress_1d (ee, ne, se, 1, nActive_TU_glob,                                &
                           uvel, vvel, dxT_1d, dyT_1d, skipTcell, strength,           &
                           DminTarea_1d, HTE_1d, HTN_1d, HTEm1_1d, HTNm1_1d,          &
                           stressp_1,  stressp_2,  stressp_3,  stressp_4,             &
@@ -287,7 +279,7 @@ module ice_dyn_evp1d
                           stress12_1, stress12_2, stress12_3, stress12_4,            &
                           str1, str2, str3, str4, str5, str6, str7, str8)
 
-          call stepu_1d  (1, nIce, aList, cdn_ocn, aiu, uocn, vocn,                         &
+          call stepu_1d  (1, nActive_TU_glob, cdn_ocn, aiu, uocn, vocn,                     &
                           waterxU, wateryU, forcexU, forceyU, umassdti, fmU, uarear_1d, &
                           uvel_init, vvel_init, uvel, vvel,                             &
                           str1, str2, str3, str4, str5, str6, str7, str8,               &
@@ -298,7 +290,7 @@ module ice_dyn_evp1d
        if (ltripole) call evp1d_tripole_stress()
        ! This can be skipped if diagnostics of strintx and strinty is not needed
        ! They will either both be calculated or not.
-       call calc_diag_1d(1   , nIce  , aList, &
+       call calc_diag_1d(1   , nActive_TU_glob, &
                          uarear_1d, skipUcell, &
                          str1     , str2     , &
                          str3     , str4     , &
@@ -441,20 +433,11 @@ module ice_dyn_evp1d
              strintxU (1:nActive_TU_glob), strintyU (1:nActive_TU_glob), &
              Tbu      (1:nActive_TU_glob), Cb       (1:nActive_TU_glob), &
              uvel_init(1:nActive_TU_glob), vvel_init(1:nActive_TU_glob), &
-             aList    (1:nActive_TU_glob),                   &
              stat=ierr)
 
     if (ierr/=0) then
        call abort_ice(subname//' ERROR: allocating', file=__FILE__, line=__LINE__)
     endif
-
-    ! The identity, which is what the kernels walk when evp1d_reorder is off.
-    ! Written once here rather than rebuilt every timestep: with the flag off
-    ! the list never changes.
-    do ierr = 1, nActive_TU_glob
-       aList(ierr) = ierr
-    enddo
-    nIce = nActive_TU_glob
 
   end subroutine evp1d_alloc_static_nActive
 
@@ -546,24 +529,14 @@ module ice_dyn_evp1d
     implicit none
 
     logical(kind=log_kind), intent(in) :: iceTmask(:,:), iceUmask(:,:)
-    integer(kind=int_kind)              :: is, i, j, niw
+    integer(kind=int_kind)              :: is, i, j
     character(len=*), parameter :: subname = '(set_skipMe)'
 
     skipUcell=.false.
     skipTcell=.false.
-    niw=0
-    ! first count
     do is=1, nActive_TU_glob
       i = indxti(is)
       j = indxtj(is)
-      if ( iceTmask(i,j) .or. iceUmask(i,j)) then
-         niw=niw+1
-         ! ⚠ The UNION, not iceTmask alone.  iceTmask comes from aice and
-         ! iceUmask from aice_init -- two different snapshots -- so iceUmask
-         ! is true at a few cells where iceTmask is false.  Dropping those
-         ! would leave stepu never updating their velocity, silently.
-         if (evp1d_reorder) aList(niw) = is
-      endif
       if (.not. (iceTmask(i,j))) skipTcell(is)=.true.
       if (.not. (iceUmask(i,j))) skipUcell(is)=.true.
       ! No U point outside ilo..ihi, jlo..jhi, which is where the 2-D solver
@@ -572,22 +545,6 @@ module ice_dyn_evp1d
       if (i > nx - nghost) skipUcell(is)=.true.
       if (j > ny - nghost) skipUcell(is)=.true.
     enddo
-
-    if (evp1d_reorder) then
-       nIce = niw
-       ! Once, on the first step: the compaction ratio is the whole point of
-       ! the flag and it is entirely domain-dependent.  A basin that is mostly
-       ! ice gains nothing and pays one extra integer stream; a global domain,
-       ! where the ice-free tropics are most of the ocean, is where it pays.
-       if (first_reorder) then
-          first_reorder = .false.
-          write(nu_diag,*) subname//' evp1d_reorder: ', niw, ' of ', nActive_TU_glob, &
-                           ' slots carry ice'
-       endif
-    else
-       nIce = nActive_TU_glob
-    endif
-    !    write(nu_diag,*) 'number of points and Active points', nActive_TU_glob, niw
 
   end subroutine set_skipMe
 

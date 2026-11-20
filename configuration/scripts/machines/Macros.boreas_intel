@@ -29,8 +29,6 @@ else
   FFLAGS     += -O3 -finline-functions -finline -ipo
 endif
 
-# -ipo above makes the objects IR, so the libcice archive needs xiar, not ar.
-AR         := xiar
 
 # Linker flags
 LD         := $(FC)

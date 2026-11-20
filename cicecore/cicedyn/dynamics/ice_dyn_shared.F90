@@ -45,7 +45,6 @@
          ssh_stress     ! 'geostrophic' or 'coupled'
 
       logical (kind=log_kind), public :: &
-         evp1d_reorder     , & ! if true, evp1d visits only the cells carrying ice
          revised_evp, & ! if true, use revised evp procedure
          free_drift_approx ! if true, set internal stress to 0 for small areas
 
